@@ -1,0 +1,247 @@
+import { useCallback, useState, useEffect } from 'react';
+import { useTranslation } from 'react-i18next';
+import { useQuery } from '@tanstack/react-query';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { 
+  Upload, 
+  FileText, 
+  Trash2, 
+  Download, 
+  Loader2,
+  File,
+  CheckCircle
+} from 'lucide-react';
+import { format } from 'date-fns';
+import { useCaseFiles } from '@/hooks/useCaseFiles';
+import { supabase } from '@/integrations/supabase/client';
+import { BulkOcrButton } from './BulkOcrButton';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
+
+interface CaseFileUploadProps {
+  caseId: string;
+}
+
+const fileTypeIcons: Record<string, React.ReactNode> = {
+  'application/pdf': <FileText className="h-5 w-5 text-red-500" />,
+  'image/': <File className="h-5 w-5 text-blue-500" />,
+  'audio/': <File className="h-5 w-5 text-green-500" />,
+  'default': <File className="h-5 w-5 text-gray-500" />,
+};
+
+function getFileIcon(fileType: string | null) {
+  if (!fileType) return fileTypeIcons.default;
+  for (const [key, icon] of Object.entries(fileTypeIcons)) {
+    if (key !== 'default' && fileType.startsWith(key.replace('/', ''))) {
+      return icon;
+    }
+  }
+  if (fileType.includes('pdf')) return fileTypeIcons['application/pdf'];
+  return fileTypeIcons.default;
+}
+
+function formatFileSize(bytes: number | null): string {
+  if (!bytes) return '0 B';
+  const units = ['B', 'KB', 'MB', 'GB'];
+  let size = bytes;
+  let unitIndex = 0;
+  while (size >= 1024 && unitIndex < units.length - 1) {
+    size /= 1024;
+    unitIndex++;
+  }
+  return `${size.toFixed(1)} ${units[unitIndex]}`;
+}
+
+export function CaseFileUpload({ caseId }: CaseFileUploadProps) {
+  const { t } = useTranslation(['cases', 'common', 'ocr']);
+  const { files, isLoading, uploadFile, deleteFile, getFileUrl } = useCaseFiles(caseId);
+  const [deleteFileId, setDeleteFileId] = useState<string | null>(null);
+  const [downloadingId, setDownloadingId] = useState<string | null>(null);
+
+  // Fetch OCR results to know which files have been processed
+  const { data: ocrResults } = useQuery({
+    queryKey: ['ocr-results', caseId],
+    queryFn: async () => {
+      const fileIds = files.map(f => f.id);
+      if (fileIds.length === 0) return [];
+      
+      const { data, error } = await supabase
+        .from('ocr_results')
+        .select('file_id')
+        .in('file_id', fileIds);
+      
+      if (error) throw error;
+      return data || [];
+    },
+    enabled: files.length > 0,
+  });
+
+  const existingOcrFileIds = new Set(ocrResults?.map(r => r.file_id) || []);
+  const handleFileSelect = useCallback(async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const selectedFiles = e.target.files;
+    if (!selectedFiles || selectedFiles.length === 0) return;
+
+    for (const file of Array.from(selectedFiles)) {
+      await uploadFile.mutateAsync({ file, caseId });
+    }
+    
+    // Reset input
+    e.target.value = '';
+  }, [caseId, uploadFile]);
+
+  const handleDownload = async (storagePath: string, filename: string) => {
+    try {
+      setDownloadingId(storagePath);
+      const url = await getFileUrl(storagePath);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = filename;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+    } catch (error) {
+      console.error('Download failed:', error);
+    } finally {
+      setDownloadingId(null);
+    }
+  };
+
+  const confirmDelete = () => {
+    if (deleteFileId) {
+      deleteFile.mutate(deleteFileId);
+      setDeleteFileId(null);
+    }
+  };
+
+  return (
+    <div className="space-y-4">
+      {/* Upload Button */}
+      <div className="flex flex-wrap items-center gap-4">
+        <Button asChild variant="outline" disabled={uploadFile.isPending}>
+          <label className="cursor-pointer">
+            {uploadFile.isPending ? (
+              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+            ) : (
+              <Upload className="mr-2 h-4 w-4" />
+            )}
+            {t('cases:upload_file')}
+            <Input
+              type="file"
+              multiple
+              className="hidden"
+              onChange={handleFileSelect}
+              accept=".pdf,.doc,.docx,.jpg,.jpeg,.png,.mp3,.wav,.m4a"
+            />
+          </label>
+        </Button>
+        <span className="text-xs text-muted-foreground">
+          PDF, DOC, DOCX, JPG, PNG, MP3, WAV, M4A
+        </span>
+      </div>
+
+      {/* Bulk OCR Button */}
+      {files.length > 0 && (
+        <BulkOcrButton
+          caseId={caseId}
+          files={files.map(f => ({
+            id: f.id,
+            original_filename: f.original_filename,
+            storage_path: f.storage_path,
+            file_type: f.file_type,
+          }))}
+          existingOcrFileIds={existingOcrFileIds}
+        />
+      )}
+
+      {/* File List */}
+      {isLoading ? (
+        <div className="flex items-center justify-center py-8">
+          <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+        </div>
+      ) : files.length === 0 ? (
+        <div className="rounded-lg border border-dashed p-8 text-center">
+          <FileText className="mx-auto h-10 w-10 text-muted-foreground/50" />
+          <p className="mt-2 text-sm text-muted-foreground">
+            {t('cases:no_files', 'No files uploaded')}
+          </p>
+        </div>
+      ) : (
+        <div className="space-y-2">
+          {files.map((file) => (
+            <div
+              key={file.id}
+              className="flex items-center justify-between rounded-lg border p-3"
+            >
+              <div className="flex items-center gap-3">
+                {getFileIcon(file.file_type)}
+                <div>
+                  <div className="flex items-center gap-2">
+                    <p className="text-sm font-medium">{file.original_filename}</p>
+                    {existingOcrFileIds.has(file.id) && (
+                      <span className="text-green-600" title={t('cases:ocr_completed', 'OCR completed')}>
+                        <CheckCircle className="h-3 w-3" />
+                      </span>
+                    )}
+                  </div>
+                  <p className="text-xs text-muted-foreground">
+                    {formatFileSize(file.file_size)} • v{file.version} • {format(new Date(file.created_at), 'dd.MM.yyyy')}
+                  </p>
+                </div>
+              </div>
+              <div className="flex items-center gap-1">
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="h-8 w-8"
+                  onClick={() => handleDownload(file.storage_path, file.original_filename)}
+                  disabled={downloadingId === file.storage_path}
+                >
+                  {downloadingId === file.storage_path ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : (
+                    <Download className="h-4 w-4" />
+                  )}
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="h-8 w-8 text-destructive hover:text-destructive"
+                  onClick={() => setDeleteFileId(file.id)}
+                >
+                  <Trash2 className="h-4 w-4" />
+                </Button>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* Delete Confirmation */}
+      <AlertDialog open={!!deleteFileId} onOpenChange={() => setDeleteFileId(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>{t('common:confirm')}</AlertDialogTitle>
+            <AlertDialogDescription>
+              {t('cases:confirm_delete_file', 'Are you sure you want to delete this file?')}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>{t('common:cancel')}</AlertDialogCancel>
+            <AlertDialogAction onClick={confirmDelete}>
+              {t('common:delete')}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+    </div>
+  );
+}

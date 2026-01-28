@@ -1,0 +1,205 @@
+import { useState, useCallback } from "react";
+import { supabase } from "@/integrations/supabase/client";
+import { toast } from "sonner";
+import { useTranslation } from "react-i18next";
+
+export type AIRole = "advocate" | "prosecutor" | "judge" | "aggregator";
+
+interface AnalysisResult {
+  role: AIRole;
+  analysis: string;
+  sources: Array<{ title: string; category: string; source_name: string }>;
+  model: string;
+}
+
+interface UseAIAnalysisReturn {
+  isLoading: boolean;
+  currentRole: AIRole | null;
+  results: Record<AIRole, AnalysisResult | null>;
+  creditsExhausted: boolean;
+  analyzeCase: (role: AIRole, caseId?: string, caseFacts?: string, legalQuestion?: string) => Promise<AnalysisResult | null>;
+  runAllRoles: (caseId?: string, caseFacts?: string, legalQuestion?: string) => Promise<void>;
+  clearResults: () => void;
+}
+
+export function useAIAnalysis(): UseAIAnalysisReturn {
+  const { t } = useTranslation(["ai", "cases"]);
+  const [isLoading, setIsLoading] = useState(false);
+  const [currentRole, setCurrentRole] = useState<AIRole | null>(null);
+  const [creditsExhausted, setCreditsExhausted] = useState(false);
+  const [results, setResults] = useState<Record<AIRole, AnalysisResult | null>>({
+    advocate: null,
+    prosecutor: null,
+    judge: null,
+    aggregator: null,
+  });
+
+  const analyzeCase = useCallback(async (
+    role: AIRole,
+    caseId?: string,
+    caseFacts?: string,
+    legalQuestion?: string
+  ): Promise<AnalysisResult | null> => {
+    setIsLoading(true);
+    setCurrentRole(role);
+    setCreditsExhausted(false);
+    
+    try {
+      const body: Record<string, string | undefined> = {
+        role,
+        caseFacts,
+        legalQuestion,
+      };
+      
+      if (caseId) {
+        body.caseId = caseId;
+      }
+      
+      // For aggregator, include previous responses
+      if (role === "aggregator") {
+        body.advocateResponse = results.advocate?.analysis || "";
+        body.prosecutorResponse = results.prosecutor?.analysis || "";
+        body.judgeResponse = results.judge?.analysis || "";
+      }
+
+      const { data, error } = await supabase.functions.invoke("ai-analyze", {
+        body,
+      });
+
+      if (error) {
+        console.error("AI analysis error:", error);
+        // Check for 402 Payment Required error
+        const errorMsg = error.message || "";
+        if (errorMsg.includes("402") || errorMsg.includes("Payment required") || errorMsg.includes("credits")) {
+          setCreditsExhausted(true);
+          toast.error(t("cases:ai_credits_exhausted"));
+          return null;
+        }
+        toast.error(t("ai:analysis_failed"));
+        return null;
+      }
+
+      if (data.error) {
+        // Check for 402 in response data
+        if (data.error.includes("402") || data.error.includes("credits") || data.error.includes("exhausted")) {
+          setCreditsExhausted(true);
+          toast.error(t("cases:ai_credits_exhausted"));
+          return null;
+        }
+        toast.error(data.error);
+        return null;
+      }
+
+      const result: AnalysisResult = {
+        role: data.role,
+        analysis: data.analysis,
+        sources: data.sources || [],
+        model: data.model,
+      };
+
+      setResults(prev => ({
+        ...prev,
+        [role]: result,
+      }));
+
+      toast.success(t("ai:analysis_complete"));
+      return result;
+      
+    } catch (error) {
+      console.error("AI analysis error:", error);
+      const errorMsg = error instanceof Error ? error.message : "";
+      if (errorMsg.includes("402") || errorMsg.includes("Payment required") || errorMsg.includes("credits")) {
+        setCreditsExhausted(true);
+        toast.error(t("cases:ai_credits_exhausted"));
+        return null;
+      }
+      toast.error(t("ai:analysis_failed"));
+      return null;
+    } finally {
+      setIsLoading(false);
+      setCurrentRole(null);
+    }
+  }, [results, t]);
+
+  const runAllRoles = useCallback(async (
+    caseId?: string,
+    caseFacts?: string,
+    legalQuestion?: string
+  ): Promise<void> => {
+    // Run advocate, prosecutor, judge in parallel
+    const roles: AIRole[] = ["advocate", "prosecutor", "judge"];
+    
+    setIsLoading(true);
+    
+    try {
+      const parallelResults = await Promise.all(
+        roles.map(role => analyzeCase(role, caseId, caseFacts, legalQuestion))
+      );
+      
+      // After all three complete, run aggregator with DIRECT results (not stale state)
+      if (parallelResults.every(r => r !== null)) {
+        const [advocateResult, prosecutorResult, judgeResult] = parallelResults;
+        
+        // Call aggregator with explicit previous responses
+        setCurrentRole("aggregator");
+        
+        const body: Record<string, string | undefined> = {
+          role: "aggregator",
+          caseId,
+          caseFacts,
+          legalQuestion,
+          advocateResponse: advocateResult?.analysis || "",
+          prosecutorResponse: prosecutorResult?.analysis || "",
+          judgeResponse: judgeResult?.analysis || "",
+        };
+
+        const { data, error } = await supabase.functions.invoke("ai-analyze", {
+          body,
+        });
+
+        if (!error && !data.error) {
+          const aggregatorResult: AnalysisResult = {
+            role: data.role,
+            analysis: data.analysis,
+            sources: data.sources || [],
+            model: data.model,
+          };
+          
+          setResults(prev => ({
+            ...prev,
+            aggregator: aggregatorResult,
+          }));
+          
+          toast.success(t("analysis_complete"));
+        } else {
+          console.error("Aggregator analysis error:", error || data.error);
+          toast.error(t("analysis_failed"));
+        }
+        
+        setCurrentRole(null);
+      }
+    } finally {
+      setIsLoading(false);
+    }
+  }, [t]);
+
+  const clearResults = useCallback(() => {
+    setResults({
+      advocate: null,
+      prosecutor: null,
+      judge: null,
+      aggregator: null,
+    });
+    setCreditsExhausted(false);
+  }, []);
+
+  return {
+    isLoading,
+    currentRole,
+    results,
+    creditsExhausted,
+    analyzeCase,
+    runAllRoles,
+    clearResults,
+  };
+}
