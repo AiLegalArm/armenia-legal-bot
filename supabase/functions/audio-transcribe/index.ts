@@ -109,7 +109,7 @@ serve(async (req) => {
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        model: "google/gemini-2.5-flash",
+        model: "google/gemini-2.5-pro",
         messages: [
           { role: "system", content: TRANSCRIPTION_SYSTEM_PROMPT },
           { 
@@ -246,7 +246,7 @@ serve(async (req) => {
     
     await supabase.rpc("log_api_usage", {
       _service_type: "audio",
-      _model_name: "google/gemini-2.5-flash",
+      _model_name: "google/gemini-2.5-pro",
       _tokens_used: tokensUsed,
       _estimated_cost: estimatedCost,
       _metadata: { fileName, fileId: fileId || null, duration_seconds }
@@ -272,7 +272,7 @@ serve(async (req) => {
       review_warning: needsReview && !isError
         ? `Confidence ${(confidence_score * 100).toFixed(0)}% - review recommended.`
         : null,
-      model: "google/gemini-2.5-flash"
+      model: "google/gemini-2.5-pro"
     }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });

@@ -190,7 +190,7 @@ serve(async (req) => {
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        model: "openai/gpt-5",
+        model: "google/gemini-2.5-pro",
         messages,
         temperature: 0.2,
         max_tokens: 4000,
@@ -225,7 +225,7 @@ serve(async (req) => {
     try {
       await supabase.rpc("log_api_usage", {
         _service_type: "legal_chat",
-        _model_name: "openai/gpt-5",
+        _model_name: "google/gemini-2.5-pro",
         _tokens_used: null,
         _estimated_cost: 0.003,
         _metadata: { message_length: message.length, has_context: !!kbContext }

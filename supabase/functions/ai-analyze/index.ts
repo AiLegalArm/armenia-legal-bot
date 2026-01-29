@@ -586,7 +586,7 @@ Please provide your professional legal analysis from your designated role perspe
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        model: "openai/gpt-5",
+        model: "google/gemini-2.5-pro",
         messages: [
           { role: "system", content: systemPrompt },
           { role: "user", content: userMessage }
@@ -677,7 +677,7 @@ Please provide your professional legal analysis from your designated role perspe
     
     await supabase.rpc("log_api_usage", {
       _service_type: "llm",
-      _model_name: "google/gemini-3-pro-preview",
+      _model_name: "google/gemini-2.5-pro",
       _tokens_used: tokensUsed,
       _estimated_cost: estimatedCost,
       _metadata: { role, caseId: caseId || null }
@@ -688,7 +688,7 @@ Please provide your professional legal analysis from your designated role perspe
       moduleId: moduleId || null,
       analysis: analysisText,
       sources: sourcesUsed,
-      model: "Legal AI (google/gemini-3-pro-preview)"
+      model: "Legal AI (google/gemini-2.5-pro)"
     }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
