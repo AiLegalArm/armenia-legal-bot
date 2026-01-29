@@ -195,14 +195,14 @@ export function TeamManagement() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['admin-teams'] });
-      toast({ title: 'Թիմը ստեղծվեց' });
+      toast({ title: '\u0539\u056b\u0574\u0568 \u057d\u057f\u0565\u0572\u056e\u057e\u0565\u0581' });
       setCreateDialogOpen(false);
       setTeamName('');
       setTeamDescription('');
       setTeamLeaderId('');
     },
     onError: (error) => {
-      toast({ title: 'Սխալ', description: error.message, variant: 'destructive' });
+      toast({ title: '\u054d\u056d\u0561\u056c', description: error.message, variant: 'destructive' });
     },
   });
 
@@ -217,11 +217,11 @@ export function TeamManagement() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['admin-teams'] });
-      toast({ title: 'Թիմը ջնջվեց' });
+      toast({ title: '\u0539\u056b\u0574\u0568 \u057b\u0576\u057b\u057e\u0565\u0581' });
       setDeletingTeamId(null);
     },
     onError: (error) => {
-      toast({ title: 'Սխալ', description: error.message, variant: 'destructive' });
+      toast({ title: '\u054d\u056d\u0561\u056c', description: error.message, variant: 'destructive' });
     },
   });
 
@@ -235,13 +235,13 @@ export function TeamManagement() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['admin-teams'] });
-      toast({ title: 'Իրավաբանը ավելացվել է թիմին' });
+      toast({ title: '\u053b\u0580\u0561\u057e\u0561\u0562\u0561\u0576\u0568 \u0561\u057e\u0565\u056c\u0561\u0581\u057e\u0565\u056c \u0567 \u0569\u056b\u0574\u056b\u0576' });
       setAddMemberDialogOpen(false);
       setSelectedTeamId(null);
       setSelectedMemberId('');
     },
     onError: (error) => {
-      toast({ title: 'Սխալ', description: error.message, variant: 'destructive' });
+      toast({ title: '\u054d\u056d\u0561\u056c', description: error.message, variant: 'destructive' });
     },
   });
 
@@ -257,11 +257,11 @@ export function TeamManagement() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['admin-teams'] });
-      toast({ title: 'Իրավաբանը հեռացվել է թիմից' });
+      toast({ title: '\u053b\u0580\u0561\u057e\u0561\u0562\u0561\u0576\u0568 \u0570\u0565\u057c\u0561\u0581\u057e\u0565\u056c \u0567 \u0569\u056b\u0574\u056b\u0581' });
       setRemovingMember(null);
     },
     onError: (error) => {
-      toast({ title: 'Սխալ', description: error.message, variant: 'destructive' });
+      toast({ title: '\u054d\u056d\u0561\u056c', description: error.message, variant: 'destructive' });
     },
   });
 
@@ -279,16 +279,16 @@ export function TeamManagement() {
           <div>
             <CardTitle className="flex items-center gap-2">
               <Users2 className="h-5 w-5" />
-              Թիմերի կառավարում
+              {'\u0539\u056b\u0574\u0565\u0580\u056b \u056f\u0561\u057c\u0561\u057e\u0561\u0580\u0578\u0582\u0574'}
             </CardTitle>
             <CardDescription>
-              Ստեղծեք թիմեր և նշանակեք աուդիտորներ (թիմլիդներ) իրավաբանների աշխատանքի վերահսկման համար
+              {'\u054d\u057f\u0565\u0572\u056e\u0565\u0584 \u0569\u056b\u0574\u0565\u0580 \u0587 \u0576\u0577\u0561\u0576\u0561\u056f\u0565\u0584 \u0561\u0578\u0582\u0564\u056b\u057f\u0578\u0580\u0576\u0565\u0580 (\u0569\u056b\u0574\u056c\u056b\u0564\u0576\u0565\u0580) \u056b\u0580\u0561\u057e\u0561\u0562\u0561\u0576\u0576\u0565\u0580\u056b \u0561\u0577\u056d\u0561\u057f\u0561\u0576\u0584\u056b \u057e\u0565\u0580\u0561\u0570\u057d\u056f\u0574\u0561\u0576 \u0570\u0561\u0574\u0561\u0580'}
             </CardDescription>
           </div>
           <div className="flex gap-2">
             <Button onClick={() => setCreateDialogOpen(true)}>
               <Plus className="mr-2 h-4 w-4" />
-              Ստեղծել թիմ
+              {'\u054d\u057f\u0565\u0572\u056e\u0565\u056c \u0569\u056b\u0574'}
             </Button>
             <Button variant="outline" size="icon" onClick={() => refetch()}>
               <RefreshCw className="h-4 w-4" />
@@ -304,10 +304,10 @@ export function TeamManagement() {
         ) : !teams?.length ? (
           <div className="flex flex-col items-center justify-center py-8 text-muted-foreground">
             <Users2 className="h-12 w-12 opacity-50" />
-            <p className="mt-2">Թիմեր չեն ստեղծվել</p>
+            <p className="mt-2">{'\u0539\u056b\u0574\u0565\u0580 \u0579\u0565\u0576 \u057d\u057f\u0565\u0572\u056e\u057e\u0565\u056c'}</p>
             <Button className="mt-4" onClick={() => setCreateDialogOpen(true)}>
               <Plus className="mr-2 h-4 w-4" />
-              Ստեղծել առաջին թիմը
+              {'\u054d\u057f\u0565\u0572\u056e\u0565\u056c \u0561\u057c\u0561\u057b\u056b\u0576 \u0569\u056b\u0574\u0568'}
             </Button>
           </div>
         ) : (
@@ -319,7 +319,7 @@ export function TeamManagement() {
                     <Users2 className="h-5 w-5 text-primary" />
                     <span className="font-medium">{team.name}</span>
                     <Badge variant="secondary" className="ml-2">
-                      {team.members?.length || 0} իրավաբաններ
+                      {team.members?.length || 0} {'\u056b\u0580\u0561\u057e\u0561\u0562\u0561\u0576\u0576\u0565\u0580'}
                     </Badge>
                   </div>
                 </AccordionTrigger>
@@ -333,7 +333,7 @@ export function TeamManagement() {
                     <div className="rounded-lg border bg-muted/30 p-3">
                       <div className="flex items-center gap-2 text-sm font-medium text-muted-foreground mb-2">
                         <Crown className="h-4 w-4 text-yellow-500" />
-                        Թիմլիդ (Աուդիտոր)
+                        {'\u0539\u056b\u0574\u056c\u056b\u0564 (\u0531\u0578\u0582\u0564\u056b\u057f\u0578\u0580)'}
                       </div>
                       {team.leader ? (
                         <div className="flex items-center gap-2">
@@ -345,7 +345,7 @@ export function TeamManagement() {
                           </span>
                         </div>
                       ) : (
-                        <span className="text-muted-foreground">Նշանակված չէ</span>
+                        <span className="text-muted-foreground">{'\u0546\u0577\u0561\u0576\u0561\u056f\u057e\u0561\u056e \u0579\u0567'}</span>
                       )}
                     </div>
 
@@ -354,7 +354,7 @@ export function TeamManagement() {
                       <div className="flex items-center justify-between mb-2">
                         <div className="flex items-center gap-2 text-sm font-medium text-muted-foreground">
                           <Briefcase className="h-4 w-4" />
-                          Թիմի իրավաբաններ
+                          {'\u0539\u056b\u0574\u056b \u056b\u0580\u0561\u057e\u0561\u0562\u0561\u0576\u0576\u0565\u0580'}
                         </div>
                         <Button
                           variant="outline"
@@ -365,7 +365,7 @@ export function TeamManagement() {
                           }}
                         >
                           <UserPlus className="mr-2 h-4 w-4" />
-                          Ավելացնել
+                          {'\u0531\u057e\u0565\u056c\u0561\u0581\u0576\u0565\u056c'}
                         </Button>
                       </div>
                       
@@ -378,7 +378,7 @@ export function TeamManagement() {
                             >
                               <div>
                                 <span className="font-medium">
-                                  {member.full_name || 'Առանց անվան'}
+                                  {member.full_name || '\u0531\u057c\u0561\u0576\u0581 \u0561\u0576\u057e\u0561\u0576'}
                                 </span>
                                 <span className="ml-2 text-sm text-muted-foreground">
                                   {member.email}
@@ -396,7 +396,7 @@ export function TeamManagement() {
                         </div>
                       ) : (
                         <p className="text-sm text-muted-foreground py-2">
-                          Թիմում դեռ իրավաբաններ չկան
+                          {'\u0539\u056b\u0574\u0578\u0582\u0574 \u0564\u0565\u057c \u056b\u0580\u0561\u057e\u0561\u0562\u0561\u0576\u0576\u0565\u0580 \u0579\u056f\u0561\u0576'}
                         </p>
                       )}
                     </div>
@@ -409,7 +409,7 @@ export function TeamManagement() {
                         onClick={() => setDeletingTeamId(team.id)}
                       >
                         <Trash2 className="mr-2 h-4 w-4" />
-                        Ջնջել թիմը
+                        {'\u054b\u0576\u057b\u0565\u056c \u0569\u056b\u0574\u0568'}
                       </Button>
                     </div>
                   </div>
@@ -423,35 +423,35 @@ export function TeamManagement() {
         <Dialog open={createDialogOpen} onOpenChange={setCreateDialogOpen}>
           <DialogContent>
             <DialogHeader>
-              <DialogTitle>Ստեղծել թիմ</DialogTitle>
+              <DialogTitle>{'\u054d\u057f\u0565\u0572\u056e\u0565\u056c \u0569\u056b\u0574'}</DialogTitle>
               <DialogDescription>
-                Ստեղծեք նոր թիմ և նշանակեք թիմլիդ (աուդիտոր)
+                {'\u054d\u057f\u0565\u0572\u056e\u0565\u0584 \u0576\u0578\u0580 \u0569\u056b\u0574 \u0587 \u0576\u0577\u0561\u0576\u0561\u056f\u0565\u0584 \u0569\u056b\u0574\u056c\u056b\u0564 (\u0561\u0578\u0582\u0564\u056b\u057f\u0578\u0580)'}
               </DialogDescription>
             </DialogHeader>
             <div className="space-y-4 py-4">
               <div className="space-y-2">
-                <Label htmlFor="teamName">Թիմի անվանում *</Label>
+                <Label htmlFor="teamName">{'\u0539\u056b\u0574\u056b \u0561\u0576\u057e\u0561\u0576\u0578\u0582\u0574 *'}</Label>
                 <Input
                   id="teamName"
-                  placeholder="Թիմ Ա"
+                  placeholder={'\u0539\u056b\u0574 \u0531'}
                   value={teamName}
                   onChange={(e) => setTeamName(e.target.value)}
                 />
               </div>
               <div className="space-y-2">
-                <Label htmlFor="teamDescription">Նկարագրություն</Label>
+                <Label htmlFor="teamDescription">{'\u0546\u056f\u0561\u0580\u0561\u0563\u0580\u0578\u0582\u0569\u0575\u0578\u0582\u0576'}</Label>
                 <Textarea
                   id="teamDescription"
-                  placeholder="Թիմի նկարագրություն..."
+                  placeholder={'\u0539\u056b\u0574\u056b \u0576\u056f\u0561\u0580\u0561\u0563\u0580\u0578\u0582\u0569\u0575\u0578\u0582\u0576...'}
                   value={teamDescription}
                   onChange={(e) => setTeamDescription(e.target.value)}
                 />
               </div>
               <div className="space-y-2">
-                <Label htmlFor="teamLeader">Թիմլիդ (Աուդիտոր) *</Label>
+                <Label htmlFor="teamLeader">{'\u0539\u056b\u0574\u056c\u056b\u0564 (\u0531\u0578\u0582\u0564\u056b\u057f\u0578\u0580) *'}</Label>
                 <Select value={teamLeaderId} onValueChange={setTeamLeaderId}>
                   <SelectTrigger>
-                    <SelectValue placeholder="Ընտրեք աուդիտորին" />
+                    <SelectValue placeholder={'\u0538\u0576\u057f\u0580\u0565\u0584 \u0561\u0578\u0582\u0564\u056b\u057f\u0578\u0580\u056b\u0576'} />
                   </SelectTrigger>
                   <SelectContent>
                     {auditors?.map((auditor) => (
@@ -463,14 +463,14 @@ export function TeamManagement() {
                 </Select>
                 {(!auditors || auditors.length === 0) && (
                   <p className="text-sm text-muted-foreground">
-                    Սկզբում ստեղծեք օգտատեր «Աուդիտոր» դերով
+                    {'\u054d\u056f\u0566\u0562\u0578\u0582\u0574 \u057d\u057f\u0565\u0572\u056e\u0565\u0584 \u0585\u0563\u057f\u0561\u057f\u0565\u0580 \u00ab\u0531\u0578\u0582\u0564\u056b\u057f\u0578\u0580\u00bb \u0564\u0565\u0580\u0578\u057e'}
                   </p>
                 )}
               </div>
             </div>
             <DialogFooter>
               <Button variant="outline" onClick={() => setCreateDialogOpen(false)}>
-                Չեղարկել
+                {'\u0549\u0565\u0572\u0561\u0580\u056f\u0565\u056c'}
               </Button>
               <Button 
                 onClick={() => createTeam.mutate({ 
@@ -481,7 +481,7 @@ export function TeamManagement() {
                 disabled={!teamName || !teamLeaderId || createTeam.isPending}
               >
                 {createTeam.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                Ստեղծել
+                {'\u054d\u057f\u0565\u0572\u056e\u0565\u056c'}
               </Button>
             </DialogFooter>
           </DialogContent>
@@ -491,17 +491,17 @@ export function TeamManagement() {
         <Dialog open={addMemberDialogOpen} onOpenChange={setAddMemberDialogOpen}>
           <DialogContent>
             <DialogHeader>
-              <DialogTitle>Ավելացնել իրավաբան թիմում</DialogTitle>
+              <DialogTitle>{'\u0531\u057e\u0565\u056c\u0561\u0581\u0576\u0565\u056c \u056b\u0580\u0561\u057e\u0561\u0562\u0561\u0576 \u0569\u056b\u0574\u0578\u0582\u0574'}</DialogTitle>
               <DialogDescription>
-                Ընտրեք իրավաբանին թիմին ավելացնելու համար
+                {'\u0538\u0576\u057f\u0580\u0565\u0584 \u056b\u0580\u0561\u057e\u0561\u0562\u0561\u0576\u056b\u0576 \u0569\u056b\u0574\u056b\u0576 \u0561\u057e\u0565\u056c\u0561\u0581\u0576\u0565\u056c\u0578\u0582 \u0570\u0561\u0574\u0561\u0580'}
               </DialogDescription>
             </DialogHeader>
             <div className="space-y-4 py-4">
               <div className="space-y-2">
-                <Label>Իրավաբան</Label>
+                <Label>{'\u053b\u0580\u0561\u057e\u0561\u0562\u0561\u0576'}</Label>
                 <Select value={selectedMemberId} onValueChange={setSelectedMemberId}>
                   <SelectTrigger>
-                    <SelectValue placeholder="Ընտրեք իրավաբանին" />
+                    <SelectValue placeholder={'\u0538\u0576\u057f\u0580\u0565\u0584 \u056b\u0580\u0561\u057e\u0561\u0562\u0561\u0576\u056b\u0576'} />
                   </SelectTrigger>
                   <SelectContent>
                     {selectedTeamId && getAvailableLawyers(selectedTeamId).map((lawyer) => (
@@ -513,14 +513,14 @@ export function TeamManagement() {
                 </Select>
                 {selectedTeamId && getAvailableLawyers(selectedTeamId).length === 0 && (
                   <p className="text-sm text-muted-foreground">
-                    Չկան իրավաբաններ ավելացնելու համար
+                    {'\u0549\u056f\u0561\u0576 \u056b\u0580\u0561\u057e\u0561\u0562\u0561\u0576\u0576\u0565\u0580 \u0561\u057e\u0565\u056c\u0561\u0581\u0576\u0565\u056c\u0578\u0582 \u0570\u0561\u0574\u0561\u0580'}
                   </p>
                 )}
               </div>
             </div>
             <DialogFooter>
               <Button variant="outline" onClick={() => setAddMemberDialogOpen(false)}>
-                Չեղարկել
+                {'\u0549\u0565\u0572\u0561\u0580\u056f\u0565\u056c'}
               </Button>
               <Button 
                 onClick={() => selectedTeamId && addMember.mutate({ 
@@ -530,7 +530,7 @@ export function TeamManagement() {
                 disabled={!selectedMemberId || addMember.isPending}
               >
                 {addMember.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                Ավելացնել
+                {'\u0531\u057e\u0565\u056c\u0561\u0581\u0576\u0565\u056c'}
               </Button>
             </DialogFooter>
           </DialogContent>
@@ -540,18 +540,18 @@ export function TeamManagement() {
         <AlertDialog open={!!deletingTeamId} onOpenChange={() => setDeletingTeamId(null)}>
           <AlertDialogContent>
             <AlertDialogHeader>
-              <AlertDialogTitle>Ջնջել թիմը?</AlertDialogTitle>
+              <AlertDialogTitle>{'\u054b\u0576\u057b\u0565\u056c \u0569\u056b\u0574\u0568?'}</AlertDialogTitle>
               <AlertDialogDescription>
-                Այս գործողությունը հնարավոր չէ չեղարկել։ Իրավաբանների հետ բոլոր կապերը կջնջվեն։
+                {'\u0531\u0575\u057d \u0563\u0578\u0580\u056e\u0578\u0572\u0578\u0582\u0569\u0575\u0578\u0582\u0576\u0568 \u0570\u0576\u0561\u0580\u0561\u057e\u0578\u0580 \u0579\u0567 \u0579\u0565\u0572\u0561\u0580\u056f\u0565\u056c\u0589 \u053b\u0580\u0561\u057e\u0561\u0562\u0561\u0576\u0576\u0565\u0580\u056b \u0570\u0565\u057f \u0562\u0578\u056c\u0578\u0580 \u056f\u0561\u057a\u0565\u0580\u0568 \u056f\u057b\u0576\u057b\u057e\u0565\u0576\u0589'}
               </AlertDialogDescription>
             </AlertDialogHeader>
             <AlertDialogFooter>
-              <AlertDialogCancel>Չեղարկել</AlertDialogCancel>
+              <AlertDialogCancel>{'\u0549\u0565\u0572\u0561\u0580\u056f\u0565\u056c'}</AlertDialogCancel>
               <AlertDialogAction 
                 onClick={() => deletingTeamId && deleteTeam.mutate(deletingTeamId)}
                 className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
               >
-                Ջնջել
+                {'\u054b\u0576\u057b\u0565\u056c'}
               </AlertDialogAction>
             </AlertDialogFooter>
           </AlertDialogContent>
@@ -561,18 +561,18 @@ export function TeamManagement() {
         <AlertDialog open={!!removingMember} onOpenChange={() => setRemovingMember(null)}>
           <AlertDialogContent>
             <AlertDialogHeader>
-              <AlertDialogTitle>Հեռացնե՞լ իրավաբանին թիմից?</AlertDialogTitle>
+              <AlertDialogTitle>{'\u0540\u0565\u057c\u0561\u0581\u0576\u0565\u055e\u056c \u056b\u0580\u0561\u057e\u0561\u0562\u0561\u0576\u056b\u0576 \u0569\u056b\u0574\u056b\u0581?'}</AlertDialogTitle>
               <AlertDialogDescription>
-                Իրավաբանը կհեռացվի թիմից։ Թիմլիդը այլևս չի կարողանա տեսնել նրա գործերը։
+                {'\u053b\u0580\u0561\u057e\u0561\u0562\u0561\u0576\u0568 \u056f\u0570\u0565\u057c\u0561\u0581\u057e\u056b \u0569\u056b\u0574\u056b\u0581\u0589 \u0539\u056b\u0574\u056c\u056b\u0564\u0568 \u0561\u0575\u056c\u0587\u057d \u0579\u056b \u056f\u0561\u0580\u0578\u0572\u0561\u0576\u0561 \u057f\u0565\u057d\u0576\u0565\u056c \u0576\u0580\u0561 \u0563\u0578\u0580\u056e\u0565\u0580\u0568\u0589'}
               </AlertDialogDescription>
             </AlertDialogHeader>
             <AlertDialogFooter>
-              <AlertDialogCancel>Չեղարկել</AlertDialogCancel>
+              <AlertDialogCancel>{'\u0549\u0565\u0572\u0561\u0580\u056f\u0565\u056c'}</AlertDialogCancel>
               <AlertDialogAction 
                 onClick={() => removingMember && removeMember.mutate(removingMember)}
                 className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
               >
-                Ջնջել
+                {'\u054b\u0576\u057b\u0565\u056c'}
               </AlertDialogAction>
             </AlertDialogFooter>
           </AlertDialogContent>
