@@ -1,12 +1,15 @@
 {
-  "audio": "Audio Transcription",
+  "audio": "Audio",
   "audio_title": "Audio to Text Transcription",
+  "audio_transcription": "Audio Transcription",
   "upload_audio": "Upload Audio File",
+  "upload_description": "Upload audio files to transcribe them automatically",
   "supported_formats": "Supported formats: MP3, WAV, M4A, OGG, WebM, FLAC",
   "processing": "Transcribing audio...",
   "processing_complete": "Transcription complete!",
   "processing_failed": "Transcription failed",
   "transcription": "Transcription",
+  "transcribe": "Transcribe",
   "confidence": "Confidence",
   "duration": "Duration",
   "language": "Audio language",
@@ -45,5 +48,10 @@
   "status_approved": "Approved",
   "kb_added": "Added to Knowledge Base",
   "kb_pending": "Pending KB Approval",
-  "back_to_case": "Back to Case"
+  "back_to_case": "Back to Case",
+  "select_case": "Select Case",
+  "select_case_placeholder": "Choose a case...",
+  "audio_file": "Audio File",
+  "result": "Result",
+  "no_result": "Upload an audio file to see the transcription result"
 }
