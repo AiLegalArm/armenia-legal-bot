@@ -130,8 +130,8 @@ const CalendarPage = () => {
     <div className="min-h-screen bg-background">
       {/* Header */}
       <header className="sticky top-0 z-10 border-b bg-card">
-        <div className="container mx-auto flex h-16 items-center justify-between px-4">
-          <div className="flex items-center gap-4">
+        <div className="container mx-auto flex h-14 sm:h-16 items-center justify-between px-3 sm:px-4">
+          <div className="flex items-center gap-2 sm:gap-4">
             <Button 
               variant="ghost" 
               size="icon"
@@ -141,12 +141,12 @@ const CalendarPage = () => {
               <ArrowLeft className="h-5 w-5" />
             </Button>
             <div className="flex items-center gap-2">
-              <Scale className="h-6 w-6 text-primary" />
-              <h1 className="text-xl font-bold">{t('common:app_name')}</h1>
+              <Scale className="h-5 w-5 sm:h-6 sm:w-6 text-primary" />
+              <h1 className="text-lg sm:text-xl font-bold hidden sm:block">{t('common:app_name')}</h1>
             </div>
           </div>
-          <div className="flex items-center gap-4">
-            <span className="hidden sm:inline text-sm text-muted-foreground">
+          <div className="flex items-center gap-2 sm:gap-4">
+            <span className="hidden sm:inline text-sm text-muted-foreground truncate max-w-[120px]">
               {user?.email}
             </span>
             <LanguageSwitcher />
@@ -160,16 +160,16 @@ const CalendarPage = () => {
       {/* Main Content */}
       <main className="container mx-auto px-4 py-6">
         {/* Page Header */}
-        <div className="mb-6 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+        <div className="mb-4 sm:mb-6 flex items-center justify-between">
           <div>
-            <h2 className="text-2xl font-bold">{t('court_sessions')}</h2>
-            <p className="text-sm text-muted-foreground">
+            <h2 className="text-xl sm:text-2xl font-bold">{t('court_sessions')}</h2>
+            <p className="text-xs sm:text-sm text-muted-foreground">
               {t('calendar:calendar')}
             </p>
           </div>
-          <Button onClick={() => setFormOpen(true)}>
-            <Plus className="mr-2 h-4 w-4" />
-            {t('add_session')}
+          <Button onClick={() => setFormOpen(true)} size="sm" className="sm:h-9">
+            <Plus className="h-4 w-4 sm:mr-2" />
+            <span className="hidden sm:inline">{t('add_session')}</span>
           </Button>
         </div>
 

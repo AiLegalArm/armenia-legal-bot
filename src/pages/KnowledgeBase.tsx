@@ -111,14 +111,14 @@ const KnowledgeBasePage = () => {
     <div className="min-h-screen bg-background">
       {/* Header */}
       <header className="sticky top-0 z-10 border-b bg-card">
-        <div className="container mx-auto flex h-16 items-center justify-between px-4">
+        <div className="container mx-auto flex h-14 sm:h-16 items-center justify-between px-3 sm:px-4">
           <div className="flex items-center gap-2">
-            <Scale className="h-6 w-6 text-primary" />
-            <h1 className="text-xl font-bold">{t('common:app_name')}</h1>
+            <Scale className="h-5 w-5 sm:h-6 sm:w-6 text-primary" />
+            <h1 className="text-lg sm:text-xl font-bold hidden sm:block">{t('common:app_name')}</h1>
           </div>
-          <div className="flex items-center gap-4">
+          <div className="flex items-center gap-2 sm:gap-4">
             {user && (
-              <span className="hidden text-sm text-muted-foreground sm:block">
+              <span className="hidden text-sm text-muted-foreground sm:block truncate max-w-[120px]">
                 {user.email}
               </span>
             )}
@@ -133,39 +133,47 @@ const KnowledgeBasePage = () => {
       </header>
 
       {/* Main Content */}
-      <main className="container mx-auto px-4 py-6">
+      <main className="container mx-auto px-3 sm:px-4 py-4 sm:py-6">
         {/* Back Button */}
-        <Button variant="ghost" className="mb-4" onClick={() => navigate('/dashboard')}>
+        <Button variant="ghost" size="sm" className="mb-4" onClick={() => navigate('/dashboard')}>
           <ArrowLeft className="mr-2 h-4 w-4" />
           {t('common:back', 'Back')}
         </Button>
 
         {/* Page Header */}
-        <div className="mb-6 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-          <div className="flex items-center gap-3">
-            <BookOpen className="h-8 w-8 text-primary" />
-            <div>
-              <h2 className="text-2xl font-bold">{t('knowledge_base')}</h2>
-              <p className="text-sm text-muted-foreground">
-                {t('common:legal_documents', 'Legal documents and articles')}
-              </p>
+        <div className="mb-6 flex flex-col gap-4">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2 sm:gap-3">
+              <BookOpen className="h-6 w-6 sm:h-8 sm:w-8 text-primary" />
+              <div>
+                <h2 className="text-xl sm:text-2xl font-bold">{t('knowledge_base')}</h2>
+                <p className="text-xs sm:text-sm text-muted-foreground">
+                  {t('common:legal_documents', 'Legal documents and articles')}
+                </p>
+              </div>
             </div>
+            {isAdmin && (
+              <Button onClick={() => setFormOpen(true)} size="sm" className="sm:hidden">
+                <Plus className="h-4 w-4" />
+              </Button>
+            )}
           </div>
           {isAdmin && (
-            <div className="flex flex-wrap gap-2">
-              <Button variant="outline" onClick={() => setMultiFileUploadOpen(true)}>
-                <FileStack className="mr-2 h-4 w-4" />
-                Զանգվածային ներմուծում
+            <div className="grid grid-cols-2 sm:flex sm:flex-wrap gap-2">
+              <Button variant="outline" size="sm" onClick={() => setMultiFileUploadOpen(true)} className="text-xs sm:text-sm">
+                <FileStack className="mr-1 sm:mr-2 h-4 w-4" />
+                <span className="hidden sm:inline">Զdelays delays delays delays delays</span>
+                <span className="sm:hidden">Bulk</span>
               </Button>
-              <Button variant="outline" onClick={() => setBulkImportOpen(true)}>
-                <FileUp className="mr-2 h-4 w-4" />
-                TXT Import
+              <Button variant="outline" size="sm" onClick={() => setBulkImportOpen(true)} className="text-xs sm:text-sm">
+                <FileUp className="mr-1 sm:mr-2 h-4 w-4" />
+                TXT
               </Button>
-              <Button variant="outline" onClick={() => setPdfUploadOpen(true)}>
-                <FileUp className="mr-2 h-4 w-4" />
-                PDF Import
+              <Button variant="outline" size="sm" onClick={() => setPdfUploadOpen(true)} className="text-xs sm:text-sm">
+                <FileUp className="mr-1 sm:mr-2 h-4 w-4" />
+                PDF
               </Button>
-              <Button onClick={() => setFormOpen(true)}>
+              <Button onClick={() => setFormOpen(true)} size="sm" className="hidden sm:flex">
                 <Plus className="mr-2 h-4 w-4" />
                 {t('add_document')}
               </Button>
@@ -231,8 +239,8 @@ const KnowledgeBasePage = () => {
         )}
 
         {/* Legal Disclaimer */}
-        <div className="mt-8 rounded-lg border border-amber-500/50 bg-amber-500/10 p-4">
-          <p className="text-sm text-amber-700 dark:text-amber-400">
+        <div className="mt-8 rounded-lg border border-amber-500/50 bg-amber-500/10 p-3 sm:p-4">
+          <p className="text-xs sm:text-sm text-amber-700 dark:text-amber-400">
             ⚠️ {t('disclaimer:main')}
           </p>
         </div>

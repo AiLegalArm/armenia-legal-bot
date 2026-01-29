@@ -145,13 +145,13 @@ const Dashboard = () => {
     <div className="min-h-screen bg-background">
       {/* Header */}
       <header className="sticky top-0 z-10 border-b bg-card">
-        <div className="container mx-auto flex h-16 items-center justify-between px-4">
+        <div className="container mx-auto flex h-14 sm:h-16 items-center justify-between px-3 sm:px-4">
           <div className="flex items-center gap-2">
-            <Scale className="h-6 w-6 text-primary" />
-            <h1 className="text-xl font-bold">{t('common:app_name')}</h1>
+            <Scale className="h-5 w-5 sm:h-6 sm:w-6 text-primary" />
+            <h1 className="text-lg sm:text-xl font-bold hidden xs:block">{t('common:app_name')}</h1>
           </div>
-          <div className="flex items-center gap-4">
-            <span className="text-sm text-muted-foreground">
+          <div className="flex items-center gap-2 sm:gap-4">
+            <span className="hidden sm:block text-sm text-muted-foreground truncate max-w-[120px]">
               {user?.email}
             </span>
             <LanguageSwitcher />
@@ -165,36 +165,47 @@ const Dashboard = () => {
       {/* Main Content */}
       <main className="container mx-auto px-4 py-6">
         {/* Page Header */}
-        <div className="mb-6 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-          <div>
-            <h2 className="text-2xl font-bold">{t('cases:cases')}</h2>
-            <p className="text-sm text-muted-foreground">
-              {t('dashboard:manage_cases', 'Manage your legal cases')}
-            </p>
+        <div className="mb-6 flex flex-col gap-4">
+          <div className="flex items-center justify-between">
+            <div>
+              <h2 className="text-xl sm:text-2xl font-bold">{t('cases:cases')}</h2>
+              <p className="text-xs sm:text-sm text-muted-foreground">
+                {t('dashboard:manage_cases', 'Manage your legal cases')}
+              </p>
+            </div>
+            {canCreateCase && (
+              <Button onClick={() => setFormOpen(true)} size="sm" className="sm:hidden">
+                <Plus className="h-4 w-4" />
+              </Button>
+            )}
           </div>
-          <div className="flex flex-wrap gap-2">
-            <Button variant="outline" onClick={() => navigate('/calendar')}>
-              <CalendarIcon className="mr-2 h-4 w-4" />
-              {t('calendar:calendar', 'Calendar')}
+          <div className="grid grid-cols-3 sm:flex sm:flex-wrap gap-2">
+            <Button variant="outline" size="sm" onClick={() => navigate('/calendar')} className="flex-col sm:flex-row h-auto py-2 sm:py-2 sm:h-9">
+              <CalendarIcon className="h-4 w-4 sm:mr-2" />
+              <span className="text-xs sm:text-sm mt-1 sm:mt-0">{t('calendar:calendar', 'Calendar')}</span>
             </Button>
-            <Button variant="outline" onClick={() => navigate('/transcriptions')}>
-              <Mic className="mr-2 h-4 w-4" />
-              {t('audio:audio_transcription', 'Audio Transcription')}
+            <Button variant="outline" size="sm" onClick={() => navigate('/transcriptions')} className="flex-col sm:flex-row h-auto py-2 sm:py-2 sm:h-9">
+              <Mic className="h-4 w-4 sm:mr-2" />
+              <span className="text-xs sm:text-sm mt-1 sm:mt-0 hidden sm:inline">{t('audio:audio_transcription', 'Audio Transcription')}</span>
+              <span className="text-xs mt-1 sm:hidden">Աdelays</span>
             </Button>
-            <Button variant="outline" onClick={() => setDocGeneratorOpen(true)}>
-              <FileText className="mr-2 h-4 w-4" />
-              {t('common:generate_document', 'Generate Document')}
+            <Button variant="outline" size="sm" onClick={() => setDocGeneratorOpen(true)} className="flex-col sm:flex-row h-auto py-2 sm:py-2 sm:h-9">
+              <FileText className="h-4 w-4 sm:mr-2" />
+              <span className="text-xs sm:text-sm mt-1 sm:mt-0 hidden sm:inline">{t('common:generate_document', 'Generate Document')}</span>
+              <span className="text-xs mt-1 sm:hidden">Փdelays</span>
             </Button>
-            <Button variant="default" onClick={() => setComplaintWizardOpen(true)}>
-              <FileWarning className="mr-2 h-4 w-4" />
-              {t('common:new_complaint', 'New Complaint')}
+            <Button variant="default" size="sm" onClick={() => setComplaintWizardOpen(true)} className="flex-col sm:flex-row h-auto py-2 sm:py-2 sm:h-9">
+              <FileWarning className="h-4 w-4 sm:mr-2" />
+              <span className="text-xs sm:text-sm mt-1 sm:mt-0 hidden sm:inline">{t('common:new_complaint', 'New Complaint')}</span>
+              <span className="text-xs mt-1 sm:hidden">Բdelays</span>
             </Button>
             {/* KB Search - Available for all users */}
             <Sheet open={kbSearchOpen} onOpenChange={setKbSearchOpen}>
               <SheetTrigger asChild>
-                <Button variant="outline">
-                  <Search className="mr-2 h-4 w-4" />
-                  {t('dashboard:search_kb')}
+                <Button variant="outline" size="sm" className="flex-col sm:flex-row h-auto py-2 sm:py-2 sm:h-9">
+                  <Search className="h-4 w-4 sm:mr-2" />
+                  <span className="text-xs sm:text-sm mt-1 sm:mt-0 hidden sm:inline">{t('dashboard:search_kb')}</span>
+                  <span className="text-xs mt-1 sm:hidden">Որdelays</span>
                 </Button>
               </SheetTrigger>
               <SheetContent className="w-full sm:max-w-2xl overflow-y-auto">
@@ -235,17 +246,19 @@ const Dashboard = () => {
             </Sheet>
             {/* KB Management - Admin only */}
             {isAdmin && (
-              <Button variant="outline" onClick={() => navigate('/kb')}>
-                <BookOpen className="mr-2 h-4 w-4" />
-                {t('kb:knowledge_base', 'Knowledge Base')}
+              <Button variant="outline" size="sm" onClick={() => navigate('/kb')} className="flex-col sm:flex-row h-auto py-2 sm:py-2 sm:h-9">
+                <BookOpen className="h-4 w-4 sm:mr-2" />
+                <span className="text-xs sm:text-sm mt-1 sm:mt-0 hidden sm:inline">{t('kb:knowledge_base', 'Knowledge Base')}</span>
+                <span className="text-xs mt-1 sm:hidden">ԳBիdelays</span>
               </Button>
             )}
             {isAdmin && (
               <Sheet>
                 <SheetTrigger asChild>
-                  <Button variant="outline">
-                    <BarChart3 className="mr-2 h-4 w-4" />
-                    {t('usage:usage')}
+                  <Button variant="outline" size="sm" className="flex-col sm:flex-row h-auto py-2 sm:py-2 sm:h-9">
+                    <BarChart3 className="h-4 w-4 sm:mr-2" />
+                    <span className="text-xs sm:text-sm mt-1 sm:mt-0 hidden sm:inline">{t('usage:usage')}</span>
+                    <span className="text-xs mt-1 sm:hidden">Delays</span>
                   </Button>
                 </SheetTrigger>
                 <SheetContent className="w-full sm:max-w-2xl overflow-y-auto">
@@ -262,7 +275,7 @@ const Dashboard = () => {
               </Sheet>
             )}
             {canCreateCase && (
-              <Button onClick={() => setFormOpen(true)}>
+              <Button onClick={() => setFormOpen(true)} size="sm" className="hidden sm:flex">
                 <Plus className="mr-2 h-4 w-4" />
                 {t('cases:new_case')}
               </Button>
