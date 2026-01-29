@@ -294,7 +294,7 @@ CRITICAL: Extract ALL text content, not a summary. The full document text is req
 ## Summary Information
 
 ### AI Models Used
-- **Primary Model:** Google Gemini 2.5 Flash (via Lovable AI Gateway)
+- **Primary Model:** Google Gemini 2.5 Flash (via AiLegalArmenia AI Gateway)
 - **API Gateway:** `https://ai.gateway.lovable.dev/v1/chat/completions`
 
 ### Parameters by Function

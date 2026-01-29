@@ -360,7 +360,7 @@ CRITICAL: Extract ALL text content, not a summary. The full document text is req
 ## Общая информация
 
 ### Используемые модели AI
-- **Основная модель:** Google Gemini 2.5 Flash (через Lovable AI Gateway)
+- **Основная модель:** Google Gemini 2.5 Flash (через AiLegalArmenia AI Gateway)
 - **API Gateway:** `https://ai.gateway.lovable.dev/v1/chat/completions`
 
 ### Параметры по функциям

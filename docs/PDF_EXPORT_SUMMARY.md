@@ -44,7 +44,7 @@ All three PDF export functions have been improved according to requirements:
 
 2. **docs/PDF_EXPORT_DEPLOYMENT.md**
    - Полное руководство по развёртыванию / Complete deployment guide
-   - Инструкции для Lovable и ручного развёртывания / Instructions for Lovable and manual deployment
+   - Инструкции для AiLegalArmenia и ручного развёртывания / Instructions for AiLegalArmenia and manual deployment
    - Процедуры тестирования / Testing procedures
    - Руководство по устранению неполадок / Troubleshooting guide
 
@@ -58,8 +58,8 @@ All three PDF export functions have been improved according to requirements:
 
 ### 🚀 Развёртывание / Deployment
 
-**Через Lovable (Рекомендуется) / Via Lovable (Recommended):**
-1. Откройте проект Lovable / Open Lovable project
+**Через AiLegalArmenia (Рекомендуется) / Via AiLegalArmenia (Recommended):**
+1. Откройте проект AiLegalArmenia / Open AiLegalArmenia project
 2. Нажмите Share → Publish / Click Share → Publish
 3. Ожидайте 2-5 минут / Wait 2-5 minutes
 
@@ -92,7 +92,7 @@ See detailed instructions in `docs/PDF_EXPORT_DEPLOYMENT.md`
 ## Следующие шаги / Next Steps
 
 1. Объединить PR в основную ветку / Merge PR to main branch
-2. Развернуть через Lovable / Deploy via Lovable
+2. Развернуть через AiLegalArmenia / Deploy via AiLegalArmenia
 3. Проверить экспорт PDF на продакшене / Verify PDF exports in production
 4. Собрать отзывы пользователей / Gather user feedback
 
