@@ -385,13 +385,13 @@ const CaseDetail = () => {
     <div className="min-h-screen bg-background">
       {/* Header */}
       <header className="sticky top-0 z-10 border-b bg-card">
-        <div className="container mx-auto flex h-16 items-center justify-between px-4">
+        <div className="container mx-auto flex h-14 sm:h-16 items-center justify-between px-3 sm:px-4">
           <div className="flex items-center gap-2">
-            <Scale className="h-6 w-6 text-primary" />
-            <h1 className="text-xl font-bold">{t('common:app_name')}</h1>
+            <Scale className="h-5 w-5 sm:h-6 sm:w-6 text-primary" />
+            <h1 className="text-lg sm:text-xl font-bold hidden sm:block">{t('common:app_name')}</h1>
           </div>
-          <div className="flex items-center gap-4">
-            <span className="text-sm text-muted-foreground">{user?.email}</span>
+          <div className="flex items-center gap-2 sm:gap-4">
+            <span className="hidden sm:block text-sm text-muted-foreground truncate max-w-[120px]">{user?.email}</span>
             <LanguageSwitcher />
             <Button variant="ghost" size="icon" onClick={() => signOut()}>
               <LogOut className="h-5 w-5" />
@@ -409,12 +409,10 @@ const CaseDetail = () => {
         </Button>
 
         {/* Case Header */}
-        <div className="mb-6 flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+        <div className="mb-6 flex flex-col gap-4">
           <div>
-            <div className="flex items-center gap-2">
-              <h2 className="text-2xl font-bold">{caseData.title}</h2>
-            </div>
-            <p className="mt-1 text-sm text-muted-foreground">
+            <h2 className="text-xl sm:text-2xl font-bold line-clamp-2">{caseData.title}</h2>
+            <p className="mt-1 text-xs sm:text-sm text-muted-foreground">
               {caseData.case_number}
             </p>
             <div className="mt-2 flex flex-wrap gap-2">
@@ -427,14 +425,16 @@ const CaseDetail = () => {
             </div>
           </div>
           {canEdit && (
-            <div className="flex flex-wrap gap-2">
+            <div className="grid grid-cols-3 sm:flex sm:flex-wrap gap-2">
               {/* Quick Complaint Generation Dropdown */}
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
-                  <Button variant="default">
-                    <Gavel className="mr-2 h-4 w-4" />
-                    {i18n.language === 'hy' ? '\u0532\u0578\u0572\u0578\u0584 \u0576\u0565\u0580\u056F\u0561\u0575\u0561\u0581\u0576\u0565\u056C' : i18n.language === 'en' ? 'File Complaint' : 'Подать жалобу'}
-                    <ChevronDown className="ml-2 h-4 w-4" />
+                  <Button variant="default" size="sm" className="flex-col sm:flex-row h-auto py-2 sm:py-2 sm:h-9">
+                    <Gavel className="h-4 w-4 sm:mr-2" />
+                    <span className="text-xs sm:text-sm mt-1 sm:mt-0 hidden sm:inline">
+                      {i18n.language === 'hy' ? 'Delays Delays Delays' : i18n.language === 'en' ? 'File Complaint' : 'Подать жалобу'}
+                    </span>
+                    <span className="text-xs mt-1 sm:hidden">Delays</span>
                   </Button>
                 </DropdownMenuTrigger>
                 <DropdownMenuContent align="end">
@@ -443,14 +443,14 @@ const CaseDetail = () => {
                     setDocumentGeneratorOpen(true);
                   }}>
                     <FileSignature className="mr-2 h-4 w-4" />
-                    {i18n.language === 'hy' ? '\u054E\u0565\u0580\u0561\u0584\u0576\u0576\u056B\u0579 \u0562\u0578\u0572\u0578\u0584' : i18n.language === 'en' ? 'Appeal' : 'Апелляционная жалоба'}
+                    {i18n.language === 'hy' ? 'Delays Delays delays' : i18n.language === 'en' ? 'Appeal' : 'Апелляционная жалоба'}
                   </DropdownMenuItem>
                   <DropdownMenuItem onClick={() => {
                     setPreselectedDocumentType('cassation');
                     setDocumentGeneratorOpen(true);
                   }}>
                     <FileSignature className="mr-2 h-4 w-4" />
-                    {i18n.language === 'hy' ? '\u054E\u0573\u057C\u0561\u0562\u0565\u056F \u0562\u0578\u0572\u0578\u0584' : i18n.language === 'en' ? 'Cassation Appeal' : 'Кассационная жалоба'}
+                    {i18n.language === 'hy' ? 'Delays delays Delays' : i18n.language === 'en' ? 'Cassation Appeal' : 'Кассационная жалоба'}
                   </DropdownMenuItem>
                   <DropdownMenuSeparator />
                   <DropdownMenuItem onClick={() => {
@@ -458,18 +458,20 @@ const CaseDetail = () => {
                     setDocumentGeneratorOpen(true);
                   }}>
                     <FileText className="mr-2 h-4 w-4" />
-                    {i18n.language === 'hy' ? '\u0531\u0575\u056C \u0583\u0561\u057D\u057F\u0561\u0569\u0578\u0582\u0572\u0569' : i18n.language === 'en' ? 'Other Document' : 'Другой документ'}
+                    {i18n.language === 'hy' ? 'Այdelays Delays Delays' : i18n.language === 'en' ? 'Other Document' : 'Другой документ'}
                   </DropdownMenuItem>
                 </DropdownMenuContent>
               </DropdownMenu>
               
-              <Button variant="outline" onClick={() => setEditFormOpen(true)}>
-                <Edit className="mr-2 h-4 w-4" />
-                {t('edit_case')}
+              <Button variant="outline" size="sm" onClick={() => setEditFormOpen(true)} className="flex-col sm:flex-row h-auto py-2 sm:py-2 sm:h-9">
+                <Edit className="h-4 w-4 sm:mr-2" />
+                <span className="text-xs sm:text-sm mt-1 sm:mt-0 hidden sm:inline">{t('edit_case')}</span>
+                <span className="text-xs mt-1 sm:hidden">Խ delays</span>
               </Button>
-              <Button variant="destructive" onClick={() => setDeleteDialogOpen(true)}>
-                <Trash2 className="mr-2 h-4 w-4" />
-                {t('delete_case')}
+              <Button variant="destructive" size="sm" onClick={() => setDeleteDialogOpen(true)} className="flex-col sm:flex-row h-auto py-2 sm:py-2 sm:h-9">
+                <Trash2 className="h-4 w-4 sm:mr-2" />
+                <span className="text-xs sm:text-sm mt-1 sm:mt-0 hidden sm:inline">{t('delete_case')}</span>
+                <span className="text-xs mt-1 sm:hidden">Հdelays</span>
               </Button>
             </div>
           )}
