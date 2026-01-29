@@ -20,7 +20,7 @@ import { useToast } from '@/hooks/use-toast';
 import { Shield, Loader2 } from 'lucide-react';
 
 const loginSchema = z.object({
-  email: z.string().email(),
+  username: z.string().min(3).max(50),
   password: z.string().min(6),
 });
 
@@ -42,13 +42,17 @@ const AdminLogin = () => {
 
   const form = useForm<LoginValues>({
     resolver: zodResolver(loginSchema),
-    defaultValues: { email: '', password: '' },
+    defaultValues: { username: '', password: '' },
   });
 
   const handleLogin = async (values: LoginValues) => {
     setIsLoading(true);
     try {
-      await signIn(values.email, values.password);
+      // Convert username to internal email format
+      const username = values.username.trim().replace(/^@+/, '').toLowerCase();
+      const internalEmail = `${username}@app.internal`;
+      
+      await signIn(internalEmail, values.password);
       // The useEffect will handle the redirect once isAdmin is determined
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Unknown error';
@@ -87,15 +91,15 @@ const AdminLogin = () => {
             <form onSubmit={form.handleSubmit(handleLogin)} className="space-y-4">
               <FormField
                 control={form.control}
-                name="email"
+                name="username"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>{t('email')}</FormLabel>
+                    <FormLabel>{t('username')}</FormLabel>
                     <FormControl>
                       <Input 
-                        type="email" 
-                        autoComplete="email"
-                        placeholder="admin@example.com"
+                        type="text" 
+                        autoComplete="username"
+                        placeholder="admin"
                         {...field} 
                       />
                     </FormControl>
