@@ -1,12 +1,15 @@
 {
-  "audio": "Транскрипция аудио",
+  "audio": "Аудио",
   "audio_title": "Преобразование аудио в текст",
+  "audio_transcription": "Транскрипция аудио",
   "upload_audio": "Загрузить аудиофайл",
+  "upload_description": "Загрузите аудиофайлы для автоматической транскрипции",
   "supported_formats": "Поддерживаемые форматы: MP3, WAV, M4A, OGG, WebM, FLAC",
   "processing": "Транскрипция аудио...",
   "processing_complete": "Транскрипция завершена!",
   "processing_failed": "Ошибка транскрипции",
   "transcription": "Транскрипция",
+  "transcribe": "Транскрибировать",
   "confidence": "Достоверность",
   "duration": "Длительность",
   "language": "Язык аудио",
@@ -45,5 +48,10 @@
   "status_approved": "Утверждено",
   "kb_added": "Добавлено в базу знаний",
   "kb_pending": "Ожидает добавления в БЗ",
-  "back_to_case": "Вернуться к делу"
+  "back_to_case": "Вернуться к делу",
+  "select_case": "Выбрать дело",
+  "select_case_placeholder": "Выберите дело...",
+  "audio_file": "Аудио файл",
+  "result": "Результат",
+  "no_result": "Загрузите аудиофайл для просмотра результата транскрипции"
 }
