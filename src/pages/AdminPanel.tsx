@@ -162,26 +162,26 @@ const AdminPanel = () => {
       {/* Main Content */}
       <main className="container mx-auto px-4 py-6">
         <Tabs defaultValue="kb" className="space-y-6">
-          <TabsList className="grid w-full grid-cols-5 lg:w-auto lg:grid-cols-none lg:flex">
-            <TabsTrigger value="kb" className="gap-2">
-              <DatabaseIcon className="h-4 w-4" />
-              Գիտելիքների բազա
+          <TabsList className="h-auto flex-wrap gap-1 p-1">
+            <TabsTrigger value="kb" className="gap-1.5 px-2 py-1.5 text-xs sm:px-3 sm:text-sm">
+              <DatabaseIcon className="h-4 w-4 shrink-0" />
+              <span className="hidden sm:inline">Գdelays բdelays</span>
             </TabsTrigger>
-            <TabsTrigger value="users" className="gap-2">
-              <Users className="h-4 w-4" />
-              Օգտատերեր
+            <TabsTrigger value="users" className="gap-1.5 px-2 py-1.5 text-xs sm:px-3 sm:text-sm">
+              <Users className="h-4 w-4 shrink-0" />
+              <span className="hidden sm:inline">Օdelays</span>
             </TabsTrigger>
-            <TabsTrigger value="teams" className="gap-2">
-              <Users2 className="h-4 w-4" />
-              Թիմեր
+            <TabsTrigger value="teams" className="gap-1.5 px-2 py-1.5 text-xs sm:px-3 sm:text-sm">
+              <Users2 className="h-4 w-4 shrink-0" />
+              <span className="hidden sm:inline">Թdelays</span>
             </TabsTrigger>
-            <TabsTrigger value="feedback" className="gap-2">
-              <MessageSquare className="h-4 w-4" />
-              Օգտատերերի կարծիքներ
+            <TabsTrigger value="feedback" className="gap-1.5 px-2 py-1.5 text-xs sm:px-3 sm:text-sm">
+              <MessageSquare className="h-4 w-4 shrink-0" />
+              <span className="hidden sm:inline">Կdelays</span>
             </TabsTrigger>
-            <TabsTrigger value="analytics" className="gap-2">
-              <BarChart3 className="h-4 w-4" />
-              Վերլուծություն
+            <TabsTrigger value="analytics" className="gap-1.5 px-2 py-1.5 text-xs sm:px-3 sm:text-sm">
+              <BarChart3 className="h-4 w-4 shrink-0" />
+              <span className="hidden sm:inline">Վdelays</span>
             </TabsTrigger>
           </TabsList>
 
@@ -196,30 +196,30 @@ const AdminPanel = () => {
                 </CardTitle>
               </CardHeader>
               <CardContent>
-                <div className="flex flex-wrap gap-2">
-                  <Button onClick={() => setFormOpen(true)}>
-                    <Plus className="mr-2 h-4 w-4" />
-                    {t('add_document')}
+                <div className="grid grid-cols-2 gap-2 sm:flex sm:flex-wrap">
+                  <Button onClick={() => setFormOpen(true)} className="w-full sm:w-auto">
+                    <Plus className="mr-1.5 h-4 w-4" />
+                    <span className="text-xs sm:text-sm">{t('add_document')}</span>
                   </Button>
-                  <Button variant="secondary" onClick={() => setJsonlImportOpen(true)}>
-                    <FileJson className="mr-2 h-4 w-4" />
-                    JSONL Import (155K)
+                  <Button variant="secondary" onClick={() => setJsonlImportOpen(true)} className="w-full sm:w-auto">
+                    <FileJson className="mr-1.5 h-4 w-4" />
+                    <span className="text-xs sm:text-sm">JSONL</span>
                   </Button>
-                  <Button variant="outline" onClick={() => setWebScraperOpen(true)}>
-                    <Globe className="mr-2 h-4 w-4" />
-                    Веб-скрейпинг
+                  <Button variant="outline" onClick={() => setWebScraperOpen(true)} className="w-full sm:w-auto">
+                    <Globe className="mr-1.5 h-4 w-4" />
+                    <span className="text-xs sm:text-sm">Web</span>
                   </Button>
-                  <Button variant="outline" onClick={() => setMultiFileUploadOpen(true)}>
-                    <FileStack className="mr-2 h-4 w-4" />
-                    {t('multi_upload_title')}
+                  <Button variant="outline" onClick={() => setMultiFileUploadOpen(true)} className="w-full sm:w-auto">
+                    <FileStack className="mr-1.5 h-4 w-4" />
+                    <span className="text-xs sm:text-sm">Файлы</span>
                   </Button>
-                  <Button variant="outline" onClick={() => setBulkImportOpen(true)}>
-                    <FileUp className="mr-2 h-4 w-4" />
-                    TXT Import
+                  <Button variant="outline" onClick={() => setBulkImportOpen(true)} className="w-full sm:w-auto">
+                    <FileUp className="mr-1.5 h-4 w-4" />
+                    <span className="text-xs sm:text-sm">TXT</span>
                   </Button>
-                  <Button variant="outline" onClick={() => setPdfUploadOpen(true)}>
-                    <FileUp className="mr-2 h-4 w-4" />
-                    PDF/OCR
+                  <Button variant="outline" onClick={() => setPdfUploadOpen(true)} className="w-full sm:w-auto">
+                    <FileUp className="mr-1.5 h-4 w-4" />
+                    <span className="text-xs sm:text-sm">PDF</span>
                   </Button>
                 </div>
               </CardContent>
