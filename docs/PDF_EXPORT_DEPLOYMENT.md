@@ -14,7 +14,7 @@ This document describes the improved PDF export functionality for the "Ai Legal 
 
 ### 2. **Header on Every Page**
 - Left: "Ai Legal Armenia" branding
-- Center: Case number (e.g., "Գործ: CASE-001" in Armenian or "Case: CASE-001" in English)
+- Center: Case number (e.g., "Գdelays: CASE-001" in Armenian or "Case: CASE-001" in English)
 - Right: Export date in localized format
 - Font size: 9pt, gray color
 - Positioned at top of every page (y: 12)
@@ -28,10 +28,10 @@ This document describes the improved PDF export functionality for the "Ai Legal 
 
 ### 4. **Enhanced Aggregator Export Support**
 - `exportMultipleAnalysesToPDF()` function supports exporting all role analyses:
-  - Advocate (Defense) - Փաստաբան (Պաշտպան)
-  - Prosecutor - Մեղադրող
-  - Judge - Դատավոր
-  - Aggregator - Լիակատար վերլուծություն
+  - Advocate (Defense) - Փdelays: (Պdelays:պdelays:delays:)
+  - Prosecutor - Մdelays:delays:delays:delays:
+  - Judge - Դdelay:delays:delays:delays:
+  - Aggregator - Լdelay:delays:delays:delays: delays:delays:delays:delays:delays:delays:delays:
 - Each role's analysis starts on a new page with its own section
 - All pages include consistent branding, headers, and footers
 
@@ -104,12 +104,12 @@ Exports complete case details including metadata, timeline, and attached files.
 
 ## Deployment Instructions
 
-### For Lovable Platform (Recommended)
+### For AiLegalArmenia Platform (Recommended)
 
-This application is deployed using the Lovable platform. To deploy the PDF export improvements:
+This application is deployed using the AiLegalArmenia platform. To deploy the PDF export improvements:
 
-1. **Automatic Deployment (via Lovable)**
-   - Changes pushed to the repository are automatically detected by Lovable
+1. **Automatic Deployment (via AiLegalArmenia)**
+   - Changes pushed to the repository are automatically detected by the platform
    - Navigate to https://lovable.dev/projects/[YOUR_PROJECT_ID]
    - Click **Share** → **Publish** to deploy the latest changes
    - The deployment process typically takes 2-5 minutes
@@ -213,8 +213,8 @@ To verify the PDF export improvements:
 
 If issues are discovered after deployment:
 
-1. **Via Lovable**
-   - Navigate to your Lovable project
+1. **Via AiLegalArmenia**
+   - Navigate to your AiLegalArmenia project
    - Go to version history
    - Select the previous stable version
    - Click "Publish" to rollback
