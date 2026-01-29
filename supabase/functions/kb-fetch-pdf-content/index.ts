@@ -126,7 +126,7 @@ serve(async (req) => {
               "Content-Type": "application/json",
             },
             body: JSON.stringify({
-              model: "google/gemini-2.5-flash",
+              model: "google/gemini-2.5-pro",
               messages: [
                 { role: "system", content: OCR_PROMPT },
                 { 
@@ -180,7 +180,7 @@ serve(async (req) => {
           const tokensUsed = aiResult.usage?.total_tokens || 0;
           await supabase.rpc("log_api_usage", {
             _service_type: "kb_pdf_extraction",
-            _model_name: "google/gemini-2.5-flash",
+            _model_name: "google/gemini-2.5-pro",
             _tokens_used: tokensUsed,
             _estimated_cost: tokensUsed * 0.0000005,
             _metadata: { kb_id: record.id, word_count: wordCount }

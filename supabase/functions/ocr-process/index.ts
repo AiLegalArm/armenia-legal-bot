@@ -292,7 +292,7 @@ ${docxTextContent}`
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        model: "google/gemini-2.5-flash",
+        model: "google/gemini-2.5-pro",
         messages,
         temperature: 0.1,
         max_tokens: 8000,
@@ -391,7 +391,7 @@ ${docxTextContent}`
     
     await supabase.rpc("log_api_usage", {
       _service_type: "ocr",
-      _model_name: "google/gemini-2.5-flash",
+      _model_name: "google/gemini-2.5-pro",
       _tokens_used: tokensUsed,
       _estimated_cost: estimatedCost,
       _metadata: { fileName, fileId: fileId || null }
@@ -411,7 +411,7 @@ ${docxTextContent}`
       review_warning: needsReview 
         ? `Confidence ${(confidence_score * 100).toFixed(0)}% is below 70% threshold. Manual review recommended.`
         : null,
-      model: "google/gemini-2.5-flash"
+      model: "google/gemini-2.5-pro"
     }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
