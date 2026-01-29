@@ -186,26 +186,22 @@ const Dashboard = () => {
             </Button>
             <Button variant="outline" size="sm" onClick={() => navigate('/transcriptions')} className="flex-col sm:flex-row h-auto py-2 sm:py-2 sm:h-9">
               <Mic className="h-4 w-4 sm:mr-2" />
-              <span className="text-xs sm:text-sm mt-1 sm:mt-0 hidden sm:inline">{t('audio:audio_transcription', 'Audio Transcription')}</span>
-              <span className="text-xs mt-1 sm:hidden">Աdelays</span>
+              <span className="text-xs sm:text-sm mt-1 sm:mt-0">{t('audio:audio', 'Audio')}</span>
             </Button>
             <Button variant="outline" size="sm" onClick={() => setDocGeneratorOpen(true)} className="flex-col sm:flex-row h-auto py-2 sm:py-2 sm:h-9">
               <FileText className="h-4 w-4 sm:mr-2" />
-              <span className="text-xs sm:text-sm mt-1 sm:mt-0 hidden sm:inline">{t('common:generate_document', 'Generate Document')}</span>
-              <span className="text-xs mt-1 sm:hidden">Փdelays</span>
+              <span className="text-xs sm:text-sm mt-1 sm:mt-0">{t('common:documents', 'Documents')}</span>
             </Button>
             <Button variant="default" size="sm" onClick={() => setComplaintWizardOpen(true)} className="flex-col sm:flex-row h-auto py-2 sm:py-2 sm:h-9">
               <FileWarning className="h-4 w-4 sm:mr-2" />
-              <span className="text-xs sm:text-sm mt-1 sm:mt-0 hidden sm:inline">{t('common:new_complaint', 'New Complaint')}</span>
-              <span className="text-xs mt-1 sm:hidden">Բdelays</span>
+              <span className="text-xs sm:text-sm mt-1 sm:mt-0">{t('common:complaint', 'Complaint')}</span>
             </Button>
             {/* KB Search - Available for all users */}
             <Sheet open={kbSearchOpen} onOpenChange={setKbSearchOpen}>
               <SheetTrigger asChild>
                 <Button variant="outline" size="sm" className="flex-col sm:flex-row h-auto py-2 sm:py-2 sm:h-9">
                   <Search className="h-4 w-4 sm:mr-2" />
-                  <span className="text-xs sm:text-sm mt-1 sm:mt-0 hidden sm:inline">{t('dashboard:search_kb')}</span>
-                  <span className="text-xs mt-1 sm:hidden">Որdelays</span>
+                  <span className="text-xs sm:text-sm mt-1 sm:mt-0">{t('common:search', 'Search')}</span>
                 </Button>
               </SheetTrigger>
               <SheetContent className="w-full sm:max-w-2xl overflow-y-auto">
@@ -248,8 +244,7 @@ const Dashboard = () => {
             {isAdmin && (
               <Button variant="outline" size="sm" onClick={() => navigate('/kb')} className="flex-col sm:flex-row h-auto py-2 sm:py-2 sm:h-9">
                 <BookOpen className="h-4 w-4 sm:mr-2" />
-                <span className="text-xs sm:text-sm mt-1 sm:mt-0 hidden sm:inline">{t('kb:knowledge_base', 'Knowledge Base')}</span>
-                <span className="text-xs mt-1 sm:hidden">ԳBիdelays</span>
+                <span className="text-xs sm:text-sm mt-1 sm:mt-0">{t('kb:kb_short', 'KB')}</span>
               </Button>
             )}
             {isAdmin && (
@@ -257,8 +252,7 @@ const Dashboard = () => {
                 <SheetTrigger asChild>
                   <Button variant="outline" size="sm" className="flex-col sm:flex-row h-auto py-2 sm:py-2 sm:h-9">
                     <BarChart3 className="h-4 w-4 sm:mr-2" />
-                    <span className="text-xs sm:text-sm mt-1 sm:mt-0 hidden sm:inline">{t('usage:usage')}</span>
-                    <span className="text-xs mt-1 sm:hidden">Delays</span>
+                    <span className="text-xs sm:text-sm mt-1 sm:mt-0">{t('usage:usage')}</span>
                   </Button>
                 </SheetTrigger>
                 <SheetContent className="w-full sm:max-w-2xl overflow-y-auto">
