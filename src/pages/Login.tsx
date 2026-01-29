@@ -87,7 +87,7 @@ const Login = () => {
       // Handle "Remember me" preference
       if (!rememberMe) {
         // Move session to sessionStorage (expires on browser close)
-        const sessionKey = `sb-ktnygkszihdganoqamhi-auth-token`;
+        const sessionKey = `sb-nrmmgcgwriyrlbcpoqvk-auth-token`;
         const sessionData = localStorage.getItem(sessionKey);
         if (sessionData) {
           sessionStorage.setItem(sessionKey, sessionData);
