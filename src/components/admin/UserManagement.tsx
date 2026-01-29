@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
 import { supabase } from '@/integrations/supabase/client';
+import { ResetPasswordDialog } from './ResetPasswordDialog';
 import { useToast } from '@/hooks/use-toast';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -63,7 +64,8 @@ import {
   Copy,
   Eye,
   EyeOff,
-  Trash2
+  Trash2,
+  KeyRound
 } from 'lucide-react';
 import { format } from 'date-fns';
 import type { Database } from '@/integrations/supabase/types';
@@ -118,6 +120,10 @@ export function UserManagement() {
   const [newUserAuditorId, setNewUserAuditorId] = useState<string>('');
   const [showPassword, setShowPassword] = useState(false);
   const [createdUserInfo, setCreatedUserInfo] = useState<{ username: string; password: string } | null>(null);
+  const [resetPasswordUser, setResetPasswordUser] = useState<UserWithRoles | null>(null);
+  const [resetPasswordValue, setResetPasswordValue] = useState(generatePassword());
+  const [showResetPassword, setShowResetPassword] = useState(false);
+  const [resetPasswordInfo, setResetPasswordInfo] = useState<{ username: string; password: string } | null>(null);
 
   // Fetch all users with their roles
   const { data: users, isLoading, refetch } = useQuery({
@@ -564,12 +570,19 @@ export function UserManagement() {
                           )}
                           <DropdownMenuSeparator />
                           <DropdownMenuItem 
+                            onClick={() => setResetPasswordUser(user)}
+                          >
+                            <KeyRound className="mr-2 h-4 w-4" />
+                            Փdelays\u0578\u056d\u0565\u056c \u0563\u0561\u0572\u057f\u0576\u0561\u0562\u0561\u057c
+                          </DropdownMenuItem>
+                          <DropdownMenuSeparator />
+                          <DropdownMenuItem 
                             onClick={() => setDeletingUser(user)}
                             className="text-destructive"
                             disabled={user.roles.includes('admin')}
                           >
                             <Trash2 className="mr-2 h-4 w-4" />
-                            Ջնջել
+                             Delays\u0576\u057b\u0565\u056c
                           </DropdownMenuItem>
                         </DropdownMenuContent>
                       </DropdownMenu>
@@ -797,6 +810,13 @@ export function UserManagement() {
             </DialogFooter>
           </DialogContent>
         </Dialog>
+
+        {/* Reset Password Dialog */}
+        <ResetPasswordDialog
+          user={resetPasswordUser}
+          open={!!resetPasswordUser}
+          onOpenChange={(open) => !open && setResetPasswordUser(null)}
+        />
       </CardContent>
     </Card>
   );
