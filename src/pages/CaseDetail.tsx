@@ -16,6 +16,7 @@ import { CasePdfUpload } from '@/components/cases/CasePdfUpload';
 import { CaseComments } from '@/components/cases/CaseComments';
 import { FeedbackStars } from '@/components/FeedbackStars';
 import { DocumentGeneratorDialog } from '@/components/documents/DocumentGeneratorDialog';
+import { CaseReminders, CourtDateReminderSuggestion, NotificationBell } from '@/components/reminders';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import { Alert, AlertDescription } from '@/components/ui/alert';
@@ -43,7 +44,8 @@ import {
   Save,
   X,
   AlertTriangle,
-  FileSignature
+  FileSignature,
+  Bell
 } from 'lucide-react';
 import {
   AlertDialog,
@@ -82,7 +84,7 @@ const priorityColors: Record<string, string> = {
 const CaseDetail = () => {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
-  const { t, i18n } = useTranslation(['cases', 'common', 'ai', 'disclaimer']);
+  const { t, i18n } = useTranslation(['cases', 'common', 'ai', 'disclaimer', 'reminders']);
   const { user, signOut, isClient, isAdmin } = useAuth();
   
   const { data: caseData, isLoading } = useCase(id);
@@ -392,6 +394,7 @@ const CaseDetail = () => {
           </div>
           <div className="flex items-center gap-2 sm:gap-4">
             <span className="hidden sm:block text-sm text-muted-foreground truncate max-w-[120px]">{user?.email}</span>
+            <NotificationBell />
             <LanguageSwitcher />
             <Button variant="ghost" size="icon" onClick={() => signOut()}>
               <LogOut className="h-5 w-5" />
@@ -477,6 +480,17 @@ const CaseDetail = () => {
           )}
         </div>
 
+        {/* Court Date Reminder Suggestion */}
+        {caseData.court_date && (
+          <div className="mb-4">
+            <CourtDateReminderSuggestion
+              caseId={caseData.id}
+              caseTitle={caseData.title}
+              courtDate={caseData.court_date}
+            />
+          </div>
+        )}
+
         {/* Case Details & Tabs */}
         <div className="grid gap-6 lg:grid-cols-3">
           {/* Main Content */}
@@ -485,6 +499,10 @@ const CaseDetail = () => {
               <TabsList className="w-full justify-start">
                 <TabsTrigger value="details">{t('common:details', 'Details')}</TabsTrigger>
                 <TabsTrigger value="files">{t('files')}</TabsTrigger>
+                <TabsTrigger value="reminders">
+                  <Bell className="mr-2 h-4 w-4" />
+                  {t('reminders:reminders')}
+                </TabsTrigger>
                 <TabsTrigger value="analysis">
                   <Brain className="mr-2 h-4 w-4" />
                   {t('ai:analyze')}
@@ -668,6 +686,10 @@ const CaseDetail = () => {
                     <CaseFileUpload caseId={caseData.id} />
                   </CardContent>
                 </Card>
+              </TabsContent>
+
+              <TabsContent value="reminders" className="mt-4">
+                <CaseReminders caseId={caseData.id} courtDate={caseData.court_date} />
               </TabsContent>
 
               <TabsContent value="analysis" className="mt-4">
