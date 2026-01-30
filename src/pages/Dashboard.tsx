@@ -228,10 +228,6 @@ const Dashboard = () => {
                         <KBDocumentCard
                           key={doc.id}
                           document={doc}
-                          onView={(id) => {
-                            setKbSearchOpen(false);
-                            navigate(`/kb/${id}`);
-                          }}
                           isAdmin={false}
                         />
                       ))}
