@@ -639,6 +639,78 @@ export type Database = {
         }
         Relationships: []
       }
+      legal_practice_kb: {
+        Row: {
+          applied_articles: Json | null
+          case_number_anonymized: string | null
+          content_text: string
+          court_name: string | null
+          court_type: Database["public"]["Enums"]["court_type"]
+          created_at: string
+          decision_date: string | null
+          description: string | null
+          id: string
+          is_active: boolean
+          is_anonymized: boolean
+          key_violations: string[] | null
+          legal_reasoning_summary: string | null
+          outcome: Database["public"]["Enums"]["case_outcome"]
+          practice_category: Database["public"]["Enums"]["practice_category"]
+          source_name: string | null
+          source_url: string | null
+          title: string
+          updated_at: string
+          uploaded_by: string | null
+          visibility: string
+        }
+        Insert: {
+          applied_articles?: Json | null
+          case_number_anonymized?: string | null
+          content_text: string
+          court_name?: string | null
+          court_type: Database["public"]["Enums"]["court_type"]
+          created_at?: string
+          decision_date?: string | null
+          description?: string | null
+          id?: string
+          is_active?: boolean
+          is_anonymized?: boolean
+          key_violations?: string[] | null
+          legal_reasoning_summary?: string | null
+          outcome: Database["public"]["Enums"]["case_outcome"]
+          practice_category: Database["public"]["Enums"]["practice_category"]
+          source_name?: string | null
+          source_url?: string | null
+          title: string
+          updated_at?: string
+          uploaded_by?: string | null
+          visibility?: string
+        }
+        Update: {
+          applied_articles?: Json | null
+          case_number_anonymized?: string | null
+          content_text?: string
+          court_name?: string | null
+          court_type?: Database["public"]["Enums"]["court_type"]
+          created_at?: string
+          decision_date?: string | null
+          description?: string | null
+          id?: string
+          is_active?: boolean
+          is_anonymized?: boolean
+          key_violations?: string[] | null
+          legal_reasoning_summary?: string | null
+          outcome?: Database["public"]["Enums"]["case_outcome"]
+          practice_category?: Database["public"]["Enums"]["practice_category"]
+          source_name?: string | null
+          source_url?: string | null
+          title?: string
+          updated_at?: string
+          uploaded_by?: string | null
+          visibility?: string
+        }
+        Relationships: []
+      }
       ocr_results: {
         Row: {
           confidence: number | null
@@ -943,6 +1015,26 @@ export type Database = {
           version_date: string
         }[]
       }
+      search_legal_practice: {
+        Args: {
+          category?: Database["public"]["Enums"]["practice_category"]
+          court?: Database["public"]["Enums"]["court_type"]
+          result_limit?: number
+          search_query: string
+        }
+        Returns: {
+          applied_articles: Json
+          content_snippet: string
+          court_type: Database["public"]["Enums"]["court_type"]
+          id: string
+          key_violations: string[]
+          legal_reasoning_summary: string
+          outcome: Database["public"]["Enums"]["case_outcome"]
+          practice_category: Database["public"]["Enums"]["practice_category"]
+          relevance_rank: number
+          title: string
+        }[]
+      }
       store_encrypted_pii: {
         Args: { p_field_name: string; p_user_id: string; p_value: string }
         Returns: boolean
@@ -950,9 +1042,21 @@ export type Database = {
     }
     Enums: {
       app_role: "admin" | "lawyer" | "client" | "auditor"
+      case_outcome:
+        | "granted"
+        | "rejected"
+        | "partial"
+        | "remanded"
+        | "discontinued"
       case_priority: "low" | "medium" | "high" | "urgent"
       case_status: "open" | "in_progress" | "pending" | "closed" | "archived"
       case_type: "criminal" | "civil" | "administrative"
+      court_type:
+        | "first_instance"
+        | "appeal"
+        | "cassation"
+        | "constitutional"
+        | "echr"
       document_category:
         | "general"
         | "civil_process"
@@ -993,6 +1097,7 @@ export type Database = {
         | "healthcare_law"
         | "echr"
         | "eaeu_customs_code"
+      practice_category: "criminal" | "civil" | "administrative" | "echr"
     }
     CompositeTypes: {
       [_ in never]: never
@@ -1121,9 +1226,23 @@ export const Constants = {
   public: {
     Enums: {
       app_role: ["admin", "lawyer", "client", "auditor"],
+      case_outcome: [
+        "granted",
+        "rejected",
+        "partial",
+        "remanded",
+        "discontinued",
+      ],
       case_priority: ["low", "medium", "high", "urgent"],
       case_status: ["open", "in_progress", "pending", "closed", "archived"],
       case_type: ["criminal", "civil", "administrative"],
+      court_type: [
+        "first_instance",
+        "appeal",
+        "cassation",
+        "constitutional",
+        "echr",
+      ],
       document_category: [
         "general",
         "civil_process",
@@ -1166,6 +1285,7 @@ export const Constants = {
         "echr",
         "eaeu_customs_code",
       ],
+      practice_category: ["criminal", "civil", "administrative", "echr"],
     },
   },
 } as const
