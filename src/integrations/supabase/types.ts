@@ -711,6 +711,47 @@ export type Database = {
         }
         Relationships: []
       }
+      notifications: {
+        Row: {
+          created_at: string
+          id: string
+          is_read: boolean
+          message: string | null
+          notification_type: string
+          reminder_id: string | null
+          title: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          is_read?: boolean
+          message?: string | null
+          notification_type?: string
+          reminder_id?: string | null
+          title: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          is_read?: boolean
+          message?: string | null
+          notification_type?: string
+          reminder_id?: string | null
+          title?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "notifications_reminder_id_fkey"
+            columns: ["reminder_id"]
+            isOneToOne: false
+            referencedRelation: "reminders"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       ocr_results: {
         Row: {
           confidence: number | null
@@ -799,6 +840,59 @@ export type Database = {
           username?: string | null
         }
         Relationships: []
+      }
+      reminders: {
+        Row: {
+          case_id: string | null
+          created_at: string
+          description: string | null
+          event_datetime: string
+          id: string
+          notify_before: number[]
+          priority: Database["public"]["Enums"]["case_priority"]
+          reminder_type: Database["public"]["Enums"]["reminder_type"]
+          status: Database["public"]["Enums"]["reminder_status"]
+          title: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          case_id?: string | null
+          created_at?: string
+          description?: string | null
+          event_datetime: string
+          id?: string
+          notify_before?: number[]
+          priority?: Database["public"]["Enums"]["case_priority"]
+          reminder_type?: Database["public"]["Enums"]["reminder_type"]
+          status?: Database["public"]["Enums"]["reminder_status"]
+          title: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          case_id?: string | null
+          created_at?: string
+          description?: string | null
+          event_datetime?: string
+          id?: string
+          notify_before?: number[]
+          priority?: Database["public"]["Enums"]["case_priority"]
+          reminder_type?: Database["public"]["Enums"]["reminder_type"]
+          status?: Database["public"]["Enums"]["reminder_status"]
+          title?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "reminders_case_id_fkey"
+            columns: ["case_id"]
+            isOneToOne: false
+            referencedRelation: "cases"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       team_members: {
         Row: {
@@ -1098,6 +1192,8 @@ export type Database = {
         | "echr"
         | "eaeu_customs_code"
       practice_category: "criminal" | "civil" | "administrative" | "echr"
+      reminder_status: "active" | "completed" | "dismissed"
+      reminder_type: "court_hearing" | "deadline" | "task" | "meeting" | "other"
     }
     CompositeTypes: {
       [_ in never]: never
@@ -1286,6 +1382,8 @@ export const Constants = {
         "eaeu_customs_code",
       ],
       practice_category: ["criminal", "civil", "administrative", "echr"],
+      reminder_status: ["active", "completed", "dismissed"],
+      reminder_type: ["court_hearing", "deadline", "task", "meeting", "other"],
     },
   },
 } as const

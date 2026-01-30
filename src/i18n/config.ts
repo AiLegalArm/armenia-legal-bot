@@ -14,6 +14,7 @@ import hyDashboard from './locales/hy/dashboard.json';
 import hyDisclaimer from './locales/hy/disclaimer.json';
 import hyErrors from './locales/hy/errors.json';
 import hyCalendar from './locales/hy/calendar.json';
+import hyReminders from './locales/hy/reminders.json';
 
 // Import English translations
 import enCommon from './locales/en/common.json';
@@ -28,6 +29,7 @@ import enDashboard from './locales/en/dashboard.json';
 import enDisclaimer from './locales/en/disclaimer.json';
 import enErrors from './locales/en/errors.json';
 import enCalendar from './locales/en/calendar.json';
+import enReminders from './locales/en/reminders.json';
 
 // Import Russian translations
 import ruCommon from './locales/ru/common.json';
@@ -42,6 +44,7 @@ import ruDashboard from './locales/ru/dashboard.json';
 import ruDisclaimer from './locales/ru/disclaimer.json';
 import ruErrors from './locales/ru/errors.json';
 import ruCalendar from './locales/ru/calendar.json';
+import ruReminders from './locales/ru/reminders.json';
 
 const resources = {
   hy: {
@@ -57,6 +60,7 @@ const resources = {
     disclaimer: hyDisclaimer,
     errors: hyErrors,
     calendar: hyCalendar,
+    reminders: hyReminders,
   },
   en: {
     common: enCommon,
@@ -71,6 +75,7 @@ const resources = {
     disclaimer: enDisclaimer,
     errors: enErrors,
     calendar: enCalendar,
+    reminders: enReminders,
   },
   ru: {
     common: ruCommon,
@@ -85,6 +90,7 @@ const resources = {
     disclaimer: ruDisclaimer,
     errors: ruErrors,
     calendar: ruCalendar,
+    reminders: ruReminders,
   },
 };
 
@@ -114,7 +120,7 @@ i18n
     lng: getSavedLanguage(),
     fallbackLng: 'en',
     defaultNS: 'common',
-    ns: ['common', 'auth', 'cases', 'ai', 'kb', 'ocr', 'audio', 'usage', 'dashboard', 'disclaimer', 'errors', 'calendar'],
+    ns: ['common', 'auth', 'cases', 'ai', 'kb', 'ocr', 'audio', 'usage', 'dashboard', 'disclaimer', 'errors', 'calendar', 'reminders'],
     interpolation: {
       escapeValue: false, // React already escapes
     },
