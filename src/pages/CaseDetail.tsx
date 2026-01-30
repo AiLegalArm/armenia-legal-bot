@@ -432,9 +432,9 @@ const CaseDetail = () => {
                   <Button variant="default" size="sm" className="flex-col sm:flex-row h-auto py-2 sm:py-2 sm:h-9">
                     <Gavel className="h-4 w-4 sm:mr-2" />
                     <span className="text-xs sm:text-sm mt-1 sm:mt-0 hidden sm:inline">
-                      {i18n.language === 'hy' ? 'Delays Delays Delays' : i18n.language === 'en' ? 'File Complaint' : 'Подать жалобу'}
+                      {i18n.language === 'hy' ? '\u0546\u0565\u0580\u056F\u0561\u0575\u0561\u0581\u0576\u0565\u056C \u0562\u0578\u0572\u0578\u0584' : i18n.language === 'en' ? 'File Complaint' : '\u041F\u043E\u0434\u0430\u0442\u044C \u0436\u0430\u043B\u043E\u0431\u0443'}
                     </span>
-                    <span className="text-xs mt-1 sm:hidden">Delays</span>
+                    <span className="text-xs mt-1 sm:hidden">{'\u0532\u0578\u0572\u0578\u0584'}</span>
                   </Button>
                 </DropdownMenuTrigger>
                 <DropdownMenuContent align="end">
@@ -443,14 +443,14 @@ const CaseDetail = () => {
                     setDocumentGeneratorOpen(true);
                   }}>
                     <FileSignature className="mr-2 h-4 w-4" />
-                    {i18n.language === 'hy' ? 'Delays Delays delays' : i18n.language === 'en' ? 'Appeal' : 'Апелляционная жалоба'}
+                    {i18n.language === 'hy' ? '\u054E\u0565\u0580\u0561\u0584\u0576\u0576\u056B\u0579 \u0562\u0578\u0572\u0578\u0584' : i18n.language === 'en' ? 'Appeal' : '\u0410\u043F\u0435\u043B\u043B\u044F\u0446\u0438\u043E\u043D\u043D\u0430\u044F \u0436\u0430\u043B\u043E\u0431\u0430'}
                   </DropdownMenuItem>
                   <DropdownMenuItem onClick={() => {
                     setPreselectedDocumentType('cassation');
                     setDocumentGeneratorOpen(true);
                   }}>
                     <FileSignature className="mr-2 h-4 w-4" />
-                    {i18n.language === 'hy' ? 'Delays delays Delays' : i18n.language === 'en' ? 'Cassation Appeal' : 'Кассационная жалоба'}
+                    {i18n.language === 'hy' ? '\u054E\u0573\u057C\u0561\u0562\u0565\u056F \u0562\u0578\u0572\u0578\u0584' : i18n.language === 'en' ? 'Cassation Appeal' : '\u041A\u0430\u0441\u0441\u0430\u0446\u0438\u043E\u043D\u043D\u0430\u044F \u0436\u0430\u043B\u043E\u0431\u0430'}
                   </DropdownMenuItem>
                   <DropdownMenuSeparator />
                   <DropdownMenuItem onClick={() => {
@@ -458,7 +458,7 @@ const CaseDetail = () => {
                     setDocumentGeneratorOpen(true);
                   }}>
                     <FileText className="mr-2 h-4 w-4" />
-                    {i18n.language === 'hy' ? 'Այdelays Delays Delays' : i18n.language === 'en' ? 'Other Document' : 'Другой документ'}
+                    {i18n.language === 'hy' ? '\u0531\u0575\u056C \u0583\u0561\u057D\u057F\u0561\u0569\u0578\u0582\u0572\u0569' : i18n.language === 'en' ? 'Other Document' : '\u0414\u0440\u0443\u0433\u043E\u0439 \u0434\u043E\u043A\u0443\u043C\u0435\u043D\u0442'}
                   </DropdownMenuItem>
                 </DropdownMenuContent>
               </DropdownMenu>
@@ -466,12 +466,12 @@ const CaseDetail = () => {
               <Button variant="outline" size="sm" onClick={() => setEditFormOpen(true)} className="flex-col sm:flex-row h-auto py-2 sm:py-2 sm:h-9">
                 <Edit className="h-4 w-4 sm:mr-2" />
                 <span className="text-xs sm:text-sm mt-1 sm:mt-0 hidden sm:inline">{t('edit_case')}</span>
-                <span className="text-xs mt-1 sm:hidden">Խ delays</span>
+                <span className="text-xs mt-1 sm:hidden">{'\u053D\u0574\u0562.'}</span>
               </Button>
               <Button variant="destructive" size="sm" onClick={() => setDeleteDialogOpen(true)} className="flex-col sm:flex-row h-auto py-2 sm:py-2 sm:h-9">
                 <Trash2 className="h-4 w-4 sm:mr-2" />
                 <span className="text-xs sm:text-sm mt-1 sm:mt-0 hidden sm:inline">{t('delete_case')}</span>
-                <span className="text-xs mt-1 sm:hidden">Հdelays</span>
+                <span className="text-xs mt-1 sm:hidden">{'\u054B\u0576\u057B\u0565\u056C'}</span>
               </Button>
             </div>
           )}
