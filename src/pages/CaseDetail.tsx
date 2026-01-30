@@ -301,7 +301,7 @@ const CaseDetail = () => {
     // Case created
     timeline.push({
       type: 'created',
-      title: 'Գործը ստեղծվել է',
+      title: '\u0533\u0578\u0580\u056E\u0568 \u057D\u057F\u0565\u0572\u056E\u057E\u0565\u056C \u0567',
       timestamp: caseData.created_at,
     });
     
@@ -309,7 +309,7 @@ const CaseDetail = () => {
     files?.forEach(file => {
       timeline.push({
         type: 'file',
-        title: 'Ֆայլի վերբեռնում',
+        title: '\u0556\u0561\u0575\u056C\u056B \u057E\u0565\u0580\u0562\u0565\u057C\u0576\u0578\u0582\u0574',
         description: file.original_filename,
         timestamp: file.created_at,
       });
@@ -317,16 +317,16 @@ const CaseDetail = () => {
     
     // AI analyses
     const roleLabels: Record<string, string> = {
-      advocate: 'Փաստաբան (Պաշտպան)',
-      prosecutor: 'Մեղադրող',
-      judge: 'Դատավոր',
-      aggregator: 'Լիակատար վերլուծություն',
+      advocate: '\u0553\u0561\u057D\u057F\u0561\u0562\u0561\u0576 (\u054A\u0561\u0577\u057F\u057A\u0561\u0576)',
+      prosecutor: '\u0544\u0565\u0572\u0561\u0564\u0580\u0578\u0572',
+      judge: '\u0534\u0561\u057F\u0561\u057E\u0578\u0580',
+      aggregator: '\u053C\u056B\u0561\u056F\u0561\u057F\u0561\u0580 \u057E\u0565\u0580\u056C\u0578\u0582\u056E\u0578\u0582\u0569\u0575\u0578\u0582\u0576',
     };
     
     analyses?.forEach(analysis => {
       timeline.push({
         type: 'analysis',
-        title: 'AI վերլուծություն',
+        title: 'AI \u057E\u0565\u0580\u056C\u0578\u0582\u056E\u0578\u0582\u0569\u0575\u0578\u0582\u0576',
         description: roleLabels[analysis.role] || analysis.role,
         timestamp: analysis.created_at,
       });

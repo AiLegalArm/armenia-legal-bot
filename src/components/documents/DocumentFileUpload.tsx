@@ -213,8 +213,8 @@ export function DocumentFileUpload({ onFileAnalyzed, isDisabled }: DocumentFileU
       // Check file size (15MB limit for base64)
       if (file.size > 15 * 1024 * 1024) {
         toast({
-          title: i18n.language === 'hy' ? "Ֆdelays delay" : 
-                 i18n.language === 'en' ? "File too large" : "Файл слишком большой",
+          title: i18n.language === 'hy' ? "\u0556\u0561\u0575\u056C\u0568 \u0579\u0561\u0583\u0561\u0566\u0561\u0576\u0581 \u0574\u0565\u056E \u0567" : 
+                 i18n.language === 'en' ? "File too large" : "\u0424\u0430\u0439\u043B \u0441\u043B\u0438\u0448\u043A\u043E\u043C \u0431\u043E\u043B\u044C\u0448\u043E\u0439",
           description: `${file.name}: max 15MB`,
           variant: "destructive",
         });
@@ -259,26 +259,26 @@ export function DocumentFileUpload({ onFileAnalyzed, isDisabled }: DocumentFileU
   // Labels based on language
   const labels = {
     uploadLabel: i18n.language === 'hy' 
-      ? "Կdelays delays delays AI-delays" 
+      ? "\u053F\u0561\u0574 \u057E\u0565\u0580\u0562\u0565\u057C\u0576\u0565\u0584 \u0583\u0561\u057D\u057F\u0561\u0569\u0572\u0569\u0565\u0580 AI-\u057E\u0565\u0580\u056C\u0578\u0582\u056E\u0578\u0582\u0569\u0575\u0561\u0576 \u0570\u0561\u0574\u0561\u0580" 
       : i18n.language === 'en' 
       ? "Or upload documents for AI analysis" 
-      : "Или загрузите документы для AI-анализа",
+      : "\u0418\u043B\u0438 \u0437\u0430\u0433\u0440\u0443\u0437\u0438\u0442\u0435 \u0434\u043E\u043A\u0443\u043C\u0435\u043D\u0442\u044B \u0434\u043B\u044F AI-\u0430\u043D\u0430\u043B\u0438\u0437\u0430",
     dropzone: i18n.language === 'hy' 
-      ? "PDF, delays, delays" 
+      ? "PDF, \u0576\u056F\u0561\u0580\u0576\u0565\u0580, \u057F\u0565\u0584\u057D\u057F" 
       : i18n.language === 'en' 
       ? "PDF, images, text" 
-      : "PDF, изображения, текст",
+      : "PDF, \u0438\u0437\u043E\u0431\u0440\u0430\u0436\u0435\u043D\u0438\u044F, \u0442\u0435\u043A\u0441\u0442",
     supports: i18n.language === 'hy' 
-      ? "Աdelays PDF, JPG, PNG, DOCX" 
+      ? "\u0531\u057B\u0561\u056F\u0581\u057E\u0578\u0582\u0574 \u0567 PDF, JPG, PNG, DOCX" 
       : i18n.language === 'en' 
       ? "Supports PDF, JPG, PNG, DOCX" 
-      : "Поддержка PDF, JPG, PNG, DOCX",
-    files: i18n.language === 'hy' ? " delays" : i18n.language === 'en' ? "file(s)" : "файл(ов)",
-    chars: i18n.language === 'hy' ? "delays" : i18n.language === 'en' ? "chars" : "симв",
-    clearAll: i18n.language === 'hy' ? "delays" : i18n.language === 'en' ? "Clear all" : "Очистить",
-    waiting: i18n.language === 'hy' ? "delays..." : i18n.language === 'en' ? "Waiting..." : "Ожидание...",
-    analyzing: i18n.language === 'hy' ? "delays..." : i18n.language === 'en' ? "Analyzing..." : "Анализ...",
-    failed: i18n.language === 'hy' ? "delays" : i18n.language === 'en' ? "Failed" : "Ошибка"
+      : "\u041F\u043E\u0434\u0434\u0435\u0440\u0436\u043A\u0430 PDF, JPG, PNG, DOCX",
+    files: i18n.language === 'hy' ? " \u0586\u0561\u0575\u056C" : i18n.language === 'en' ? "file(s)" : "\u0444\u0430\u0439\u043B(\u043E\u0432)",
+    chars: i18n.language === 'hy' ? "\u0576\u0577\u0561\u0576" : i18n.language === 'en' ? "chars" : "\u0441\u0438\u043C\u0432",
+    clearAll: i18n.language === 'hy' ? "\u0544\u0561\u0584\u0580\u0565\u056C" : i18n.language === 'en' ? "Clear all" : "\u041E\u0447\u0438\u0441\u0442\u0438\u0442\u044C",
+    waiting: i18n.language === 'hy' ? "\u054D\u057A\u0561\u057D\u0578\u0582\u0574..." : i18n.language === 'en' ? "Waiting..." : "\u041E\u0436\u0438\u0434\u0430\u043D\u0438\u0435...",
+    analyzing: i18n.language === 'hy' ? "\u054E\u0565\u0580\u056C\u0578\u0582\u056E\u0578\u0582\u0574..." : i18n.language === 'en' ? "Analyzing..." : "\u0410\u043D\u0430\u043B\u0438\u0437...",
+    failed: i18n.language === 'hy' ? "\u054D\u056D\u0561\u056C" : i18n.language === 'en' ? "Failed" : "\u041E\u0448\u0438\u0431\u043A\u0430"
   };
 
   return (
