@@ -61,7 +61,7 @@ export function ResetPasswordDialog({ user, open, onOpenChange }: ResetPasswordD
     },
     onError: (error) => {
       toast({
-        title: 'Ошибка',
+        title: '\u041E\u0448\u0438\u0431\u043A\u0430',
         description: error.message,
         variant: 'destructive',
       });
@@ -71,7 +71,7 @@ export function ResetPasswordDialog({ user, open, onOpenChange }: ResetPasswordD
   const handleSubmit = () => {
     if (!user || !newPassword) return;
     if (newPassword.length < 6) {
-      toast({ title: 'Пароль должен быть минимум 6 символов', variant: 'destructive' });
+      toast({ title: '\u041F\u0430\u0440\u043E\u043B\u044C \u0434\u043E\u043B\u0436\u0435\u043D \u0431\u044B\u0442\u044C \u043C\u0438\u043D\u0438\u043C\u0443\u043C 6 \u0441\u0438\u043C\u0432\u043E\u043B\u043E\u0432', variant: 'destructive' });
       return;
     }
     resetPassword.mutate({
@@ -82,7 +82,7 @@ export function ResetPasswordDialog({ user, open, onOpenChange }: ResetPasswordD
 
   const copyToClipboard = (text: string) => {
     navigator.clipboard.writeText(text);
-    toast({ title: 'Скопировано' });
+    toast({ title: '\u0421\u043A\u043E\u043F\u0438\u0440\u043E\u0432\u0430\u043D\u043E' });
   };
 
   const handleClose = () => {

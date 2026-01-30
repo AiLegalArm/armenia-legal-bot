@@ -71,21 +71,21 @@ export function DocumentEditor({ content, onChange, editable = true }: DocumentE
           <ToolbarButton
             onClick={() => editor.chain().focus().toggleBold().run()}
             active={editor.isActive('bold')}
-            title="Жирный"
+            title={'\u0416\u0438\u0440\u043D\u044B\u0439'}
           >
             <Bold className="h-4 w-4" />
           </ToolbarButton>
           <ToolbarButton
             onClick={() => editor.chain().focus().toggleItalic().run()}
             active={editor.isActive('italic')}
-            title="Курсив"
+            title={'\u041A\u0443\u0440\u0441\u0438\u0432'}
           >
             <Italic className="h-4 w-4" />
           </ToolbarButton>
           <ToolbarButton
             onClick={() => editor.chain().focus().toggleUnderline().run()}
             active={editor.isActive('underline')}
-            title="Подчёркнутый"
+            title={'\u041F\u043E\u0434\u0447\u0451\u0440\u043A\u043D\u0443\u0442\u044B\u0439'}
           >
             <UnderlineIcon className="h-4 w-4" />
           </ToolbarButton>
@@ -96,28 +96,28 @@ export function DocumentEditor({ content, onChange, editable = true }: DocumentE
           <ToolbarButton
             onClick={() => editor.chain().focus().toggleHeading({ level: 1 }).run()}
             active={editor.isActive('heading', { level: 1 })}
-            title="Заголовок 1"
+            title={'\u0417\u0430\u0433\u043E\u043B\u043E\u0432\u043E\u043A 1'}
           >
             <Heading1 className="h-4 w-4" />
           </ToolbarButton>
           <ToolbarButton
             onClick={() => editor.chain().focus().toggleHeading({ level: 2 }).run()}
             active={editor.isActive('heading', { level: 2 })}
-            title="Заголовок 2"
+            title={'\u0417\u0430\u0433\u043E\u043B\u043E\u0432\u043E\u043A 2'}
           >
             <Heading2 className="h-4 w-4" />
           </ToolbarButton>
           <ToolbarButton
             onClick={() => editor.chain().focus().toggleHeading({ level: 3 }).run()}
             active={editor.isActive('heading', { level: 3 })}
-            title="Заголовок 3"
+            title={'\u0417\u0430\u0433\u043E\u043B\u043E\u0432\u043E\u043A 3'}
           >
             <Heading3 className="h-4 w-4" />
           </ToolbarButton>
           <ToolbarButton
             onClick={() => editor.chain().focus().setParagraph().run()}
             active={editor.isActive('paragraph')}
-            title="Параграф"
+            title={'\u041F\u0430\u0440\u0430\u0433\u0440\u0430\u0444'}
           >
             <Pilcrow className="h-4 w-4" />
           </ToolbarButton>
@@ -128,28 +128,28 @@ export function DocumentEditor({ content, onChange, editable = true }: DocumentE
           <ToolbarButton
             onClick={() => editor.chain().focus().setTextAlign('left').run()}
             active={editor.isActive({ textAlign: 'left' })}
-            title="По левому краю"
+            title={'\u041F\u043E \u043B\u0435\u0432\u043E\u043C\u0443 \u043A\u0440\u0430\u044E'}
           >
             <AlignLeft className="h-4 w-4" />
           </ToolbarButton>
           <ToolbarButton
             onClick={() => editor.chain().focus().setTextAlign('center').run()}
             active={editor.isActive({ textAlign: 'center' })}
-            title="По центру"
+            title={'\u041F\u043E \u0446\u0435\u043D\u0442\u0440\u0443'}
           >
             <AlignCenter className="h-4 w-4" />
           </ToolbarButton>
           <ToolbarButton
             onClick={() => editor.chain().focus().setTextAlign('right').run()}
             active={editor.isActive({ textAlign: 'right' })}
-            title="По правому краю"
+            title={'\u041F\u043E \u043F\u0440\u0430\u0432\u043E\u043C\u0443 \u043A\u0440\u0430\u044E'}
           >
             <AlignRight className="h-4 w-4" />
           </ToolbarButton>
           <ToolbarButton
             onClick={() => editor.chain().focus().setTextAlign('justify').run()}
             active={editor.isActive({ textAlign: 'justify' })}
-            title="По ширине"
+            title={'\u041F\u043E \u0448\u0438\u0440\u0438\u043D\u0435'}
           >
             <AlignJustify className="h-4 w-4" />
           </ToolbarButton>
@@ -160,14 +160,14 @@ export function DocumentEditor({ content, onChange, editable = true }: DocumentE
           <ToolbarButton
             onClick={() => editor.chain().focus().toggleBulletList().run()}
             active={editor.isActive('bulletList')}
-            title="Маркированный список"
+            title={'\u041C\u0430\u0440\u043A\u0438\u0440\u043E\u0432\u0430\u043D\u043D\u044B\u0439 \u0441\u043F\u0438\u0441\u043E\u043A'}
           >
             <List className="h-4 w-4" />
           </ToolbarButton>
           <ToolbarButton
             onClick={() => editor.chain().focus().toggleOrderedList().run()}
             active={editor.isActive('orderedList')}
-            title="Нумерованный список"
+            title={'\u041D\u0443\u043C\u0435\u0440\u043E\u0432\u0430\u043D\u043D\u044B\u0439 \u0441\u043F\u0438\u0441\u043E\u043A'}
           >
             <ListOrdered className="h-4 w-4" />
           </ToolbarButton>
@@ -178,14 +178,14 @@ export function DocumentEditor({ content, onChange, editable = true }: DocumentE
           <ToolbarButton
             onClick={() => editor.chain().focus().undo().run()}
             disabled={!editor.can().undo()}
-            title="Отменить"
+            title={'\u041E\u0442\u043C\u0435\u043D\u0438\u0442\u044C'}
           >
             <Undo className="h-4 w-4" />
           </ToolbarButton>
           <ToolbarButton
             onClick={() => editor.chain().focus().redo().run()}
             disabled={!editor.can().redo()}
-            title="Повторить"
+            title={'\u041F\u043E\u0432\u0442\u043E\u0440\u0438\u0442\u044C'}
           >
             <Redo className="h-4 w-4" />
           </ToolbarButton>

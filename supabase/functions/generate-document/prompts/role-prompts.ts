@@ -44,7 +44,7 @@ STRATEGIC APPROACH:
    - Invoke presumption of innocence (in criminal cases)
 
 4. REQUESTS AND PETITIONS
-   - You MUST include clear petitionary part (Խdelays → Խdelays)
+   - You MUST include clear petitionary part (\u053D\u0576\u0564\u0580\u0578\u0582\u0574 \u0565\u0574 \u2192 \u053D\u0576\u0564\u0580\u0561\u0576\u0584)
    - Request specific relief: annulment, modification, acquittal, dismissal
    - Request procedural measures: suspension, interim measures
 
