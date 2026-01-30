@@ -16,6 +16,7 @@ import { UsageMonitor } from '@/components/UsageMonitor';
 import { UserManagement } from '@/components/admin/UserManagement';
 import { TeamManagement } from '@/components/admin/TeamManagement';
 import { UserFeedback } from '@/components/admin/UserFeedback';
+import { LegalPracticeKB } from '@/components/admin/LegalPracticeKB';
 import { Button } from '@/components/ui/button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -165,23 +166,27 @@ const AdminPanel = () => {
           <TabsList className="h-auto flex-wrap gap-1 p-1">
             <TabsTrigger value="kb" className="gap-1.5 px-2 py-1.5 text-xs sm:px-3 sm:text-sm">
               <DatabaseIcon className="h-4 w-4 shrink-0" />
-              <span className="hidden sm:inline">Գdelays բdelays</span>
+              <span className="hidden sm:inline">{'\u0533\u056B\u057F\u0565\u056C\u056B\u0584\u0576\u0565\u0580\u056B \u0562\u0561\u0566\u0561'}</span>
+            </TabsTrigger>
+            <TabsTrigger value="practice" className="gap-1.5 px-2 py-1.5 text-xs sm:px-3 sm:text-sm">
+              <BookOpen className="h-4 w-4 shrink-0" />
+              <span className="hidden sm:inline">{'\u054A\u0580\u0561\u056F\u057F\u056B\u056F\u0561 (KB)'}</span>
             </TabsTrigger>
             <TabsTrigger value="users" className="gap-1.5 px-2 py-1.5 text-xs sm:px-3 sm:text-sm">
               <Users className="h-4 w-4 shrink-0" />
-              <span className="hidden sm:inline">Օdelays</span>
+              <span className="hidden sm:inline">{'\u0555\u0563\u057F\u0561\u057F\u0565\u0580\u0576\u0565\u0580'}</span>
             </TabsTrigger>
             <TabsTrigger value="teams" className="gap-1.5 px-2 py-1.5 text-xs sm:px-3 sm:text-sm">
               <Users2 className="h-4 w-4 shrink-0" />
-              <span className="hidden sm:inline">Թdelays</span>
+              <span className="hidden sm:inline">{'\u0539\u056B\u0574\u0565\u0580'}</span>
             </TabsTrigger>
             <TabsTrigger value="feedback" className="gap-1.5 px-2 py-1.5 text-xs sm:px-3 sm:text-sm">
               <MessageSquare className="h-4 w-4 shrink-0" />
-              <span className="hidden sm:inline">Կdelays</span>
+              <span className="hidden sm:inline">{'\u053F\u0561\u0580\u056E\u056B\u0584\u0576\u0565\u0580'}</span>
             </TabsTrigger>
             <TabsTrigger value="analytics" className="gap-1.5 px-2 py-1.5 text-xs sm:px-3 sm:text-sm">
               <BarChart3 className="h-4 w-4 shrink-0" />
-              <span className="hidden sm:inline">Վdelays</span>
+              <span className="hidden sm:inline">{'\u054E\u056B\u0573\u0561\u056F\u0561\u0563\u0580\u0578\u0582\u0569\u0575\u0578\u0582\u0576'}</span>
             </TabsTrigger>
           </TabsList>
 
@@ -281,6 +286,11 @@ const AdminPanel = () => {
                 )}
               </>
             )}
+          </TabsContent>
+
+          {/* Legal Practice KB Tab */}
+          <TabsContent value="practice">
+            <LegalPracticeKB />
           </TabsContent>
 
           {/* Users Tab */}
