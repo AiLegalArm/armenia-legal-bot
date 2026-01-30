@@ -37,7 +37,7 @@ type KBDocumentType = {
 
 interface KBDocumentCardProps {
   document: KBDocumentType;
-  onView: (id: string) => void;
+  onView?: (id: string) => void;
   onEdit?: (id: string) => void;
   onDelete?: (id: string) => void;
   isAdmin?: boolean;
@@ -112,10 +112,12 @@ export function KBDocumentCard({
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end">
-              <DropdownMenuItem onClick={() => onView(document.id)}>
-                <Eye className="mr-2 h-4 w-4" />
-                {t('common:view', 'View')}
-              </DropdownMenuItem>
+              {onView && (
+                <DropdownMenuItem onClick={() => onView(document.id)}>
+                  <Eye className="mr-2 h-4 w-4" />
+                  {t('common:view', 'View')}
+                </DropdownMenuItem>
+              )}
               {onEdit && (
                 <DropdownMenuItem onClick={() => onEdit(document.id)}>
                   <Edit className="mr-2 h-4 w-4" />
@@ -177,7 +179,7 @@ export function KBDocumentCard({
           )}
         </div>
 
-        {!isAdmin && (
+        {!isAdmin && onView && (
           <Button 
             variant="ghost" 
             size="sm" 
