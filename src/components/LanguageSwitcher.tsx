@@ -10,9 +10,9 @@ import {
 import { Globe } from 'lucide-react';
 
 const languages = [
-  { code: 'hy', name: 'Հայdelays', flag: '🇦🇲' },
-  { code: 'en', name: 'English', flag: '🇺🇸' },
-  { code: 'ru', name: 'Русский', flag: '🇷🇺' },
+  { code: 'hy', name: '\u0540\u0561\u0575\u0565\u0580\u0565\u0576', flag: '\uD83C\uDDE6\uD83C\uDDF2' },
+  { code: 'en', name: 'English', flag: '\uD83C\uDDFA\uD83C\uDDF8' },
+  { code: 'ru', name: '\u0420\u0443\u0441\u0441\u043A\u0438\u0439', flag: '\uD83C\uDDF7\uD83C\uDDFA' },
 ];
 
 export const LanguageSwitcher = forwardRef<HTMLDivElement>((_, ref) => {
