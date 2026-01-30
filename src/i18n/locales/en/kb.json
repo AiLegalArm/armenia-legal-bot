@@ -70,5 +70,12 @@
   "multi_upload_status_warning": "Low confidence",
   "multi_upload_low_confidence": "Needs manual review",
   "multi_upload_invalid_type": "Invalid file type",
-  "multi_upload_file_too_large": "File too large (max 50MB)"
+  "multi_upload_file_too_large": "File too large (max 50MB)",
+  "search_assistant": "AI Search Assistant",
+  "search_assistant_description": "Keyword-based search over the knowledge base",
+  "keywords_extracted": "Keywords extracted",
+  "no_results_found": "No results found",
+  "search_results_title": "Search Results",
+  "snippet": "Snippet",
+  "source_identifier": "Source"
 }
