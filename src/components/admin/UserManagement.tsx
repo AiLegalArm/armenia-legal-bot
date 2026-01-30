@@ -573,7 +573,7 @@ export function UserManagement() {
                             onClick={() => setResetPasswordUser(user)}
                           >
                             <KeyRound className="mr-2 h-4 w-4" />
-                            Փdelays\u0578\u056d\u0565\u056c \u0563\u0561\u0572\u057f\u0576\u0561\u0562\u0561\u057c
+                            {'\u0553\u0578\u056D\u0565\u056C \u0563\u0561\u0572\u057F\u0576\u0561\u0562\u0561\u057C'}
                           </DropdownMenuItem>
                           <DropdownMenuSeparator />
                           <DropdownMenuItem 
@@ -582,7 +582,7 @@ export function UserManagement() {
                             disabled={user.roles.includes('admin')}
                           >
                             <Trash2 className="mr-2 h-4 w-4" />
-                             Delays\u0576\u057b\u0565\u056c
+                            {'\u054B\u0576\u057B\u0565\u056C'}
                           </DropdownMenuItem>
                         </DropdownMenuContent>
                       </DropdownMenu>

@@ -92,10 +92,10 @@ export function DocumentFileUpload({ onFileAnalyzed, isDisabled }: DocumentFileU
           status: "error", 
           extractedText: "",
           errorMessage: i18n.language === 'hy' 
-            ? ".doc delays delays DOCX delays PDF" 
+            ? '.doc \u0571\u0587\u0561\u0579\u0561\u0583\u0568 \u0579\u056B \u0561\u057B\u0561\u056F\u0581\u057E\u0578\u0582\u0574: \u0553\u0578\u056D\u0561\u0580\u056F\u0565\u0584 DOCX \u056F\u0561\u0574 PDF' 
             : i18n.language === 'en' 
             ? "Legacy .doc format not supported. Convert to DOCX or PDF." 
-            : "Формат .doc не поддерживается. Конвертируйте в DOCX или PDF."
+            : "\u0424\u043E\u0440\u043C\u0430\u0442 .doc \u043D\u0435 \u043F\u043E\u0434\u0434\u0435\u0440\u0436\u0438\u0432\u0430\u0435\u0442\u0441\u044F. \u041A\u043E\u043D\u0432\u0435\u0440\u0442\u0438\u0440\u0443\u0439\u0442\u0435 \u0432 DOCX \u0438\u043B\u0438 PDF."
         };
       }
 
@@ -179,21 +179,21 @@ export function DocumentFileUpload({ onFileAnalyzed, isDisabled }: DocumentFileU
 
     if (successCount > 0) {
       toast({
-        title: i18n.language === 'hy' ? " Delays delays" : 
-               i18n.language === 'en' ? "Files analyzed" : "Файлы проанализированы",
-        description: i18n.language === 'hy' ? `${successCount} delays delays` : 
+        title: i18n.language === 'hy' ? '\u0556\u0561\u0575\u056C\u0565\u0580\u0568 \u057E\u0565\u0580\u056C\u0578\u0582\u056E\u057E\u0565\u0581' : 
+               i18n.language === 'en' ? "Files analyzed" : "\u0424\u0430\u0439\u043B\u044B \u043F\u0440\u043E\u0430\u043D\u0430\u043B\u0438\u0437\u0438\u0440\u043E\u0432\u0430\u043D\u044B",
+        description: i18n.language === 'hy' ? `${successCount} \u0586\u0561\u0575\u056C \u0574\u0577\u0561\u056F\u057E\u0565\u0581` : 
                      i18n.language === 'en' ? `${successCount} file(s) processed` : 
-                     `${successCount} файл(ов) обработано`,
+                     `${successCount} \u0444\u0430\u0439\u043B(\u043E\u0432) \u043E\u0431\u0440\u0430\u0431\u043E\u0442\u0430\u043D\u043E`,
       });
     }
 
     if (errorCount > 0) {
       toast({
-        title: i18n.language === 'hy' ? "Որոdelays delays" : 
-               i18n.language === 'en' ? "Some files failed" : "Ошибка обработки",
-        description: i18n.language === 'hy' ? `${errorCount} delays delays` : 
+        title: i18n.language === 'hy' ? '\u0548\u0580\u0578\u0577 \u0586\u0561\u0575\u056C\u0565\u0580 \u0579\u0570\u0561\u057B\u0578\u0572\u057E\u0565\u0581\u056B\u0576' : 
+               i18n.language === 'en' ? "Some files failed" : "\u041E\u0448\u0438\u0431\u043A\u0430 \u043E\u0431\u0440\u0430\u0431\u043E\u0442\u043A\u0438",
+        description: i18n.language === 'hy' ? `${errorCount} \u0586\u0561\u0575\u056C \u0579\u0574\u0577\u0561\u056F\u057E\u0565\u0581` : 
                      i18n.language === 'en' ? `${errorCount} file(s) failed` : 
-                     `${errorCount} файл(ов) не обработано`,
+                     `${errorCount} \u0444\u0430\u0439\u043B(\u043E\u0432) \u043D\u0435 \u043E\u0431\u0440\u0430\u0431\u043E\u0442\u0430\u043D\u043E`,
         variant: "destructive",
       });
     }
