@@ -36,6 +36,8 @@ import {
   Globe,
   FileJson
 } from 'lucide-react';
+import { LanguageSwitcher } from '@/components/LanguageSwitcher';
+import { ThemeToggle } from '@/components/ThemeToggle';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -149,10 +151,12 @@ const AdminPanel = () => {
             <Shield className="h-6 w-6 text-primary" />
             <h1 className="text-xl font-bold">Админ панель</h1>
           </div>
-          <div className="flex items-center gap-4">
+          <div className="flex items-center gap-2 sm:gap-4">
             <span className="hidden text-sm text-muted-foreground sm:block">
               {user.email}
             </span>
+            <LanguageSwitcher />
+            <ThemeToggle />
             <Button variant="ghost" size="icon" onClick={handleSignOut}>
               <LogOut className="h-5 w-5" />
             </Button>
