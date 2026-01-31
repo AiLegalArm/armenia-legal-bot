@@ -1,17 +1,18 @@
-import { useState, useRef } from 'react';
+import { useState, useCallback, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import { supabase } from '@/integrations/supabase/client';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Textarea } from '@/components/ui/textarea';
 import { Progress } from '@/components/ui/progress';
+import { ScrollArea } from '@/components/ui/scroll-area';
 import {
   Dialog,
   DialogContent,
   DialogDescription,
   DialogHeader,
   DialogTitle,
+  DialogFooter,
 } from '@/components/ui/dialog';
 import {
   Select,
@@ -22,7 +23,15 @@ import {
 } from '@/components/ui/select';
 import { Checkbox } from '@/components/ui/checkbox';
 import { toast } from 'sonner';
-import { Upload, FileText, Loader2, CheckCircle, AlertTriangle } from 'lucide-react';
+import { 
+  Upload, 
+  FileText, 
+  Loader2, 
+  CheckCircle2, 
+  XCircle,
+  X,
+  FolderUp
+} from 'lucide-react';
 import { kbCategoryOptions, type KbCategory } from '@/components/kb/kbCategories';
 
 interface KBBulkImportProps {
@@ -31,247 +40,412 @@ interface KBBulkImportProps {
   onSuccess: () => void;
 }
 
-type ImportStatus = 'idle' | 'reading' | 'importing' | 'success' | 'error';
+type FileStatus = 'pending' | 'reading' | 'importing' | 'success' | 'error';
+
+interface TxtFileItem {
+  id: string;
+  file: File;
+  status: FileStatus;
+  progress: number;
+  error?: string;
+  codeName: string;
+  category: KbCategory;
+  imported?: number;
+}
 
 const categories = kbCategoryOptions;
+const MAX_FILE_SIZE = 100 * 1024 * 1024; // 100MB
 
 export function KBBulkImport({ open, onOpenChange, onSuccess }: KBBulkImportProps) {
   const { t } = useTranslation(['kb', 'common']);
   const fileInputRef = useRef<HTMLInputElement>(null);
   
-  const [status, setStatus] = useState<ImportStatus>('idle');
-  const [progress, setProgress] = useState(0);
-  const [textContent, setTextContent] = useState('');
-  const [codeName, setCodeName] = useState('');
-  const [category, setCategory] = useState<KbCategory>('other');
+  const [files, setFiles] = useState<TxtFileItem[]>([]);
+  const [globalCategory, setGlobalCategory] = useState<KbCategory>('other');
   const [clearExisting, setClearExisting] = useState(false);
-  const [result, setResult] = useState<{ imported: number; sampleTitles: string[] } | null>(null);
-  const [error, setError] = useState<string | null>(null);
+  const [skipOnError, setSkipOnError] = useState(true);
+  const [isProcessing, setIsProcessing] = useState(false);
+  const [isDragOver, setIsDragOver] = useState(false);
 
-  const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-
-    if (!file.name.endsWith('.txt')) {
-      toast.error(t('common:error'));
-      return;
-    }
-
-    // Check file size (100MB limit for text files)
-    const maxSize = 100 * 1024 * 1024; // 100MB
-    if (file.size > maxSize) {
-      toast.error(`File too large. Maximum size is ${maxSize / (1024 * 1024)}MB`);
-      return;
-    }
-
-    setStatus('reading');
-    try {
-      const text = await file.text();
-      setTextContent(text);
+  const addFiles = useCallback((newFiles: FileList | File[]) => {
+    const fileArray = Array.from(newFiles);
+    const validFiles: TxtFileItem[] = [];
+    
+    for (const file of fileArray) {
+      // Validate type
+      if (!file.name.endsWith('.txt')) {
+        toast.error(`${file.name}: ${t('common:error')}`);
+        continue;
+      }
+      
+      // Validate size
+      if (file.size > MAX_FILE_SIZE) {
+        toast.error(`${file.name}: File too large (max 100MB)`);
+        continue;
+      }
       
       // Auto-detect code name from filename
-      const name = file.name.replace('.txt', '').replace(/_/g, ' ');
-      setCodeName(name);
+      const codeName = file.name.replace('.txt', '').replace(/_/g, ' ');
       
-      setStatus('idle');
-      toast.success(t('common:success'));
-    } catch (err) {
-      setStatus('error');
-      setError(t('common:error'));
+      validFiles.push({
+        id: crypto.randomUUID(),
+        file,
+        status: 'pending',
+        progress: 0,
+        codeName,
+        category: globalCategory,
+      });
+    }
+    
+    setFiles(prev => [...prev, ...validFiles]);
+  }, [t, globalCategory]);
+
+  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files && e.target.files.length > 0) {
+      addFiles(e.target.files);
+    }
+    if (fileInputRef.current) {
+      fileInputRef.current.value = '';
     }
   };
 
-  const handleImport = async () => {
-    if (!textContent || !codeName) {
-      toast.error(t('common:error'));
-      return;
+  const handleDrop = useCallback((e: React.DragEvent) => {
+    e.preventDefault();
+    setIsDragOver(false);
+    if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
+      addFiles(e.dataTransfer.files);
     }
+  }, [addFiles]);
 
-    setStatus('importing');
-    setProgress(20);
-    setError(null);
+  const handleDragOver = (e: React.DragEvent) => {
+    e.preventDefault();
+    setIsDragOver(true);
+  };
 
+  const handleDragLeave = (e: React.DragEvent) => {
+    e.preventDefault();
+    setIsDragOver(false);
+  };
+
+  const removeFile = (id: string) => {
+    setFiles(prev => prev.filter(f => f.id !== id));
+  };
+
+  const updateFile = (id: string, updates: Partial<TxtFileItem>) => {
+    setFiles(prev => prev.map(f => f.id === id ? { ...f, ...updates } : f));
+  };
+
+  const processFile = async (fileItem: TxtFileItem, isFirst: boolean): Promise<boolean> => {
+    const { id, file, codeName, category } = fileItem;
+    
     try {
+      // Step 1: Read file content
+      updateFile(id, { status: 'reading', progress: 20 });
+      
+      const textContent = await file.text();
+      
+      updateFile(id, { progress: 40 });
+      
+      // Step 2: Send to import function
+      updateFile(id, { status: 'importing', progress: 60 });
+      
       const { data, error: fnError } = await supabase.functions.invoke('kb-import', {
         body: {
           textContent,
           codeName,
           category,
-          clearExisting
+          clearExisting: isFirst && clearExisting, // Only clear on first file
         },
       });
-
-      setProgress(90);
-
+      
       if (fnError) throw fnError;
       if (data.error) throw new Error(data.error);
-
-      setResult({
+      
+      updateFile(id, { 
+        status: 'success', 
+        progress: 100,
         imported: data.imported,
-        sampleTitles: data.sampleTitles || []
       });
-      setProgress(100);
-      setStatus('success');
-      toast.success(t('document_uploaded'));
-      onSuccess();
+      
+      return true;
+    } catch (error) {
+      updateFile(id, { 
+        status: 'error', 
+        progress: 100,
+        error: error instanceof Error ? error.message : 'Unknown error',
+      });
+      return false;
+    }
+  };
 
-    } catch (err) {
-      console.error('Import error:', err);
-      setStatus('error');
-      setError(err instanceof Error ? err.message : t('common:error'));
-      toast.error(t('common:error'));
+  const handleStartImport = async () => {
+    const pendingFiles = files.filter(f => f.status === 'pending');
+    if (pendingFiles.length === 0) return;
+    
+    setIsProcessing(true);
+    
+    let successCount = 0;
+    let errorCount = 0;
+    let totalImported = 0;
+    
+    for (let i = 0; i < pendingFiles.length; i++) {
+      const fileItem = pendingFiles[i];
+      const success = await processFile(fileItem, i === 0);
+      
+      if (success) {
+        successCount++;
+        const updatedFile = files.find(f => f.id === fileItem.id);
+        if (updatedFile?.imported) {
+          totalImported += updatedFile.imported;
+        }
+      } else {
+        errorCount++;
+        if (!skipOnError) break;
+      }
+    }
+    
+    setIsProcessing(false);
+    
+    if (successCount > 0) {
+      toast.success(`${t('document_uploaded')}: ${successCount} files, ${totalImported} articles`);
+      onSuccess();
     }
   };
 
   const handleClose = () => {
-    setTextContent('');
-    setCodeName('');
-    setCategory('other');
+    if (isProcessing) return;
+    setFiles([]);
+    setGlobalCategory('other');
     setClearExisting(false);
-    setStatus('idle');
-    setProgress(0);
-    setResult(null);
-    setError(null);
+    setSkipOnError(true);
     onOpenChange(false);
+  };
+
+  const handleGlobalCategoryChange = (newCategory: KbCategory) => {
+    setGlobalCategory(newCategory);
+    // Update all pending files
+    setFiles(prev => prev.map(f => 
+      f.status === 'pending' ? { ...f, category: newCategory } : f
+    ));
+  };
+
+  const pendingCount = files.filter(f => f.status === 'pending').length;
+  const successCount = files.filter(f => f.status === 'success').length;
+  const errorCount = files.filter(f => f.status === 'error').length;
+  const totalProgress = files.length > 0 
+    ? files.reduce((acc, f) => acc + f.progress, 0) / files.length 
+    : 0;
+  const totalImported = files.reduce((acc, f) => acc + (f.imported || 0), 0);
+
+  const getStatusIcon = (status: FileStatus) => {
+    switch (status) {
+      case 'pending':
+        return <FileText className="h-4 w-4 text-muted-foreground" />;
+      case 'reading':
+      case 'importing':
+        return <Loader2 className="h-4 w-4 animate-spin text-primary" />;
+      case 'success':
+        return <CheckCircle2 className="h-4 w-4 text-green-500" />;
+      case 'error':
+        return <XCircle className="h-4 w-4 text-destructive" />;
+    }
+  };
+
+  const getStatusText = (fileItem: TxtFileItem) => {
+    switch (fileItem.status) {
+      case 'pending':
+        return t('multi_upload_status_pending');
+      case 'reading':
+        return t('common:loading');
+      case 'importing':
+        return t('common:loading');
+      case 'success':
+        return `${fileItem.imported || 0} articles`;
+      case 'error':
+        return fileItem.error || t('common:error');
+    }
   };
 
   return (
     <Dialog open={open} onOpenChange={handleClose}>
-      <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+      <DialogContent className="max-w-2xl max-h-[90vh] flex flex-col">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
-            <FileText className="h-5 w-5" />
-            {t('upload_document')}
+            <FolderUp className="h-5 w-5" />
+            {t('bulk_txt_import_title', 'TXT Bulk Import')}
           </DialogTitle>
           <DialogDescription>
-            {t('supported_formats')}
+            {t('bulk_txt_import_description', 'Upload multiple TXT files for batch import')}
           </DialogDescription>
         </DialogHeader>
 
-        <div className="space-y-4 py-4">
-          {/* File Selection */}
-          <div className="space-y-2">
-            <Label>TXT</Label>
-            <Input
+        <div className="flex-1 space-y-4 overflow-hidden">
+          {/* Drop zone */}
+          <div
+            onDrop={handleDrop}
+            onDragOver={handleDragOver}
+            onDragLeave={handleDragLeave}
+            onClick={() => fileInputRef.current?.click()}
+            className={`
+              relative cursor-pointer rounded-lg border-2 border-dashed p-8
+              transition-colors text-center
+              ${isDragOver 
+                ? 'border-primary bg-primary/5' 
+                : 'border-muted-foreground/25 hover:border-primary/50'
+              }
+            `}
+          >
+            <input
               ref={fileInputRef}
               type="file"
               accept=".txt"
+              multiple
               onChange={handleFileSelect}
+              className="hidden"
             />
-            {textContent && (
-              <p className="text-sm text-muted-foreground">
-                {textContent.length.toLocaleString()} characters
-              </p>
-            )}
+            <Upload className="mx-auto h-10 w-10 text-muted-foreground" />
+            <p className="mt-2 text-sm font-medium">
+              {t('multi_upload_drop_hint')}
+            </p>
+            <p className="mt-1 text-xs text-muted-foreground">
+              TXT (max 100MB)
+            </p>
           </div>
 
-          {/* Code Name */}
-          <div className="space-y-2">
-            <Label>{t('document_title')}</Label>
-            <Input
-              value={codeName}
-              onChange={(e) => setCodeName(e.target.value)}
-              placeholder="RA Criminal Code"
-            />
-          </div>
-
-          {/* Category */}
-          <div className="space-y-2">
-            <Label>{t('categories')}</Label>
-            <Select value={category} onValueChange={(v) => setCategory(v as KbCategory)}>
-              <SelectTrigger>
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {categories.map((cat) => (
-                  <SelectItem key={cat.value} value={cat.value}>
-                    {t(cat.labelKey)}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-
-          {/* Clear Existing */}
-          <div className="flex items-center space-x-2">
-            <Checkbox
-              id="clearExisting"
-              checked={clearExisting}
-              onCheckedChange={(checked) => setClearExisting(checked === true)}
-            />
-            <Label htmlFor="clearExisting" className="text-sm">
-              Clear existing entries
-            </Label>
-          </div>
-
-          {/* Preview */}
-          {textContent && status === 'idle' && (
+          {/* Settings */}
+          <div className="grid gap-4 sm:grid-cols-2">
             <div className="space-y-2">
-              <Label>Preview</Label>
-              <Textarea
-                value={textContent.substring(0, 1000) + (textContent.length > 1000 ? '...' : '')}
-                readOnly
-                className="h-32 text-xs"
-              />
+              <Label>{t('categories')}</Label>
+              <Select 
+                value={globalCategory} 
+                onValueChange={(v) => handleGlobalCategoryChange(v as KbCategory)}
+                disabled={isProcessing}
+              >
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {categories.map((cat) => (
+                    <SelectItem key={cat.value} value={cat.value}>
+                      {t(cat.labelKey)}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
-          )}
 
-          {/* Import Button */}
-          {textContent && codeName && status === 'idle' && (
-            <Button onClick={handleImport} className="w-full">
-              <Upload className="mr-2 h-4 w-4" />
-              {t('upload_document')}
-            </Button>
-          )}
-
-          {/* Progress */}
-          {(status === 'reading' || status === 'importing') && (
-            <div className="space-y-2">
+            <div className="space-y-3">
               <div className="flex items-center gap-2">
-                <Loader2 className="h-4 w-4 animate-spin" />
-                <span className="text-sm">
-                  {t('common:loading')}
-                </span>
+                <Checkbox 
+                  id="clearExisting" 
+                  checked={clearExisting} 
+                  onCheckedChange={(v) => setClearExisting(v === true)}
+                  disabled={isProcessing}
+                />
+                <Label htmlFor="clearExisting" className="text-sm cursor-pointer">
+                  {t('bulk_clear_existing', 'Clear existing entries')}
+                </Label>
               </div>
-              <Progress value={progress} />
-            </div>
-          )}
-
-          {/* Error */}
-          {status === 'error' && error && (
-            <div className="flex items-center gap-2 rounded-lg border border-destructive bg-destructive/10 p-3">
-              <AlertTriangle className="h-5 w-5 text-destructive" />
-              <span className="text-sm text-destructive">{error}</span>
-            </div>
-          )}
-
-          {/* Success */}
-          {status === 'success' && result && (
-            <div className="space-y-4">
-              <div className="flex items-center gap-2 text-green-600">
-                <CheckCircle className="h-5 w-5" />
-                <span className="font-medium">
-                  {t('document_uploaded')}: {result.imported} articles
-                </span>
+              <div className="flex items-center gap-2">
+                <Checkbox 
+                  id="skipOnError" 
+                  checked={skipOnError} 
+                  onCheckedChange={(v) => setSkipOnError(v === true)}
+                  disabled={isProcessing}
+                />
+                <Label htmlFor="skipOnError" className="text-sm cursor-pointer">
+                  {t('multi_upload_skip_errors')}
+                </Label>
               </div>
+            </div>
+          </div>
 
-              {result.sampleTitles.length > 0 && (
-                <div className="space-y-2">
-                  <Label>Examples:</Label>
-                  <ul className="text-sm text-muted-foreground space-y-1">
-                    {result.sampleTitles.map((title, i) => (
-                      <li key={i}>• {title}</li>
-                    ))}
-                  </ul>
+          {/* File list */}
+          {files.length > 0 && (
+            <div className="space-y-2">
+              <div className="flex items-center justify-between">
+                <Label>{t('multi_upload_files_count', { count: files.length })}</Label>
+                {isProcessing && (
+                  <span className="text-xs text-muted-foreground">
+                    {Math.round(totalProgress)}%
+                  </span>
+                )}
+              </div>
+              
+              {isProcessing && (
+                <Progress value={totalProgress} className="h-2" />
+              )}
+              
+              <ScrollArea className="h-48 rounded border">
+                <div className="space-y-1 p-2">
+                  {files.map((fileItem) => (
+                    <div 
+                      key={fileItem.id}
+                      className="flex items-center gap-2 rounded p-2 text-sm hover:bg-muted/50"
+                    >
+                      {getStatusIcon(fileItem.status)}
+                      <div className="flex-1 min-w-0">
+                        <p className="truncate font-medium">{fileItem.codeName}</p>
+                        <p className="text-xs text-muted-foreground truncate">
+                          {fileItem.file.name}
+                        </p>
+                      </div>
+                      <span className="text-xs text-muted-foreground shrink-0">
+                        {getStatusText(fileItem)}
+                      </span>
+                      {fileItem.status === 'pending' && !isProcessing && (
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-6 w-6 shrink-0"
+                          onClick={() => removeFile(fileItem.id)}
+                        >
+                          <X className="h-3 w-3" />
+                        </Button>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </ScrollArea>
+              
+              {/* Summary */}
+              {(successCount > 0 || errorCount > 0) && (
+                <div className="flex gap-4 text-xs">
+                  {successCount > 0 && (
+                    <span className="text-green-600">
+                      {'\u2713'} {successCount} files ({totalImported} articles)
+                    </span>
+                  )}
+                  {errorCount > 0 && (
+                    <span className="text-destructive">{'\u2717'} {errorCount}</span>
+                  )}
                 </div>
               )}
-
-              <Button onClick={handleClose} className="w-full">
-                {t('common:close')}
-              </Button>
             </div>
           )}
         </div>
+
+        <DialogFooter className="gap-2 sm:gap-0">
+          <Button variant="outline" onClick={handleClose} disabled={isProcessing}>
+            {t('common:cancel')}
+          </Button>
+          <Button 
+            onClick={handleStartImport} 
+            disabled={pendingCount === 0 || isProcessing}
+          >
+            {isProcessing ? (
+              <>
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                {t('common:loading')}
+              </>
+            ) : (
+              <>
+                <Upload className="mr-2 h-4 w-4" />
+                {t('upload_document')} ({pendingCount})
+              </>
+            )}
+          </Button>
+        </DialogFooter>
       </DialogContent>
     </Dialog>
   );
