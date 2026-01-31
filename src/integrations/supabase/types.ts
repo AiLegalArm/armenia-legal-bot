@@ -1191,6 +1191,8 @@ export type Database = {
         | "healthcare_law"
         | "echr"
         | "eaeu_customs_code"
+        | "judicial_code"
+        | "constitutional_law"
       practice_category: "criminal" | "civil" | "administrative" | "echr"
       reminder_status: "active" | "completed" | "dismissed"
       reminder_type: "court_hearing" | "deadline" | "task" | "meeting" | "other"
@@ -1380,6 +1382,8 @@ export const Constants = {
         "healthcare_law",
         "echr",
         "eaeu_customs_code",
+        "judicial_code",
+        "constitutional_law",
       ],
       practice_category: ["criminal", "civil", "administrative", "echr"],
       reminder_status: ["active", "completed", "dismissed"],
