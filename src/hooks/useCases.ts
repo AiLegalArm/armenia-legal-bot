@@ -18,6 +18,11 @@ export interface CaseFilters {
   sortBy?: 'newest' | 'oldest' | 'priority';
 }
 
+// Escape special LIKE characters to prevent search manipulation
+function escapeLikePattern(input: string): string {
+  return input.replace(/[%_\\]/g, '\\$&');
+}
+
 export function useCases(filters: CaseFilters = {}) {
   const { toast } = useToast();
   const { t } = useTranslation('cases');
@@ -41,9 +46,10 @@ export function useCases(filters: CaseFilters = {}) {
         query = query.eq('priority', filters.priority);
       }
 
-      // Apply search filter
+      // Apply search filter with escaped special characters
       if (filters.search) {
-        query = query.or(`title.ilike.%${filters.search}%,case_number.ilike.%${filters.search}%,description.ilike.%${filters.search}%`);
+        const escapedSearch = escapeLikePattern(filters.search);
+        query = query.or(`title.ilike.%${escapedSearch}%,case_number.ilike.%${escapedSearch}%,description.ilike.%${escapedSearch}%`);
       }
 
       // Apply sorting
