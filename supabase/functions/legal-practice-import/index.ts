@@ -44,7 +44,7 @@ Extract the following information from the provided court decision text:
 
 Respond ONLY with a valid JSON object containing these fields. Do not include any explanation.`;
 
-  const response = await fetch("https://lovable.dev/api/chat/completions", {
+  const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
     method: "POST",
     headers: {
       "Authorization": `Bearer ${apiKey}`,
