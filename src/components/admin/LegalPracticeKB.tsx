@@ -31,7 +31,8 @@ import {
 import { Badge } from '@/components/ui/badge';
 import { Label } from '@/components/ui/label';
 import { toast } from 'sonner';
-import { Plus, Trash2, Edit, Search, FileText, Scale, AlertTriangle } from 'lucide-react';
+import { Plus, Trash2, Edit, Search, FileText, Scale, AlertTriangle, Sparkles } from 'lucide-react';
+import { LegalPracticeAIImport } from './LegalPracticeAIImport';
 
 // Types matching database schema
 type CourtType = 'first_instance' | 'appeal' | 'cassation' | 'constitutional' | 'echr';
@@ -113,6 +114,7 @@ export function LegalPracticeKB() {
   const [filterCategory, setFilterCategory] = useState<PracticeCategory | 'all'>('all');
   const [keyViolationsInput, setKeyViolationsInput] = useState('');
   const [articlesInput, setArticlesInput] = useState('');
+  const [aiImportOpen, setAiImportOpen] = useState(false);
 
   // Fetch documents
   const { data: documents, isLoading } = useQuery({
@@ -298,6 +300,14 @@ export function LegalPracticeKB() {
               ))}
             </SelectContent>
           </Select>
+          <Button 
+            variant="outline" 
+            onClick={() => setAiImportOpen(true)}
+            className="border-purple-500/50 text-purple-600 hover:bg-purple-500/10"
+          >
+            <Sparkles className="h-4 w-4 mr-2" />
+            AI {'\u053B\u0574\u057A\u0578\u0580\u057F'}
+          </Button>
           <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
             <DialogTrigger asChild>
               <Button onClick={() => { resetForm(); setIsDialogOpen(true); }}>
@@ -527,6 +537,12 @@ export function LegalPracticeKB() {
           </div>
         )}
       </CardContent>
+
+      {/* AI Import Dialog */}
+      <LegalPracticeAIImport 
+        open={aiImportOpen} 
+        onOpenChange={setAiImportOpen} 
+      />
     </Card>
   );
 }
