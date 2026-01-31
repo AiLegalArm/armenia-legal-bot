@@ -1,6 +1,7 @@
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
+import { useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import { format } from 'date-fns';
 import {
@@ -81,23 +82,37 @@ export function ReminderForm({
   const { t } = useTranslation('reminders');
   const { cases } = useCases();
 
-  const defaultDate = initialData
-    ? new Date(initialData.event_datetime)
-    : initialDate || new Date();
-
   const form = useForm<FormData>({
     resolver: zodResolver(formSchema),
     defaultValues: {
+      title: '',
+      description: '',
+      case_id: null,
+      reminder_type: 'task',
+      priority: 'medium',
+      event_date: new Date(),
+      event_time: format(new Date(), 'HH:mm'),
+      notify_before: [60],
+    },
+  });
+
+  // Reset form when initialData or initialDate changes
+  useEffect(() => {
+    const targetDate = initialData
+      ? new Date(initialData.event_datetime)
+      : initialDate || new Date();
+
+    form.reset({
       title: initialData?.title || '',
       description: initialData?.description || '',
       case_id: initialData?.case_id || null,
       reminder_type: initialData?.reminder_type || 'task',
       priority: initialData?.priority || 'medium',
-      event_date: defaultDate,
-      event_time: format(defaultDate, 'HH:mm'),
+      event_date: targetDate,
+      event_time: format(targetDate, 'HH:mm'),
       notify_before: initialData?.notify_before || [60],
-    },
-  });
+    });
+  }, [initialData, initialDate, form]);
 
   const handleSubmit = (data: FormData) => {
     const datetime = new Date(data.event_date);
@@ -166,7 +181,7 @@ export function ReminderForm({
                 render={({ field }) => (
                   <FormItem>
                     <FormLabel>{t('type')}</FormLabel>
-                    <Select onValueChange={field.onChange} defaultValue={field.value}>
+                    <Select onValueChange={field.onChange} value={field.value}>
                       <FormControl>
                         <SelectTrigger>
                           <SelectValue placeholder={t('select_type')} />
@@ -191,7 +206,7 @@ export function ReminderForm({
                 render={({ field }) => (
                   <FormItem>
                     <FormLabel>{t('priority')}</FormLabel>
-                    <Select onValueChange={field.onChange} defaultValue={field.value}>
+                    <Select onValueChange={field.onChange} value={field.value}>
                       <FormControl>
                         <SelectTrigger>
                           <SelectValue placeholder={t('select_priority')} />
@@ -219,7 +234,7 @@ export function ReminderForm({
                   <FormLabel>{t('linked_case')}</FormLabel>
                   <Select 
                     onValueChange={(value) => field.onChange(value === 'none' ? null : value)} 
-                    defaultValue={field.value || 'none'}
+                    value={field.value || 'none'}
                   >
                     <FormControl>
                       <SelectTrigger>
