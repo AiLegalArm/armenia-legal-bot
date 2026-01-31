@@ -115,5 +115,6 @@
   "document_generated": "Document generated successfully",
   "generation_failed": "Document generation failed",
   "skip_to_input": "Skip to input",
-  "new_complaint": "New Complaint"
+  "new_complaint": "New Complaint",
+  "complaint": "Complaint"
 }
