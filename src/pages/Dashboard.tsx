@@ -180,22 +180,6 @@ const Dashboard = () => {
             )}
           </div>
           <div className="grid grid-cols-3 sm:flex sm:flex-wrap gap-2">
-            <Button variant="outline" size="sm" onClick={() => navigate('/calendar')} className="flex-col sm:flex-row h-auto py-2 sm:py-2 sm:h-9">
-              <CalendarIcon className="h-4 w-4 sm:mr-2" />
-              <span className="text-xs sm:text-sm mt-1 sm:mt-0">{t('calendar:calendar', 'Calendar')}</span>
-            </Button>
-            <Button variant="outline" size="sm" onClick={() => navigate('/transcriptions')} className="flex-col sm:flex-row h-auto py-2 sm:py-2 sm:h-9">
-              <Mic className="h-4 w-4 sm:mr-2" />
-              <span className="text-xs sm:text-sm mt-1 sm:mt-0">{t('audio:audio', 'Audio')}</span>
-            </Button>
-            <Button variant="outline" size="sm" onClick={() => setDocGeneratorOpen(true)} className="flex-col sm:flex-row h-auto py-2 sm:py-2 sm:h-9">
-              <FileText className="h-4 w-4 sm:mr-2" />
-              <span className="text-xs sm:text-sm mt-1 sm:mt-0">{t('common:documents', 'Documents')}</span>
-            </Button>
-            <Button variant="default" size="sm" onClick={() => setComplaintWizardOpen(true)} className="flex-col sm:flex-row h-auto py-2 sm:py-2 sm:h-9">
-              <FileWarning className="h-4 w-4 sm:mr-2" />
-              <span className="text-xs sm:text-sm mt-1 sm:mt-0">{t('common:complaint', 'Complaint')}</span>
-            </Button>
             {/* KB Search - Available for all users */}
             <Sheet open={kbSearchOpen} onOpenChange={setKbSearchOpen}>
               <SheetTrigger asChild>
@@ -236,6 +220,22 @@ const Dashboard = () => {
                 </div>
               </SheetContent>
             </Sheet>
+            <Button variant="outline" size="sm" onClick={() => navigate('/calendar')} className="flex-col sm:flex-row h-auto py-2 sm:py-2 sm:h-9">
+              <CalendarIcon className="h-4 w-4 sm:mr-2" />
+              <span className="text-xs sm:text-sm mt-1 sm:mt-0">{t('calendar:calendar', 'Calendar')}</span>
+            </Button>
+            <Button variant="outline" size="sm" onClick={() => navigate('/transcriptions')} className="flex-col sm:flex-row h-auto py-2 sm:py-2 sm:h-9">
+              <Mic className="h-4 w-4 sm:mr-2" />
+              <span className="text-xs sm:text-sm mt-1 sm:mt-0">{t('audio:audio', 'Audio')}</span>
+            </Button>
+            <Button variant="outline" size="sm" onClick={() => setDocGeneratorOpen(true)} className="flex-col sm:flex-row h-auto py-2 sm:py-2 sm:h-9">
+              <FileText className="h-4 w-4 sm:mr-2" />
+              <span className="text-xs sm:text-sm mt-1 sm:mt-0">{t('common:documents', 'Documents')}</span>
+            </Button>
+            <Button variant="outline" size="sm" onClick={() => setComplaintWizardOpen(true)} className="flex-col sm:flex-row h-auto py-2 sm:py-2 sm:h-9">
+              <FileWarning className="h-4 w-4 sm:mr-2" />
+              <span className="text-xs sm:text-sm mt-1 sm:mt-0">{t('common:complaint', 'Complaint')}</span>
+            </Button>
             {/* KB Management - Admin only */}
             {isAdmin && (
               <Button variant="outline" size="sm" onClick={() => navigate('/kb')} className="flex-col sm:flex-row h-auto py-2 sm:py-2 sm:h-9">
