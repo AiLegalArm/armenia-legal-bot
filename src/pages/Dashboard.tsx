@@ -28,7 +28,7 @@ import {
   Calendar as CalendarIcon,
   FileText,
   Mic,
-  Search,
+  MessageCircle,
   FileWarning
 } from 'lucide-react';
 import { DocumentGeneratorDialog } from '@/components/documents/DocumentGeneratorDialog';
@@ -69,6 +69,7 @@ const Dashboard = () => {
   const [docGeneratorOpen, setDocGeneratorOpen] = useState(false);
   const [complaintWizardOpen, setComplaintWizardOpen] = useState(false);
   const [kbSearchOpen, setKbSearchOpen] = useState(false);
+  const [legalChatOpen, setLegalChatOpen] = useState(false);
   const [kbFilters, setKbFilters] = useState<KBFiltersType>({ page: 1, pageSize: 10 });
 
   const { cases, isLoading, createCase, updateCase, deleteCase } = useCases(filters);
@@ -180,46 +181,60 @@ const Dashboard = () => {
             )}
           </div>
           <div className="grid grid-cols-3 sm:flex sm:flex-wrap gap-2">
-            {/* KB Search - Available for all users */}
-            <Sheet open={kbSearchOpen} onOpenChange={setKbSearchOpen}>
-              <SheetTrigger asChild>
-                <Button variant="outline" size="sm" className="flex-col sm:flex-row h-auto py-2 sm:py-2 sm:h-9">
-                  <Search className="h-4 w-4 sm:mr-2" />
-                  <span className="text-xs sm:text-sm mt-1 sm:mt-0">{t('common:search', 'Search')}</span>
-                </Button>
-              </SheetTrigger>
-              <SheetContent className="w-full sm:max-w-2xl overflow-y-auto">
-                <SheetHeader>
-                  <SheetTitle>{t('kb:knowledge_base')}</SheetTitle>
-                  <SheetDescription>
-                    {t('dashboard:search_kb')}
-                  </SheetDescription>
-                </SheetHeader>
-                <div className="mt-6 space-y-4">
-                  <KBSearchFilters filters={kbFilters} onFiltersChange={setKbFilters} />
-                  
-                  {kbLoading ? (
-                    <div className="flex items-center justify-center py-8">
-                      <Loader2 className="h-6 w-6 animate-spin" />
-                    </div>
-                  ) : kbDocuments.length === 0 ? (
-                    <p className="text-center text-muted-foreground py-8">
-                      {t('kb:no_results')}
-                    </p>
-                  ) : (
-                    <div className="space-y-3">
-                      {kbDocuments.map((doc) => (
-                        <KBDocumentCard
-                          key={doc.id}
-                          document={doc}
-                          isAdmin={false}
-                        />
-                      ))}
-                    </div>
-                  )}
-                </div>
-              </SheetContent>
-            </Sheet>
+            {/* AI Legal Chat - Available for all users (replaces KB Search for non-admins) */}
+            {!isAdmin && (
+              <Button 
+                variant="outline" 
+                size="sm" 
+                onClick={() => setLegalChatOpen(true)}
+                className="flex-col sm:flex-row h-auto py-2 sm:py-2 sm:h-9"
+              >
+                <MessageCircle className="h-4 w-4 sm:mr-2" />
+                <span className="text-xs sm:text-sm mt-1 sm:mt-0">{t('ai:ai_name', 'AI Legal')}</span>
+              </Button>
+            )}
+            {/* KB Search - Admin only */}
+            {isAdmin && (
+              <Sheet open={kbSearchOpen} onOpenChange={setKbSearchOpen}>
+                <SheetTrigger asChild>
+                  <Button variant="outline" size="sm" className="flex-col sm:flex-row h-auto py-2 sm:py-2 sm:h-9">
+                    <BookOpen className="h-4 w-4 sm:mr-2" />
+                    <span className="text-xs sm:text-sm mt-1 sm:mt-0">{t('common:search', 'Search')}</span>
+                  </Button>
+                </SheetTrigger>
+                <SheetContent className="w-full sm:max-w-2xl overflow-y-auto">
+                  <SheetHeader>
+                    <SheetTitle>{t('kb:knowledge_base')}</SheetTitle>
+                    <SheetDescription>
+                      {t('dashboard:search_kb')}
+                    </SheetDescription>
+                  </SheetHeader>
+                  <div className="mt-6 space-y-4">
+                    <KBSearchFilters filters={kbFilters} onFiltersChange={setKbFilters} />
+                    
+                    {kbLoading ? (
+                      <div className="flex items-center justify-center py-8">
+                        <Loader2 className="h-6 w-6 animate-spin" />
+                      </div>
+                    ) : kbDocuments.length === 0 ? (
+                      <p className="text-center text-muted-foreground py-8">
+                        {t('kb:no_results')}
+                      </p>
+                    ) : (
+                      <div className="space-y-3">
+                        {kbDocuments.map((doc) => (
+                          <KBDocumentCard
+                            key={doc.id}
+                            document={doc}
+                            isAdmin={false}
+                          />
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                </SheetContent>
+              </Sheet>
+            )}
             <Button variant="outline" size="sm" onClick={() => navigate('/calendar')} className="flex-col sm:flex-row h-auto py-2 sm:py-2 sm:h-9">
               <CalendarIcon className="h-4 w-4 sm:mr-2" />
               <span className="text-xs sm:text-sm mt-1 sm:mt-0">{t('calendar:calendar', 'Calendar')}</span>
@@ -417,7 +432,7 @@ const Dashboard = () => {
       </AlertDialog>
 
       {/* Legal AI Chatbot */}
-      <LegalChatBot />
+      <LegalChatBot isOpen={legalChatOpen} onOpenChange={setLegalChatOpen} />
 
       {/* Document Generator Dialog */}
       <DocumentGeneratorDialog
