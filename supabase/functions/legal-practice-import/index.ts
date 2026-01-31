@@ -26,6 +26,9 @@ interface ExtractedData {
 }
 
 async function extractWithAI(textContent: string, apiKey: string): Promise<ExtractedData> {
+  // Optimization: Only analyze first 10K chars - metadata is usually at the beginning
+  const textForAnalysis = textContent.substring(0, 10000);
+  
   const systemPrompt = `You are a legal document analyzer specializing in Armenian court decisions.
 Extract the following information from the provided court decision text:
 
@@ -40,7 +43,6 @@ Extract the following information from the provided court decision text:
    Possible codes: criminal_code, civil_code, administrative_code, criminal_procedure_code, civil_procedure_code
 9. key_violations - Array of key legal violations or issues identified
 10. legal_reasoning_summary - Brief summary of the court's legal reasoning (2-3 sentences)
-11. content_text - The full cleaned text of the decision
 
 Respond ONLY with a valid JSON object containing these fields. Do not include any explanation.`;
 
@@ -51,10 +53,10 @@ Respond ONLY with a valid JSON object containing these fields. Do not include an
       "Content-Type": "application/json",
     },
     body: JSON.stringify({
-      model: "google/gemini-2.5-flash",
+      model: "google/gemini-2.5-flash-lite", // Optimized: faster & cheaper model
       messages: [
         { role: "system", content: systemPrompt },
-        { role: "user", content: `Analyze this legal document and extract the required fields:\n\n${textContent.substring(0, 50000)}` }
+        { role: "user", content: `Analyze this legal document and extract the required fields:\n\n${textForAnalysis}` }
       ],
       temperature: 0.1,
     }),
