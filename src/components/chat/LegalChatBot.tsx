@@ -193,16 +193,7 @@ export function LegalChatBot({ isOpen: controlledIsOpen, onOpenChange }: LegalCh
   };
 
   if (!isOpen) {
-    return (
-      <Button
-        onClick={() => setIsOpen(true)}
-        className="fixed bottom-4 right-4 z-50 h-14 w-14 rounded-full shadow-lg"
-        size="icon"
-      >
-        <MessageCircle className="h-6 w-6" />
-        <span className="sr-only">Open Legal AI Chat</span>
-      </Button>
-    );
+    return null;
   }
 
   return (
