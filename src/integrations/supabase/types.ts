@@ -1201,6 +1201,13 @@ export type Database = {
         | "cassation_criminal"
         | "cassation_civil"
         | "cassation_administrative"
+        | "subsoil_code"
+        | "penal_enforcement_code"
+        | "constitutional_court_decisions"
+        | "echr_judgments"
+        | "government_decisions"
+        | "central_electoral_commission_decisions"
+        | "prime_minister_decisions"
       practice_category: "criminal" | "civil" | "administrative" | "echr"
       reminder_status: "active" | "completed" | "dismissed"
       reminder_type: "court_hearing" | "deadline" | "task" | "meeting" | "other"
@@ -1400,6 +1407,13 @@ export const Constants = {
         "cassation_criminal",
         "cassation_civil",
         "cassation_administrative",
+        "subsoil_code",
+        "penal_enforcement_code",
+        "constitutional_court_decisions",
+        "echr_judgments",
+        "government_decisions",
+        "central_electoral_commission_decisions",
+        "prime_minister_decisions",
       ],
       practice_category: ["criminal", "civil", "administrative", "echr"],
       reminder_status: ["active", "completed", "dismissed"],
