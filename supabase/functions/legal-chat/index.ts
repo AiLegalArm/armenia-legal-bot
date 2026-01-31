@@ -11,6 +11,19 @@ interface KBSearchResult {
   rank: number;
 }
 
+// Type for legal practice search results
+interface LegalPracticeResult {
+  id: string;
+  title: string;
+  content_text: string;
+  practice_category: string;
+  court_type: string;
+  outcome: string;
+  legal_reasoning_summary: string | null;
+  applied_articles: unknown;
+  key_violations: string[] | null;
+}
+
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
@@ -33,8 +46,13 @@ const LEGAL_AI_SYSTEM_PROMPT = `\u0534\u0578\u0582 Ai Legal Armenia-\u056B \u056
 - \u056F\u0578\u0564 \u0563\u0580\u0565\u056C, \u057A\u0580\u0578\u0574\u057A\u057F\u0565\u0580 \u0570\u0561\u0575\u057F\u0576\u0565\u056C
 - \u0570\u0561\u0574\u0561\u056F\u0561\u0580\u0563\u0561\u0575\u056B\u0576 \u0570\u0580\u0561\u0570\u0561\u0576\u0563\u0576\u0565\u0580 \u057F\u0580\u0561\u0574\u0561\u0564\u0580\u0565\u056C
 
-\u053F\u0548\u0546\u054F\u0535\u053F\u054D\u054F \u0533\u053B\u054F\u0535\u053C\u053B\u0554\u0546\u0535\u0550\u053B \u0532\u0531\u0536\u0531\u0545\u053B\u0551:
+\u053F\u0548\u0546\u054F\u0535\u053F\u054D\u054F \u0533\u053B\u054F\u0535\u053C\u053B\u0554\u0546\u0535\u0550\u053B \u0532\u0531\u0536\u0531\u0545\u053B\u0551 (\u0585\u0580\u0565\u0576\u0584\u0576\u0565\u0580, \u0570\u0578\u0564\u057E\u0561\u056E\u0576\u0565\u0580):
 {CONTEXT}
+
+\u0534\u0531\u054F\u0531\u053F\u0531\u0546 \u054A\u0550\u0531\u053F\u054F\u053B\u053F\u0531 (\u0561\u0576\u0561\u056C\u0578\u0563 \u0564\u0561\u057F\u0561\u056F\u0561\u0576 \u0578\u0580\u0578\u0577\u0578\u0582\u0574\u0576\u0565\u0580):
+{PRACTICE_CONTEXT}
+
+\u053F\u0531\u0550\u0535\u054E\u0548\u0550: \u0534\u0561\u057F\u0561\u056F\u0561\u0576 \u057A\u0580\u0561\u056F\u057F\u056B\u056F\u0561\u0575\u056B \u0570\u0572\u0578\u0582\u0574\u0576\u0565\u0580\u0568 \u0585\u0563\u057F\u0561\u0563\u0578\u0580\u056E\u0565\u056C \u0574\u056B\u0561\u0575\u0576 \u0578\u0580\u057A\u0565\u057D \u0561\u0576\u0561\u056C\u0578\u0563\u0576\u0565\u0580\u0589 \u054A\u0561\u0580\u057F\u0561\u0564\u056B\u0580 \u0576\u0577\u0565\u056C. "\u0531\u0576\u0561\u056C\u0578\u0563 \u0564\u0561\u057F\u0561\u056F\u0561\u0576 \u057A\u0580\u0561\u056F\u057F\u056B\u056F\u0561 (KB)"
 
 \u0555\u0533\u054F\u0531\u054F\u0535\u0550\u053B \u0540\u0531\u0550\u0551:
 {USER_MESSAGE}`;
@@ -164,9 +182,72 @@ serve(async (req) => {
       console.error("Knowledge base search error:", searchErr);
     }
 
+    // Search legal practice database for relevant court decisions
+    let practiceContext = "";
+    try {
+      const keywords = message
+        .split(/\s+/)
+        .filter((w) => w.length > 2 && !/^[0-9]+$/.test(w))
+        .slice(0, 6);
+
+      if (keywords.length > 0) {
+        const orConditions = keywords
+          .map((k) => `title.ilike.%${k}%,content_text.ilike.%${k}%,legal_reasoning_summary.ilike.%${k}%`)
+          .join(',');
+
+        const { data: practiceResults, error: practiceErr } = await supabase
+          .from("legal_practice_kb")
+          .select("id, title, content_text, practice_category, court_type, outcome, legal_reasoning_summary, applied_articles, key_violations")
+          .eq("is_active", true)
+          .or(orConditions)
+          .limit(10);
+
+        if (!practiceErr && practiceResults && practiceResults.length > 0) {
+          // Score and sort by relevance
+          const scored = practiceResults.map((r: LegalPracticeResult) => {
+            let score = 0;
+            const titleLower = (r.title || '').toLowerCase();
+            const contentLower = (r.content_text || '').toLowerCase();
+            const reasoningLower = (r.legal_reasoning_summary || '').toLowerCase();
+
+            for (const kw of keywords) {
+              const kwLower = kw.toLowerCase();
+              if (titleLower.includes(kwLower)) score += 3;
+              if (reasoningLower.includes(kwLower)) score += 2;
+              if (contentLower.includes(kwLower)) score += 1;
+            }
+            return { ...r, score };
+          });
+
+          const topPractice = scored
+            .filter((r) => r.score > 0)
+            .sort((a, b) => b.score - a.score)
+            .slice(0, 3);
+
+          if (topPractice.length > 0) {
+            console.log(`Found ${topPractice.length} legal practice results`);
+            
+            practiceContext = topPractice.map((r, i) => {
+              const articles = r.applied_articles ? JSON.stringify(r.applied_articles) : "\u0546/\u0531";
+              const violations = r.key_violations?.join(", ") || "\u0546/\u0531";
+              return `[\u054A\u0580\u0561\u056F\u057F\u056B\u056F\u0561 ${i + 1}] ${r.title}
+\u0534\u0561\u057F\u0561\u0580\u0561\u0576: ${r.court_type} | \u053F\u0561\u057F\u0565\u0563\u0578\u0580\u056B\u0561: ${r.practice_category} | \u0535\u056C\u0584: ${r.outcome}
+\u053F\u056B\u0580\u0561\u057C\u057E\u0561\u056E \u0570\u0578\u0564\u057E\u0561\u056E\u0576\u0565\u0580: ${articles}
+\u0540\u056B\u0574\u0576\u0561\u056F\u0561\u0576 \u056D\u0561\u056D\u057F\u0578\u0582\u0574\u0576\u0565\u0580: ${violations}
+\u053B\u0580\u0561\u057E\u0561\u056F\u0561\u0576 \u0570\u056B\u0574\u0576\u0561\u057E\u0578\u0580\u0578\u0582\u0574: ${r.legal_reasoning_summary || "\u0546/\u0531"}
+\u0544\u0561\u057D\u0576\u0561\u0563\u056B\u0580: ${r.content_text.substring(0, 1500)}`;
+            }).join("\n\n---\n\n");
+          }
+        }
+      }
+    } catch (practiceErr) {
+      console.error("Legal practice search error:", practiceErr);
+    }
+
     // Build the final prompt with context
     const systemPromptWithContext = LEGAL_AI_SYSTEM_PROMPT
       .replace("{CONTEXT}", kbContext || "\u0533\u056B\u057F\u0565\u056C\u056B\u0584\u0576\u0565\u0580\u056B \u0562\u0561\u0566\u0561\u0575\u0578\u0582\u0574 \u0570\u0561\u0574\u0561\u057A\u0561\u057F\u0561\u057D\u056D\u0561\u0576 \u057F\u0565\u0572\u0565\u056F\u0561\u057F\u057E\u0578\u0582\u0569\u0575\u0578\u0582\u0576 \u0579\u056B \u0563\u057F\u0576\u057E\u0565\u056C\u0589")
+      .replace("{PRACTICE_CONTEXT}", practiceContext || "\u0534\u0561\u057F\u0561\u056F\u0561\u0576 \u057A\u0580\u0561\u056F\u057F\u056B\u056F\u0561\u0575\u056B \u0570\u0561\u0574\u0561\u057A\u0561\u057F\u0561\u057D\u056D\u0561\u0576 \u0578\u0580\u0578\u0577\u0578\u0582\u0574\u0576\u0565\u0580 \u0579\u0565\u0576 \u0563\u057F\u0576\u057E\u0565\u056C\u0589")
       .replace("{USER_MESSAGE}", message);
 
     // Build messages array with conversation history
@@ -232,7 +313,7 @@ serve(async (req) => {
         _model_name: "google/gemini-2.5-pro",
         _tokens_used: null,
         _estimated_cost: 0.003,
-        _metadata: { message_length: message.length, has_context: !!kbContext }
+        _metadata: { message_length: message.length, has_context: !!kbContext, has_practice: !!practiceContext }
       });
     } catch (logErr) {
       console.error("Failed to log API usage:", logErr);
