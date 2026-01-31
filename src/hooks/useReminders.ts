@@ -142,10 +142,13 @@ export function useReminders(dateRange?: { start: Date; end: Date }) {
 
   const completeReminder = useMutation({
     mutationFn: async (id: string) => {
+      if (!user) throw new Error('User not authenticated');
+      
       const { data, error } = await supabase
         .from('reminders')
         .update({ status: 'completed' as ReminderStatus })
         .eq('id', id)
+        .eq('user_id', user.id) // IDOR protection: only update own reminders
         .select()
         .single();
 
@@ -156,14 +159,21 @@ export function useReminders(dateRange?: { start: Date; end: Date }) {
       queryClient.invalidateQueries({ queryKey: ['reminders'] });
       toast.success(t('reminder_completed'));
     },
+    onError: (error) => {
+      console.error('Error completing reminder:', error);
+      toast.error(t('reminder_update_error'));
+    },
   });
 
   const dismissReminder = useMutation({
     mutationFn: async (id: string) => {
+      if (!user) throw new Error('User not authenticated');
+      
       const { data, error } = await supabase
         .from('reminders')
         .update({ status: 'dismissed' as ReminderStatus })
         .eq('id', id)
+        .eq('user_id', user.id) // IDOR protection: only update own reminders
         .select()
         .single();
 
@@ -173,6 +183,10 @@ export function useReminders(dateRange?: { start: Date; end: Date }) {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['reminders'] });
       toast.success(t('reminder_dismissed'));
+    },
+    onError: (error) => {
+      console.error('Error dismissing reminder:', error);
+      toast.error(t('reminder_update_error'));
     },
   });
 
