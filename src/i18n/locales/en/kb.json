@@ -1,4 +1,7 @@
 {
+  "bulk_txt_import_title": "Bulk TXT Import",
+  "bulk_txt_import_description": "Upload multiple TXT files for batch import",
+  "bulk_clear_existing": "Clear existing entries",
   "knowledge_base": "Knowledge Base",
   "search_kb": "Search knowledge base...",
   "categories": "Categories",
