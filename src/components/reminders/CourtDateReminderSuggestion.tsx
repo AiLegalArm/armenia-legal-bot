@@ -1,9 +1,10 @@
 import { useState, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Bell, X } from 'lucide-react';
+import { Bell } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { useReminders, type CreateReminderInput } from '@/hooks/useReminders';
+import { isCourtReminderDismissed, dismissCourtReminder } from '@/lib/localStorage-utils';
 
 interface CourtDateReminderSuggestionProps {
   caseId: string;
@@ -34,10 +35,9 @@ export function CourtDateReminderSuggestion({
     setHasReminder(existing);
   }, [reminders, caseId, courtDate]);
 
-  // Check if dismissed in localStorage
+  // Check if dismissed using consolidated storage
   useEffect(() => {
-    const dismissedKey = `court_reminder_dismissed_${caseId}_${courtDate}`;
-    if (localStorage.getItem(dismissedKey)) {
+    if (isCourtReminderDismissed(caseId, courtDate)) {
       setDismissed(true);
     }
   }, [caseId, courtDate]);
@@ -63,8 +63,7 @@ export function CourtDateReminderSuggestion({
   };
 
   const handleDismiss = () => {
-    const dismissedKey = `court_reminder_dismissed_${caseId}_${courtDate}`;
-    localStorage.setItem(dismissedKey, 'true');
+    dismissCourtReminder(caseId, courtDate);
     setDismissed(true);
   };
 
