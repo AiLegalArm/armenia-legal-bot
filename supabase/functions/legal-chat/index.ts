@@ -91,7 +91,7 @@ serve(async (req) => {
       // Extract keywords (words longer than 2 chars)
       const keywords = message
         .split(/\s+/)
-        .filter((w: string) => w.length > 2 && !/^[0-9]+$/.test(w))
+        .filter((w) => w.length > 2 && !/^[0-9]+$/.test(w))
         .slice(0, 8); // Take first 8 keywords
       
       console.log(`Searching KB with keywords: ${keywords.join(', ')}`);
@@ -99,7 +99,7 @@ serve(async (req) => {
       if (keywords.length > 0) {
         // Build OR conditions for each keyword searching in title and content
         const orConditions = keywords
-          .map((k: string) => `title.ilike.%${k}%,content_text.ilike.%${k}%`)
+          .map((k) => `title.ilike.%${k}%,content_text.ilike.%${k}%`)
           .join(',');
         
         const { data: keywordResults, error: kwError } = await supabase
@@ -111,7 +111,11 @@ serve(async (req) => {
 
         if (!kwError && keywordResults && keywordResults.length > 0) {
           // Score results by how many keywords they match
-          const scoredResults = keywordResults.map((r: any) => {
+          interface ScoredResult extends KBSearchResult {
+            rank: number;
+          }
+          
+          const scoredResults: ScoredResult[] = keywordResults.map((r) => {
             let score = 0;
             const titleLower = (r.title || '').toLowerCase();
             const contentLower = (r.content_text || '').toLowerCase();
@@ -126,7 +130,7 @@ serve(async (req) => {
           
           // Sort by score and take top 5
           topResults = scoredResults
-            .sort((a: any, b: any) => b.rank - a.rank)
+            .sort((a, b) => b.rank - a.rank)
             .slice(0, 5);
           
           console.log(`Found ${keywordResults.length} results, using top ${topResults.length}`);
