@@ -5,6 +5,7 @@ import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { supabase } from '@/integrations/supabase/client';
+import { getSupabaseStorageKey } from '@/lib/supabase-storage-key';
 import { LanguageSwitcher } from '@/components/LanguageSwitcher';
 import { TurnstileCaptcha } from '@/components/TurnstileCaptcha';
 import { Button } from '@/components/ui/button';
@@ -87,7 +88,7 @@ const Login = () => {
       // Handle "Remember me" preference
       if (!rememberMe) {
         // Move session to sessionStorage (expires on browser close)
-        const sessionKey = `sb-nrmmgcgwriyrlbcpoqvk-auth-token`;
+        const sessionKey = getSupabaseStorageKey();
         const sessionData = localStorage.getItem(sessionKey);
         if (sessionData) {
           sessionStorage.setItem(sessionKey, sessionData);
