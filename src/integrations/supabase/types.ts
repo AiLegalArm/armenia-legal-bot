@@ -1193,6 +1193,14 @@ export type Database = {
         | "eaeu_customs_code"
         | "judicial_code"
         | "constitutional_law"
+        | "real_estate_code"
+        | "housing_code"
+        | "criminal_economic_code"
+        | "justice_ministry_code"
+        | "economic_code"
+        | "cassation_criminal"
+        | "cassation_civil"
+        | "cassation_administrative"
       practice_category: "criminal" | "civil" | "administrative" | "echr"
       reminder_status: "active" | "completed" | "dismissed"
       reminder_type: "court_hearing" | "deadline" | "task" | "meeting" | "other"
@@ -1384,6 +1392,14 @@ export const Constants = {
         "eaeu_customs_code",
         "judicial_code",
         "constitutional_law",
+        "real_estate_code",
+        "housing_code",
+        "criminal_economic_code",
+        "justice_ministry_code",
+        "economic_code",
+        "cassation_criminal",
+        "cassation_civil",
+        "cassation_administrative",
       ],
       practice_category: ["criminal", "civil", "administrative", "echr"],
       reminder_status: ["active", "completed", "dismissed"],
