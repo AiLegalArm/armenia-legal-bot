@@ -28,6 +28,7 @@ import { Label } from '@/components/ui/label';
 import { exportAnalysisToPDF, exportMultipleAnalysesToPDF, exportCaseDetailToPDF } from '@/lib/pdfExport';
 import { PdfExportButton } from '@/components/PdfExportButton';
 import { format } from 'date-fns';
+import { getFunctionsInvokeErrorMessage, isNoDataForExtractionMessage } from '@/lib/functionsInvokeError';
 import { 
   Scale, 
   ArrowLeft, 
@@ -86,7 +87,7 @@ const priorityColors: Record<string, string> = {
 const CaseDetail = () => {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
-  const { t, i18n } = useTranslation(['cases', 'common', 'ai', 'disclaimer', 'reminders']);
+  const { t, i18n } = useTranslation(['cases', 'common', 'ai', 'disclaimer', 'reminders', 'errors']);
   const { user, signOut, isClient, isAdmin } = useAuth();
   
   const { data: caseData, isLoading } = useCase(id);
@@ -130,9 +131,10 @@ const CaseDetail = () => {
         body: { caseId: caseData.id }
       });
       
-      if (error) {
+        if (error) {
+         const parsedMsg = getFunctionsInvokeErrorMessage(error);
         // Check for 402 Payment Required error
-        if (error.message?.includes('402') || error.message?.includes('Payment required')) {
+         if (parsedMsg.includes('402') || parsedMsg.includes('Payment required') || parsedMsg.includes('credits')) {
           setAiCreditsExhaustedLocal(true);
           toast({
             title: t('cases:ai_credits_exhausted'),
@@ -140,7 +142,7 @@ const CaseDetail = () => {
           });
           return;
         }
-        throw error;
+         throw new Error(parsedMsg);
       }
       
       if (data.success) {
@@ -164,10 +166,13 @@ const CaseDetail = () => {
       }
     } catch (error) {
       console.error('Extraction error:', error);
-      const errorMsg = error instanceof Error ? error.message : 'Unknown error';
+      const rawMsg = error instanceof Error ? error.message : getFunctionsInvokeErrorMessage(error);
+      const errorMsg = isNoDataForExtractionMessage(rawMsg)
+        ? t('cases:extraction_no_data')
+        : rawMsg;
       
       // Check for 402 in catch block
-      if (errorMsg.includes('402') || errorMsg.includes('Payment required')) {
+      if (rawMsg.includes('402') || rawMsg.includes('Payment required') || rawMsg.includes('credits')) {
         setAiCreditsExhaustedLocal(true);
         toast({
           title: t('cases:ai_credits_exhausted'),
