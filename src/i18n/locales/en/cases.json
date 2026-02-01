@@ -227,5 +227,7 @@
   "fields_extracted": "Facts and legal question extracted successfully",
   "extraction_partial": "Could not extract all fields: {{error}}",
   "extraction_failed": "Failed to extract case fields",
-  "extraction_no_data": "No data to auto-extract. Add a description or run OCR/transcription first."
+  "extraction_no_data": "No data to auto-extract. Add a description or run OCR/transcription first.",
+  "generate_complaint": "Generate Complaint",
+  "generate_complaint_desc": "Create an appeal or cassation complaint based on case materials and AI analyses"
 }

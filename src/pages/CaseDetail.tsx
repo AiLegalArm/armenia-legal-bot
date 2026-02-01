@@ -16,6 +16,7 @@ import { CasePdfUpload } from '@/components/cases/CasePdfUpload';
 import { CaseComments } from '@/components/cases/CaseComments';
 import { FeedbackStars } from '@/components/FeedbackStars';
 import { DocumentGeneratorDialog } from '@/components/documents/DocumentGeneratorDialog';
+import { CaseComplaintGenerator } from '@/components/cases/CaseComplaintGenerator';
 import { CaseReminders, CourtDateReminderSuggestion, NotificationBell } from '@/components/reminders';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
@@ -99,6 +100,7 @@ const CaseDetail = () => {
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [pdfUploadOpen, setPdfUploadOpen] = useState(false);
   const [documentGeneratorOpen, setDocumentGeneratorOpen] = useState(false);
+  const [complaintGeneratorOpen, setComplaintGeneratorOpen] = useState(false);
   const [preselectedDocumentType, setPreselectedDocumentType] = useState<'appeal' | 'cassation' | null>(null);
   const [isExtracting, setIsExtracting] = useState(false);
   
@@ -863,20 +865,31 @@ const CaseDetail = () => {
                   
                   <Card>
                     <CardHeader>
-                      <CardTitle className="flex items-center justify-between">
+                      <CardTitle className="flex items-center justify-between flex-wrap gap-2">
                         <span>{t('ai:analyze')}</span>
-                        {Object.values(results).some(r => r !== null) && (
-                          <div className="flex gap-2">
-                            <Button 
-                              variant="outline" 
-                              size="sm"
-                              onClick={clearResults}
-                            >
-                              {t('common:clear', 'Clear')}
-                            </Button>
-                            <PdfExportButton onClick={handleExportAllAnalyses} />
-                          </div>
-                        )}
+                        <div className="flex gap-2 flex-wrap">
+                          {/* Generate Complaint Button - always visible */}
+                          <Button 
+                            variant="outline" 
+                            size="sm"
+                            onClick={() => setComplaintGeneratorOpen(true)}
+                          >
+                            <FileSignature className="mr-2 h-4 w-4" />
+                            {i18n.language === 'hy' ? '\u0532\u0578\u0572\u0578\u0584' : i18n.language === 'en' ? 'Complaint' : '\u0416\u0430\u043B\u043E\u0431\u0430'}
+                          </Button>
+                          {Object.values(results).some(r => r !== null) && (
+                            <>
+                              <Button 
+                                variant="outline" 
+                                size="sm"
+                                onClick={clearResults}
+                              >
+                                {t('common:clear', 'Clear')}
+                              </Button>
+                              <PdfExportButton onClick={handleExportAllAnalyses} />
+                            </>
+                          )}
+                        </div>
                       </CardTitle>
                     </CardHeader>
                     <CardContent>
@@ -1151,6 +1164,24 @@ const CaseDetail = () => {
           notes: caseData.notes || undefined,
         } : undefined}
       />
+
+      {/* Case Complaint Generator Dialog */}
+      {caseData && (
+        <CaseComplaintGenerator
+          open={complaintGeneratorOpen}
+          onOpenChange={setComplaintGeneratorOpen}
+          caseId={caseData.id}
+          caseData={{
+            title: caseData.title,
+            case_number: caseData.case_number,
+            case_type: caseData.case_type,
+            court: caseData.court,
+            facts: caseData.facts,
+            description: caseData.description,
+            notes: caseData.notes,
+          }}
+        />
+      )}
     </div>
   );
 };
