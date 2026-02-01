@@ -200,11 +200,13 @@ export async function exportAnalysisToPDF(data: AnalysisExportData): Promise<voi
   
   // Title
   doc.setFontSize(18);
+  doc.setTextColor(0, 0, 0);
   selectBoldFont(doc, labels.legalAnalysisReport, hasArmenianFont);
   doc.text(labels.legalAnalysisReport, pageWidth / 2, 25, { align: "center" });
   
   // Case info
   doc.setFontSize(12);
+  doc.setTextColor(0, 0, 0);
   let yPosition = 35;
   
   // Case Number
@@ -245,11 +247,13 @@ export async function exportAnalysisToPDF(data: AnalysisExportData): Promise<voi
   
   // Analysis content
   doc.setFontSize(14);
+  doc.setTextColor(0, 0, 0);
   selectBoldFont(doc, labels.analysis, hasArmenianFont);
   doc.text(labels.analysis, margin, yPosition);
   yPosition += 10;
   
   doc.setFontSize(10);
+  doc.setTextColor(0, 0, 0);
   selectFont(doc, data.analysisText, hasArmenianFont);
   
   // Split analysis text into lines
@@ -261,7 +265,7 @@ export async function exportAnalysisToPDF(data: AnalysisExportData): Promise<voi
       addHeader(doc, data.caseNumber, exportDate, lang, hasArmenianFont);
       yPosition = contentTopMargin;
       doc.setFontSize(10);
-      doc.setTextColor(0);
+      doc.setTextColor(0, 0, 0);
       // Re-apply Armenian font after page break
       if (hasArmenianFont) {
         setArmenianFont(doc);
@@ -282,11 +286,13 @@ export async function exportAnalysisToPDF(data: AnalysisExportData): Promise<voi
     }
     
     doc.setFontSize(12);
+    doc.setTextColor(0, 0, 0);
     selectBoldFont(doc, labels.sourcesUsed, hasArmenianFont);
     doc.text(labels.sourcesUsed, margin, yPosition);
     yPosition += 8;
     
     doc.setFontSize(9);
+    doc.setTextColor(0, 0, 0);
     
     data.sources.forEach((source, index) => {
       if (yPosition > pageHeight - contentBottomMargin) {
@@ -294,7 +300,7 @@ export async function exportAnalysisToPDF(data: AnalysisExportData): Promise<voi
         addHeader(doc, data.caseNumber, exportDate, lang, hasArmenianFont);
         yPosition = contentTopMargin;
         doc.setFontSize(9);
-        doc.setTextColor(0);
+        doc.setTextColor(0, 0, 0);
         if (hasArmenianFont) {
           setArmenianFont(doc);
         }
@@ -347,14 +353,17 @@ export async function exportMultipleAnalysesToPDF(
   addHeader(doc, caseNumber, exportDate, language, hasArmenianFont);
   
   doc.setFontSize(24);
+  doc.setTextColor(0, 0, 0);
   selectBoldFont(doc, "Ai Legal Armenia", hasArmenianFont);
   doc.text("Ai Legal Armenia", pageWidth / 2, 50, { align: "center" });
   
   doc.setFontSize(18);
+  doc.setTextColor(0, 0, 0);
   selectBoldFont(doc, labels.fullCaseAnalysis, hasArmenianFont);
   doc.text(labels.fullCaseAnalysis, pageWidth / 2, 75, { align: "center" });
   
   doc.setFontSize(14);
+  doc.setTextColor(0, 0, 0);
   const caseText = `${labels.case} ${caseNumber}`;
   selectFont(doc, caseText, hasArmenianFont);
   doc.text(caseText, pageWidth / 2, 100, { align: "center" });
@@ -364,6 +373,7 @@ export async function exportMultipleAnalysesToPDF(
   doc.text(titleLines, pageWidth / 2, 115, { align: "center" });
   
   doc.setFontSize(12);
+  doc.setTextColor(0, 0, 0);
   const locale = language === 'hy' ? 'hy-AM' : 'en-US';
   doc.text(exportDate.toLocaleDateString(locale), pageWidth / 2, 140, { align: "center" });
   
@@ -376,15 +386,16 @@ export async function exportMultipleAnalysesToPDF(
     
     // Analysis Title
     doc.setFontSize(16);
+    doc.setTextColor(0, 0, 0);
     const roleText = ROLE_LABELS[analysis.role]?.[language] || analysis.role;
     selectBoldFont(doc, roleText, hasArmenianFont);
-    doc.setTextColor(0);
     doc.text(roleText, margin, 25);
     
     let yPosition = 35;
     
     // Analysis content
     doc.setFontSize(10);
+    doc.setTextColor(0, 0, 0);
     selectFont(doc, analysis.text, hasArmenianFont);
     const analysisLines = doc.splitTextToSize(analysis.text, maxWidth);
     
@@ -394,7 +405,7 @@ export async function exportMultipleAnalysesToPDF(
         addHeader(doc, caseNumber, exportDate, language, hasArmenianFont);
         yPosition = contentTopMargin;
         doc.setFontSize(10);
-        doc.setTextColor(0);
+        doc.setTextColor(0, 0, 0);
         if (hasArmenianFont) {
           setArmenianFont(doc);
         }
@@ -414,11 +425,13 @@ export async function exportMultipleAnalysesToPDF(
       }
       
       doc.setFontSize(12);
+      doc.setTextColor(0, 0, 0);
       selectBoldFont(doc, labels.sourcesUsed, hasArmenianFont);
       doc.text(labels.sourcesUsed, margin, yPosition);
       yPosition += 8;
       
       doc.setFontSize(9);
+      doc.setTextColor(0, 0, 0);
       
       analysis.sources.forEach((source, index) => {
         if (yPosition > pageHeight - contentBottomMargin) {
@@ -426,7 +439,7 @@ export async function exportMultipleAnalysesToPDF(
           addHeader(doc, caseNumber, exportDate, language, hasArmenianFont);
           yPosition = contentTopMargin;
           doc.setFontSize(9);
-          doc.setTextColor(0);
+          doc.setTextColor(0, 0, 0);
           if (hasArmenianFont) {
             setArmenianFont(doc);
           }
@@ -483,7 +496,7 @@ export async function exportCaseDetailToPDF(data: CaseDetailExportData): Promise
       addHeader(doc, data.caseNumber, exportDate, lang, hasArmenianFont);
       yPosition = contentTopMargin;
       doc.setFontSize(10);
-      doc.setTextColor(0);
+      doc.setTextColor(0, 0, 0);
       // Re-apply Armenian font after page break
       if (hasArmenianFont) {
         setArmenianFont(doc);
@@ -495,12 +508,14 @@ export async function exportCaseDetailToPDF(data: CaseDetailExportData): Promise
   
   // Title
   doc.setFontSize(18);
+  doc.setTextColor(0, 0, 0);
   selectBoldFont(doc, labels.caseDetails, hasArmenianFont);
   doc.text(labels.caseDetails, pageWidth / 2, yPosition, { align: "center" });
   yPosition += 15;
   
   // Case Number and Title
   doc.setFontSize(12);
+  doc.setTextColor(0, 0, 0);
   selectBoldFont(doc, labels.caseNumber, hasArmenianFont);
   doc.text(labels.caseNumber, margin, yPosition);
   selectFont(doc, data.caseNumber, hasArmenianFont);
@@ -573,11 +588,13 @@ export async function exportCaseDetailToPDF(data: CaseDetailExportData): Promise
   if (data.description) {
     checkPageOverflow(20);
     doc.setFontSize(14);
+    doc.setTextColor(0, 0, 0);
     selectBoldFont(doc, labels.description, hasArmenianFont);
     doc.text(labels.description, margin, yPosition);
     yPosition += 8;
     
     doc.setFontSize(10);
+    doc.setTextColor(0, 0, 0);
     selectFont(doc, data.description, hasArmenianFont);
     const descLines = doc.splitTextToSize(data.description, maxWidth);
     
@@ -593,11 +610,13 @@ export async function exportCaseDetailToPDF(data: CaseDetailExportData): Promise
   if (data.facts) {
     checkPageOverflow(20);
     doc.setFontSize(14);
+    doc.setTextColor(0, 0, 0);
     selectBoldFont(doc, labels.facts, hasArmenianFont);
     doc.text(labels.facts, margin, yPosition);
     yPosition += 8;
     
     doc.setFontSize(10);
+    doc.setTextColor(0, 0, 0);
     selectFont(doc, data.facts, hasArmenianFont);
     const factsLines = doc.splitTextToSize(data.facts, maxWidth);
     
@@ -613,11 +632,13 @@ export async function exportCaseDetailToPDF(data: CaseDetailExportData): Promise
   if (data.legalQuestion) {
     checkPageOverflow(20);
     doc.setFontSize(14);
+    doc.setTextColor(0, 0, 0);
     selectBoldFont(doc, labels.legalQuestion, hasArmenianFont);
     doc.text(labels.legalQuestion, margin, yPosition);
     yPosition += 8;
     
     doc.setFontSize(10);
+    doc.setTextColor(0, 0, 0);
     selectFont(doc, data.legalQuestion, hasArmenianFont);
     const legalLines = doc.splitTextToSize(data.legalQuestion, maxWidth);
     
@@ -633,11 +654,13 @@ export async function exportCaseDetailToPDF(data: CaseDetailExportData): Promise
   if (data.notes) {
     checkPageOverflow(20);
     doc.setFontSize(14);
+    doc.setTextColor(0, 0, 0);
     selectBoldFont(doc, labels.notes, hasArmenianFont);
     doc.text(labels.notes, margin, yPosition);
     yPosition += 8;
     
     doc.setFontSize(10);
+    doc.setTextColor(0, 0, 0);
     selectFont(doc, data.notes, hasArmenianFont);
     const notesLines = doc.splitTextToSize(data.notes, maxWidth);
     
@@ -653,11 +676,13 @@ export async function exportCaseDetailToPDF(data: CaseDetailExportData): Promise
   if (data.files && data.files.length > 0) {
     checkPageOverflow(20);
     doc.setFontSize(14);
+    doc.setTextColor(0, 0, 0);
     selectBoldFont(doc, labels.attachedFiles, hasArmenianFont);
     doc.text(labels.attachedFiles, margin, yPosition);
     yPosition += 8;
     
     doc.setFontSize(9);
+    doc.setTextColor(0, 0, 0);
     
     data.files.forEach((file, index) => {
       checkPageOverflow(6);
@@ -674,11 +699,13 @@ export async function exportCaseDetailToPDF(data: CaseDetailExportData): Promise
   if (data.timeline && data.timeline.length > 0) {
     checkPageOverflow(20);
     doc.setFontSize(14);
+    doc.setTextColor(0, 0, 0);
     selectBoldFont(doc, labels.timeline, hasArmenianFont);
     doc.text(labels.timeline, margin, yPosition);
     yPosition += 8;
     
     doc.setFontSize(9);
+    doc.setTextColor(0, 0, 0);
     
     data.timeline.forEach((event) => {
       checkPageOverflow(10);
