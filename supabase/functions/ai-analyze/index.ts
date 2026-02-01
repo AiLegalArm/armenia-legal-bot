@@ -781,8 +781,75 @@ Please provide your professional legal analysis from your designated role perspe
       throw new Error("Legal AI gateway error");
     }
 
-    const aiResponse = await response.json();
+    // Robust JSON parsing to handle truncated/malformed responses
+    let aiResponse;
+    try {
+      const responseText = await response.text();
+      
+      // Try to parse JSON, with fallback for truncated responses
+      try {
+        aiResponse = JSON.parse(responseText);
+      } catch (parseError) {
+        console.error("JSON parse error, attempting recovery:", parseError);
+        
+        // Try to extract valid JSON from potentially truncated response
+        let cleaned = responseText.trim();
+        
+        // Remove any markdown code blocks
+        cleaned = cleaned.replace(/```json\s*/gi, "").replace(/```\s*/g, "").trim();
+        
+        // Find JSON boundaries
+        const jsonStart = cleaned.indexOf("{");
+        const jsonEnd = cleaned.lastIndexOf("}");
+        
+        if (jsonStart !== -1 && jsonEnd !== -1 && jsonEnd > jsonStart) {
+          cleaned = cleaned.substring(jsonStart, jsonEnd + 1);
+          
+          // Fix common JSON issues
+          cleaned = cleaned
+            .replace(/,\s*}/g, "}") // Remove trailing commas
+            .replace(/,\s*]/g, "]")
+            .replace(/[\x00-\x1F\x7F]/g, ""); // Remove control characters
+          
+          try {
+            aiResponse = JSON.parse(cleaned);
+          } catch (secondError) {
+            console.error("JSON recovery failed:", secondError);
+            // Return a fallback response instead of crashing
+            return new Response(JSON.stringify({ 
+              role,
+              analysis: "Վdelays were too large. Please try again with fewer documents or a simpler query.",
+              sources: [],
+              model: "google/gemini-2.5-pro",
+              warning: "Response was truncated"
+            }), {
+              headers: { ...corsHeaders, "Content-Type": "application/json" },
+            });
+          }
+        } else {
+          console.error("No valid JSON structure found in response");
+          return new Response(JSON.stringify({ 
+            role,
+            analysis: "AI-ի պdelays were incomplete. Please try again.",
+            sources: [],
+            model: "google/gemini-2.5-pro",
+            warning: "Invalid response structure"
+          }), {
+            headers: { ...corsHeaders, "Content-Type": "application/json" },
+          });
+        }
+      }
+    } catch (fetchError) {
+      console.error("Error reading AI response:", fetchError);
+      throw new Error("Failed to read AI response");
+    }
+    
     let analysisText = aiResponse.choices?.[0]?.message?.content || "";
+    
+    // Check for truncation indicators
+    if (analysisText.endsWith("...") || analysisText.endsWith("\u2026")) {
+      analysisText += "\n\n[\u0546\u0577\u0578\u0582\u0574: \u054A\u0561\u057F\u0561\u057D\u056D\u0561\u0576\u0568 \u056F\u0561\u0580\u0578\u0572 \u0567 \u056F\u0580\u0573\u0561\u057F\u057E\u0561\u056E \u056C\u056B\u0576\u0565\u056C: \u053D\u0576\u0564\u0580\u0578\u0582\u0574 \u0565\u0576\u0584 \u0583\u0578\u0580\u0571\u0565\u056C \u0576\u0578\u0580\u056B\u0581 \u0561\u057E\u0565\u056C\u056B \u0584\u056B\u0579 \u0583\u0561\u057D\u057F\u0561\u0569\u0572\u0569\u0565\u0580\u0578\u057E:]";
+    }
     
     // Add legal disclaimer
     analysisText += DISCLAIMER_HY;
