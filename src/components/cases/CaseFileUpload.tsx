@@ -64,7 +64,9 @@ function formatFileSize(bytes: number | null): string {
 export function CaseFileUpload({ caseId }: CaseFileUploadProps) {
   const { t } = useTranslation(['cases', 'common', 'ocr']);
   const { files, isLoading, uploadFile, deleteFile, getFileUrl } = useCaseFiles(caseId);
-  const [deleteFileId, setDeleteFileId] = useState<string | null>(null);
+  // Keep id separate from dialog open state to avoid race with Radix onOpenChange
+  const [pendingDeleteFileId, setPendingDeleteFileId] = useState<string | null>(null);
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [downloadingId, setDownloadingId] = useState<string | null>(null);
 
   // Fetch OCR results to know which files have been processed
@@ -116,10 +118,10 @@ export function CaseFileUpload({ caseId }: CaseFileUploadProps) {
   };
 
   const confirmDelete = () => {
-    if (deleteFileId) {
-      deleteFile.mutate(deleteFileId);
-      setDeleteFileId(null);
-    }
+    if (!pendingDeleteFileId) return;
+    deleteFile.mutate(pendingDeleteFileId);
+    setDeleteDialogOpen(false);
+    setPendingDeleteFileId(null);
   };
 
   return (
@@ -215,7 +217,11 @@ export function CaseFileUpload({ caseId }: CaseFileUploadProps) {
                   variant="ghost"
                   size="icon"
                   className="h-8 w-8 text-destructive hover:text-destructive"
-                  onClick={() => setDeleteFileId(file.id)}
+                  disabled={deleteFile.isPending}
+                  onClick={() => {
+                    setPendingDeleteFileId(file.id);
+                    setDeleteDialogOpen(true);
+                  }}
                 >
                   <Trash2 className="h-4 w-4" />
                 </Button>
@@ -226,7 +232,7 @@ export function CaseFileUpload({ caseId }: CaseFileUploadProps) {
       )}
 
       {/* Delete Confirmation */}
-      <AlertDialog open={!!deleteFileId} onOpenChange={() => setDeleteFileId(null)}>
+      <AlertDialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>{t('common:confirm')}</AlertDialogTitle>
@@ -235,7 +241,14 @@ export function CaseFileUpload({ caseId }: CaseFileUploadProps) {
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel>{t('common:cancel')}</AlertDialogCancel>
+            <AlertDialogCancel
+              onClick={() => {
+                setDeleteDialogOpen(false);
+                setPendingDeleteFileId(null);
+              }}
+            >
+              {t('common:cancel')}
+            </AlertDialogCancel>
             <AlertDialogAction onClick={confirmDelete}>
               {t('common:delete')}
             </AlertDialogAction>
