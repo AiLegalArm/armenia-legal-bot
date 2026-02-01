@@ -1134,6 +1134,10 @@ export type Database = {
         Returns: boolean
       }
       user_can_access_case: { Args: { _case_id: string }; Returns: boolean }
+      user_can_access_case_as: {
+        Args: { _case_id: string; _user_id: string }
+        Returns: boolean
+      }
     }
     Enums: {
       app_role: "admin" | "lawyer" | "client" | "auditor"
