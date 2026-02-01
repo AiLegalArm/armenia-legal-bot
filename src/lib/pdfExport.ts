@@ -85,13 +85,15 @@ const ROLE_LABELS: Record<string, Record<string, string>> = {
   fair_trial_and_rights: { hy: "\u0531\u0580\u0564\u0561\u0580 \u0564\u0561\u057F\u0561\u0584\u0576\u0576\u0578\u0582\u0569\u0575\u0578\u0582\u0576", en: "Fair Trial & Rights" }
 };
 
-// Determine the best font to use based on text content
+// Determine the best font to use based on text content and set text color to black
 function selectFont(doc: jsPDF, text: string, hasArmenianFont: boolean): void {
   if (hasArmenianFont && (containsArmenian(text) || containsCyrillic(text))) {
     setArmenianFont(doc);
   } else {
     doc.setFont("helvetica", "normal");
   }
+  // Always ensure text is black after font change
+  doc.setTextColor(0, 0, 0);
 }
 
 function selectBoldFont(doc: jsPDF, text: string, hasArmenianFont: boolean): void {
@@ -100,6 +102,8 @@ function selectBoldFont(doc: jsPDF, text: string, hasArmenianFont: boolean): voi
   } else {
     doc.setFont("helvetica", "bold");
   }
+  // Always ensure text is black after font change
+  doc.setTextColor(0, 0, 0);
 }
 
 // Helper function to add header with case number and export date
@@ -116,7 +120,8 @@ function addHeader(doc: jsPDF, caseNumber: string, exportDate: Date, language: "
   
   const locale = language === 'hy' ? 'hy-AM' : 'en-US';
   const dateStr = exportDate.toLocaleDateString(locale);
-  const caseLabel = language === 'hy' ? 'Gorts' : 'Case';
+  // Fixed: Use proper Armenian word for "Case"
+  const caseLabel = language === 'hy' ? '\u0533\u0578\u0580\u056E' : 'Case';
   
   doc.text(`${caseLabel}: ${caseNumber}`, pageWidth / 2, 12, { align: "center" });
   doc.text(dateStr, pageWidth - margin, 12, { align: "right" });
