@@ -29,7 +29,8 @@ import {
   FileText,
   Mic,
   MessageCircle,
-  FileWarning
+  FileWarning,
+  ExternalLink
 } from 'lucide-react';
 import { DocumentGeneratorDialog } from '@/components/documents/DocumentGeneratorDialog';
 import { ComplaintWizard } from '@/components/complaints/ComplaintWizard';
@@ -250,6 +251,15 @@ const Dashboard = () => {
             <Button variant="outline" size="sm" onClick={() => setComplaintWizardOpen(true)} className="flex-col sm:flex-row h-auto py-2 sm:py-2 sm:h-9">
               <FileWarning className="h-4 w-4 sm:mr-2" />
               <span className="text-xs sm:text-sm mt-1 sm:mt-0">{t('common:complaint', 'Complaint')}</span>
+            </Button>
+            <Button 
+              variant="outline" 
+              size="sm" 
+              onClick={() => window.open('https://e-request.am', '_blank')}
+              className="flex-col sm:flex-row h-auto py-2 sm:py-2 sm:h-9"
+            >
+              <ExternalLink className="h-4 w-4 sm:mr-2" />
+              <span className="text-xs sm:text-sm mt-1 sm:mt-0">E-request</span>
             </Button>
             {/* KB Management - Admin only */}
             {isAdmin && (
