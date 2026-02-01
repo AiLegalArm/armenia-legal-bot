@@ -245,10 +245,10 @@ const CaseDetail = () => {
     await runAllRoles(caseData.id, caseData.facts, caseData.legal_question || '');
   };
 
-  const handleExportSingleAnalysis = (role: AIRole) => {
+  const handleExportSingleAnalysis = async (role: AIRole) => {
     if (!caseData || !results[role]) return;
     
-    exportAnalysisToPDF({
+    await exportAnalysisToPDF({
       caseNumber: caseData.case_number,
       caseTitle: caseData.title,
       role,
@@ -259,7 +259,7 @@ const CaseDetail = () => {
     });
   };
 
-  const handleExportAllAnalyses = () => {
+  const handleExportAllAnalyses = async () => {
     if (!caseData) return;
     
     const analyses = Object.entries(results)
@@ -272,7 +272,7 @@ const CaseDetail = () => {
     
     if (analyses.length === 0) return;
     
-    exportMultipleAnalysesToPDF(
+    await exportMultipleAnalysesToPDF(
       caseData.case_number,
       caseData.title,
       analyses,
@@ -337,7 +337,7 @@ const CaseDetail = () => {
     // Sort by timestamp descending
     timeline.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
     
-    exportCaseDetailToPDF({
+    await exportCaseDetailToPDF({
       caseNumber: caseData.case_number,
       caseTitle: caseData.title,
       description: caseData.description || undefined,
