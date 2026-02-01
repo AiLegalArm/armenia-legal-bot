@@ -1,8 +1,8 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useTranslation } from "react-i18next";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Loader2, CheckCircle2, AlertCircle, Scale, Save } from "lucide-react";
+import { Loader2, CheckCircle2, AlertCircle, Scale, Save, History } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import ReactMarkdown from "react-markdown";
@@ -118,6 +118,57 @@ export function CriminalAnalysisPanel({
   });
   const [expandedModule, setExpandedModule] = useState<CriminalModule | null>(null);
   const [creditsExhausted, setCreditsExhausted] = useState(false);
+  const [loadingSaved, setLoadingSaved] = useState(false);
+
+  // Load previously saved analyses from database
+  useEffect(() => {
+    const loadSavedAnalyses = async () => {
+      if (!caseId) return;
+      setLoadingSaved(true);
+      try {
+        const { data, error } = await supabase
+          .from("ai_analysis")
+          .select("id, role, response_text, sources_used, created_at")
+          .eq("case_id", caseId)
+          .order("created_at", { ascending: false });
+
+        if (error) throw error;
+
+        if (data && data.length > 0) {
+          const loadedResults: Partial<Record<CriminalModule, ModuleResult>> = {};
+          // Group by role and take the latest for each
+          const latestByRole = new Map<string, typeof data[0]>();
+          for (const item of data) {
+            if (!latestByRole.has(item.role)) {
+              latestByRole.set(item.role, item);
+            }
+          }
+
+          latestByRole.forEach((item, role) => {
+            if (MODULES.some(m => m.id === role)) {
+              const sources = Array.isArray(item.sources_used) 
+                ? (item.sources_used as Array<{ title: string; category: string; source_name: string }>)
+                : [];
+              loadedResults[role as CriminalModule] = {
+                analysis: item.response_text,
+                sources,
+                timestamp: new Date(item.created_at),
+                savedId: item.id
+              };
+            }
+          });
+
+          setResults(prev => ({ ...prev, ...loadedResults }));
+        }
+      } catch (error) {
+        console.error("Failed to load saved analyses:", error);
+      } finally {
+        setLoadingSaved(false);
+      }
+    };
+
+    loadSavedAnalyses();
+  }, [caseId]);
 
   const runAnalysis = async (moduleId: CriminalModule) => {
     setLoadingModule(moduleId);
@@ -229,8 +280,16 @@ export function CriminalAnalysisPanel({
             <Scale className="h-5 w-5" />
             <span>{t("cases:criminal_analysis_title", "\u0554\u0580\u0565\u0561\u056F\u0561\u0576 \u0563\u0578\u0580\u056E\u056B \u057E\u0565\u0580\u056C\u0578\u0582\u056E\u0578\u0582\u0569\u0575\u0578\u0582\u0576")}</span>
           </CardTitle>
-          <div className="text-sm text-muted-foreground">
-            {completedCount}/9 {t("cases:completed", "\u0561\u057E\u0561\u0580\u057F\u057E\u0561\u056E")}
+          <div className="flex items-center gap-3">
+            {loadingSaved && (
+              <span className="text-xs text-muted-foreground flex items-center gap-1">
+                <Loader2 className="h-3 w-3 animate-spin" />
+                {t("common:loading", "\u0532\u0565\u057c\u0576\u057e\u0578\u0582\u0574 \u0567...")}
+              </span>
+            )}
+            <div className="text-sm text-muted-foreground">
+              {completedCount}/9 {t("cases:completed", "\u0561\u057E\u0561\u0580\u057F\u057E\u0561\u056E")}
+            </div>
           </div>
         </div>
         {creditsExhausted && (
