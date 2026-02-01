@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import type { Database } from '@/integrations/supabase/types';
@@ -93,7 +93,7 @@ const CaseDetail = () => {
   
   const { data: caseData, isLoading } = useCase(id);
   const { updateCase, deleteCase } = useCases();
-  const { isLoading: isAnalyzing, currentRole, results, creditsExhausted: aiCreditsFromHook, analyzeCase, runAllRoles, clearResults } = useAIAnalysis();
+  const { isLoading: isAnalyzing, currentRole, results, creditsExhausted: aiCreditsFromHook, analyzeCase, runAllRoles, clearResults, loadResults } = useAIAnalysis();
   
   const [editFormOpen, setEditFormOpen] = useState(false);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
@@ -122,9 +122,67 @@ const CaseDetail = () => {
   // State for saving AI analysis
   const [savingAnalysisRole, setSavingAnalysisRole] = useState<AIRole | null>(null);
   const [savedAnalysisRoles, setSavedAnalysisRoles] = useState<Set<AIRole>>(new Set());
+  const [loadingSavedAnalyses, setLoadingSavedAnalyses] = useState(false);
   
   const { toast } = useToast();
   const queryClient = useQueryClient();
+
+  // Load previously saved analyses from database
+  useEffect(() => {
+    const loadSavedAnalyses = async () => {
+      if (!id) return;
+      
+      setLoadingSavedAnalyses(true);
+      try {
+        const { data, error } = await supabase
+          .from('ai_analysis')
+          .select('id, role, response_text, sources_used, created_at')
+          .eq('case_id', id)
+          .order('created_at', { ascending: false });
+
+        if (error) throw error;
+
+        if (data && data.length > 0) {
+          // Group by role and take the latest for each
+          const latestByRole = new Map<string, typeof data[0]>();
+          for (const item of data) {
+            if (!latestByRole.has(item.role)) {
+              latestByRole.set(item.role, item);
+            }
+          }
+
+          // Load results into the AI analysis hook state
+          const savedRolesSet = new Set<AIRole>();
+          const loadedResults: Partial<Record<AIRole, { role: AIRole; analysis: string; sources: Array<{ title: string; category: string; source_name: string }>; model: string } | null>> = {};
+          
+          latestByRole.forEach((item, role) => {
+            const validRoles: AIRole[] = ['advocate', 'prosecutor', 'judge', 'aggregator'];
+            if (validRoles.includes(role as AIRole)) {
+              savedRolesSet.add(role as AIRole);
+              const sources = Array.isArray(item.sources_used)
+                ? (item.sources_used as Array<{ title: string; category: string; source_name: string }>)
+                : [];
+              loadedResults[role as AIRole] = {
+                role: role as AIRole,
+                analysis: item.response_text,
+                sources,
+                model: 'loaded'
+              };
+            }
+          });
+
+          loadResults(loadedResults);
+          setSavedAnalysisRoles(savedRolesSet);
+        }
+      } catch (error) {
+        console.error('Failed to load saved analyses:', error);
+      } finally {
+        setLoadingSavedAnalyses(false);
+      }
+    };
+
+    loadSavedAnalyses();
+  }, [id, loadResults]);
 
   // Save analysis to database
   const handleSaveAnalysis = useCallback(async (role: AIRole) => {

@@ -20,6 +20,7 @@ interface UseAIAnalysisReturn {
   analyzeCase: (role: AIRole, caseId?: string, caseFacts?: string, legalQuestion?: string) => Promise<AnalysisResult | null>;
   runAllRoles: (caseId?: string, caseFacts?: string, legalQuestion?: string) => Promise<void>;
   clearResults: () => void;
+  loadResults: (loadedResults: Partial<Record<AIRole, AnalysisResult | null>>) => void;
 }
 
 export function useAIAnalysis(): UseAIAnalysisReturn {
@@ -193,6 +194,13 @@ export function useAIAnalysis(): UseAIAnalysisReturn {
     setCreditsExhausted(false);
   }, []);
 
+  const loadResults = useCallback((loadedResults: Partial<Record<AIRole, AnalysisResult | null>>) => {
+    setResults(prev => ({
+      ...prev,
+      ...loadedResults,
+    }));
+  }, []);
+
   return {
     isLoading,
     currentRole,
@@ -201,5 +209,6 @@ export function useAIAnalysis(): UseAIAnalysisReturn {
     analyzeCase,
     runAllRoles,
     clearResults,
+    loadResults,
   };
 }
