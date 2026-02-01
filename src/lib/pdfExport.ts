@@ -1,4 +1,5 @@
 import jsPDF from "jspdf";
+import { registerArmenianFont, setArmenianFont, containsArmenian, containsCyrillic } from "./pdf/fontLoader";
 
 interface AnalysisExportData {
   caseNumber: string;
@@ -10,24 +11,104 @@ interface AnalysisExportData {
   language?: "hy" | "en";
 }
 
-const DISCLAIMER_HY = "\u26A0\uFE0F \u0546\u0531\u053D\u0531\u0536\u0533\u0548\u0552\u0548\u0552\u054A\u054F\u0545\u0548\u0552\u0546: \u054D\u0578\u0582\u0575\u0576 \u057E\u0565\u0580\u056C\u0578\u0582\u056E\u0578\u0582\u0569\u0575\u0578\u0582\u0576\u0568 \u0576\u0561\u056D\u0561\u057F\u0565\u057D\u057E\u0561\u056E \u0567 \u0574\u056B\u0561\u0575\u0576 \u057F\u0565\u0572\u0565\u056F\u0561\u057F\u057E\u0561\u056F\u0561\u0576 \u0576\u057A\u0561\u057F\u0561\u056F\u0576\u0565\u0580\u0578\u057E \u0587 \u0579\u056B \u0570\u0561\u0576\u0564\u056B\u057D\u0561\u0576\u0578\u0582\u0574 \u056B\u0580\u0561\u057E\u0561\u0562\u0561\u0576\u0561\u056F\u0561\u0576 \u056D\u0578\u0580\u0570\u0580\u0564\u0561\u057F\u057E\u0578\u0582\u0569\u0575\u0578\u0582\u0576. \u0544\u056B\u0577\u057F \u056D\u0578\u0580\u0570\u0580\u0564\u0561\u056F\u0581\u0565\u0584 \u056C\u056B\u0581\u0565\u0576\u0566\u0561\u057E\u0578\u0580\u057E\u0561\u056E \u056B\u0580\u0561\u057E\u0561\u0562\u0561\u0576\u056B \u0570\u0565\u057F. \u0531\u0580\u0564\u0575\u0578\u0582\u0576\u0584\u0576\u0565\u0580\u0568 \u056D\u0578\u0580\u0570\u0580\u0564\u0561\u057F\u057E\u0561\u056F\u0561\u0576 \u0565\u0576 \u0587 \u0578\u0579 \u0574\u0565\u056F \u056B\u0580\u0561\u057E\u0561\u0562\u0561\u0576\u0561\u056F\u0561\u0576 \u0578\u0582\u056A \u0579\u0578\u0582\u0576\u0565\u0576.";
+const DISCLAIMER_HY = "NAKHAZDUSGUTYUN: Suyn verlutsutyuny nakhatesvats e miayn teghekatvakin npataknerov ev chi handisanum iravabanakin khorhrdatvutyun. Misht khorhrdaktsek litsenzavorvats iravabani het. Ardyunqnery khorhrdatvakan en ev voch mek iravabanakin uzh chunen.";
 
-const DISCLAIMER_EN = "\u26A0\uFE0F DISCLAIMER: This analysis is for informational purposes only and does not constitute legal advice. Always consult with a licensed attorney for legal matters. The results are advisory and have no legal force. Processing is compliant with the RA Personal Data Protection Law.";
+const DISCLAIMER_EN = "DISCLAIMER: This analysis is for informational purposes only and does not constitute legal advice. Always consult with a licensed attorney for legal matters. The results are advisory and have no legal force.";
 
+// Labels in transliterated Armenian (for PDF compatibility) and English
+const LABELS = {
+  hy: {
+    legalAnalysisReport: "IRAVABANAKIN VERLUTSUTYUN",
+    caseNumber: "Gortsi hamar:",
+    caseTitle: "Vernagir:",
+    analysisRole: "Verlutsutyun der:",
+    date: "Amsativ:",
+    analysis: "Verlutsutyun",
+    sourcesUsed: "Ogtagortsats aghbyurner",
+    fullCaseAnalysis: "LIAKATAR GORTSI VERLUTSUTYUN",
+    case: "Gorts:",
+    caseDetails: "GORTSI MANRAMASNER",
+    title: "Vernagir:",
+    status: "Kargavitchak:",
+    priority: "Arajnahertutyun:",
+    court: "Dataran:",
+    courtDate: "Datakan nist:",
+    created: "Steghtsvel e:",
+    updated: "Tarmatsvel e:",
+    description: "Nkaragrutyun",
+    facts: "Pastvakan hangamanqner",
+    legalQuestion: "Iravakan harts",
+    notes: "Nshumner",
+    attachedFiles: "Ktsvats fayler",
+    timeline: "Zhamanakagrutyn"
+  },
+  en: {
+    legalAnalysisReport: "LEGAL ANALYSIS REPORT",
+    caseNumber: "Case Number:",
+    caseTitle: "Case Title:",
+    analysisRole: "Analysis Role:",
+    date: "Date:",
+    analysis: "Analysis",
+    sourcesUsed: "Sources Used",
+    fullCaseAnalysis: "COMPLETE CASE ANALYSIS",
+    case: "Case:",
+    caseDetails: "CASE DETAILS",
+    title: "Title:",
+    status: "Status:",
+    priority: "Priority:",
+    court: "Court:",
+    courtDate: "Court Date:",
+    created: "Created:",
+    updated: "Updated:",
+    description: "Description",
+    facts: "Facts",
+    legalQuestion: "Legal Question",
+    notes: "Notes",
+    attachedFiles: "Attached Files",
+    timeline: "Timeline"
+  }
+};
+
+// Role labels
+const ROLE_LABELS: Record<string, Record<string, string>> = {
+  advocate: { hy: "Pashtpan (Pastaban)", en: "Advocate (Defense)" },
+  prosecutor: { hy: "Meghadrogh", en: "Prosecutor" },
+  judge: { hy: "Datavor", en: "Judge" },
+  aggregator: { hy: "Liakatar verlutsutyun", en: "Complete Analysis" }
+};
+
+// Determine the best font to use based on text content
+function selectFont(doc: jsPDF, text: string, hasArmenianFont: boolean): void {
+  if (hasArmenianFont && (containsArmenian(text) || containsCyrillic(text))) {
+    setArmenianFont(doc);
+  } else {
+    doc.setFont("helvetica", "normal");
+  }
+}
+
+function selectBoldFont(doc: jsPDF, text: string, hasArmenianFont: boolean): void {
+  if (hasArmenianFont && (containsArmenian(text) || containsCyrillic(text))) {
+    setArmenianFont(doc);
+  } else {
+    doc.setFont("helvetica", "bold");
+  }
+}
 
 // Helper function to add header with case number and export date
-function addHeader(doc: jsPDF, caseNumber: string, exportDate: Date, language: "hy" | "en" = "hy") {
+function addHeader(doc: jsPDF, caseNumber: string, exportDate: Date, language: "hy" | "en" = "hy", hasArmenianFont: boolean = false) {
   const pageWidth = doc.internal.pageSize.getWidth();
   const margin = 20;
   
   doc.saveGraphicsState();
   doc.setFontSize(9);
   doc.setTextColor(100, 100, 100);
+  
+  selectFont(doc, "Ai Legal Armenia", hasArmenianFont);
   doc.text("Ai Legal Armenia", margin, 12);
   
   const locale = language === 'hy' ? 'hy-AM' : 'en-US';
   const dateStr = exportDate.toLocaleDateString(locale);
-  const caseLabel = language === 'hy' ? 'Գործ' : 'Case';
+  const caseLabel = language === 'hy' ? 'Gorts' : 'Case';
   
   doc.text(`${caseLabel}: ${caseNumber}`, pageWidth / 2, 12, { align: "center" });
   doc.text(dateStr, pageWidth - margin, 12, { align: "right" });
@@ -35,7 +116,7 @@ function addHeader(doc: jsPDF, caseNumber: string, exportDate: Date, language: "
 }
 
 // Helper function to add footer with disclaimer
-function addFooter(doc: jsPDF, disclaimer: string, pageNumber: number, totalPages: number) {
+function addFooter(doc: jsPDF, pageNumber: number, totalPages: number, hasArmenianFont: boolean = false) {
   const pageWidth = doc.internal.pageSize.getWidth();
   const pageHeight = doc.internal.pageSize.getHeight();
   const margin = 20;
@@ -52,7 +133,8 @@ function addFooter(doc: jsPDF, disclaimer: string, pageNumber: number, totalPage
   // Disclaimer text
   doc.setFontSize(7);
   doc.setTextColor(80, 80, 80);
-  const disclaimerLines = doc.splitTextToSize(disclaimer, maxWidth);
+  selectFont(doc, DISCLAIMER_EN, hasArmenianFont);
+  const disclaimerLines = doc.splitTextToSize(DISCLAIMER_EN, maxWidth);
   doc.text(disclaimerLines, margin, footerY);
   
   // Page number
@@ -82,11 +164,11 @@ interface CaseDetailExportData {
   language?: "hy" | "en";
 }
 
-export function exportAnalysisToPDF(data: AnalysisExportData): void {
+export async function exportAnalysisToPDF(data: AnalysisExportData): Promise<void> {
   const doc = new jsPDF();
-  const isArmenian = data.language === "hy";
-  const disclaimer = isArmenian ? DISCLAIMER_HY : DISCLAIMER_EN;
   const exportDate = new Date();
+  const lang = data.language || "hy";
+  const labels = LABELS[lang];
   
   const pageWidth = doc.internal.pageSize.getWidth();
   const pageHeight = doc.internal.pageSize.getHeight();
@@ -95,47 +177,56 @@ export function exportAnalysisToPDF(data: AnalysisExportData): void {
   const contentTopMargin = 18;
   const contentBottomMargin = 35;
   
+  // Try to load Armenian font
+  let hasArmenianFont = false;
+  try {
+    await registerArmenianFont(doc);
+    hasArmenianFont = true;
+    console.log("Armenian font loaded successfully");
+  } catch (error) {
+    console.warn("Could not load Armenian font, using fallback:", error);
+  }
+  
   // Add header to first page
-  addHeader(doc, data.caseNumber, exportDate, data.language);
+  addHeader(doc, data.caseNumber, exportDate, lang, hasArmenianFont);
   
   // Title
   doc.setFontSize(18);
-  doc.setFont("helvetica", "bold");
-  doc.text(isArmenian ? "\u053B\u054A\u0531\u054E\u0531\u0532\u0531\u0546\u0531\u053F\u0531\u0546 \u054E\u0535\u054C\u053C\u0548\u0552\u0538\u054F\u0545\u0548\u0552\u0546" : "LEGAL ANALYSIS REPORT", pageWidth / 2, 25, { align: "center" });
+  selectBoldFont(doc, labels.legalAnalysisReport, hasArmenianFont);
+  doc.text(labels.legalAnalysisReport, pageWidth / 2, 25, { align: "center" });
   
   // Case info
   doc.setFontSize(12);
   let yPosition = 35;
   
-  doc.setFont("helvetica", "bold");
-  doc.text(isArmenian ? "\u0533\u0578\u0580\u056E\u056B \u0570\u0561\u0574\u0561\u0580:" : "Case Number:", margin, yPosition);
-  doc.setFont("helvetica", "normal");
+  // Case Number
+  selectBoldFont(doc, labels.caseNumber, hasArmenianFont);
+  doc.text(labels.caseNumber, margin, yPosition);
+  selectFont(doc, data.caseNumber, hasArmenianFont);
   doc.text(data.caseNumber, margin + 45, yPosition);
   yPosition += 8;
   
-  doc.setFont("helvetica", "bold");
-  doc.text(isArmenian ? "\u0533\u0578\u0580\u056E\u056B \u057E\u0565\u0580\u0576\u0561\u0563\u056B\u0580:" : "Case Title:", margin, yPosition);
-  doc.setFont("helvetica", "normal");
+  // Case Title
+  selectBoldFont(doc, labels.caseTitle, hasArmenianFont);
+  doc.text(labels.caseTitle, margin, yPosition);
+  selectFont(doc, data.caseTitle, hasArmenianFont);
   const titleLines = doc.splitTextToSize(data.caseTitle, maxWidth - 40);
   doc.text(titleLines, margin + 35, yPosition);
   yPosition += titleLines.length * 6 + 4;
   
-  doc.setFont("helvetica", "bold");
-  doc.text(isArmenian ? "\u054E\u0565\u0580\u056C\u0578\u0582\u056E\u0578\u0582\u0569\u0575\u0561\u0576 \u0564\u0565\u0580:" : "Analysis Role:", margin, yPosition);
-  doc.setFont("helvetica", "normal");
-  const roleLabels: Record<string, Record<string, string>> = {
-    advocate: { hy: "\u0553\u0561\u057D\u057F\u0561\u0562\u0561\u0576 (\u054A\u0561\u0577\u057F\u057A\u0561\u0576)", en: "Advocate (Defense)" },
-    prosecutor: { hy: "\u0544\u0565\u0572\u0561\u0564\u0580\u0578\u0572", en: "Prosecutor" },
-    judge: { hy: "\u0534\u0561\u057F\u0561\u057E\u0578\u0580", en: "Judge" },
-    aggregator: { hy: "\u053C\u056B\u0561\u056F\u0561\u057F\u0561\u0580 \u057E\u0565\u0580\u056C\u0578\u0582\u056E\u0578\u0582\u0569\u0575\u0578\u0582\u0576", en: "Complete Analysis" }
-  };
-  doc.text(roleLabels[data.role]?.[data.language || "hy"] || data.role, margin + 40, yPosition);
+  // Analysis Role
+  selectBoldFont(doc, labels.analysisRole, hasArmenianFont);
+  doc.text(labels.analysisRole, margin, yPosition);
+  const roleText = ROLE_LABELS[data.role]?.[lang] || data.role;
+  selectFont(doc, roleText, hasArmenianFont);
+  doc.text(roleText, margin + 40, yPosition);
   yPosition += 8;
   
-  doc.setFont("helvetica", "bold");
-  doc.text(isArmenian ? "\u0531\u0574\u057D\u0561\u0569\u056B\u057E:" : "Date:", margin, yPosition);
-  doc.setFont("helvetica", "normal");
-  doc.text(data.createdAt.toLocaleString(data.language === 'hy' ? "hy-AM" : "en-US"), margin + 25, yPosition);
+  // Date
+  selectBoldFont(doc, labels.date, hasArmenianFont);
+  doc.text(labels.date, margin, yPosition);
+  selectFont(doc, "", hasArmenianFont);
+  doc.text(data.createdAt.toLocaleString(lang === 'hy' ? "hy-AM" : "en-US"), margin + 25, yPosition);
   yPosition += 15;
   
   // Separator line
@@ -146,12 +237,12 @@ export function exportAnalysisToPDF(data: AnalysisExportData): void {
   
   // Analysis content
   doc.setFontSize(14);
-  doc.setFont("helvetica", "bold");
-  doc.text(isArmenian ? "\u054E\u0565\u0580\u056C\u0578\u0582\u056E\u0578\u0582\u0569\u0575\u0578\u0582\u0576" : "Analysis", margin, yPosition);
+  selectBoldFont(doc, labels.analysis, hasArmenianFont);
+  doc.text(labels.analysis, margin, yPosition);
   yPosition += 10;
   
   doc.setFontSize(10);
-  doc.setFont("helvetica", "normal");
+  selectFont(doc, data.analysisText, hasArmenianFont);
   
   // Split analysis text into lines
   const analysisLines = doc.splitTextToSize(data.analysisText, maxWidth);
@@ -159,10 +250,10 @@ export function exportAnalysisToPDF(data: AnalysisExportData): void {
   for (const line of analysisLines) {
     if (yPosition > pageHeight - contentBottomMargin) {
       doc.addPage();
-      addHeader(doc, data.caseNumber, exportDate, data.language);
+      addHeader(doc, data.caseNumber, exportDate, lang, hasArmenianFont);
       yPosition = contentTopMargin;
       doc.setFontSize(10);
-      doc.setFont("helvetica", "normal");
+      selectFont(doc, line, hasArmenianFont);
       doc.setTextColor(0);
     }
     doc.text(line, margin, yPosition);
@@ -175,28 +266,28 @@ export function exportAnalysisToPDF(data: AnalysisExportData): void {
     
     if (yPosition > pageHeight - contentBottomMargin - 20) {
       doc.addPage();
-      addHeader(doc, data.caseNumber, exportDate, data.language);
+      addHeader(doc, data.caseNumber, exportDate, lang, hasArmenianFont);
       yPosition = contentTopMargin;
     }
     
     doc.setFontSize(12);
-    doc.setFont("helvetica", "bold");
-    doc.text(isArmenian ? "\u0555\u0563\u057F\u0561\u0563\u0578\u0580\u056E\u057E\u0561\u056E \u0561\u0572\u0562\u0575\u0578\u0582\u0580\u0576\u0565\u0580" : "Sources Used", margin, yPosition);
+    selectBoldFont(doc, labels.sourcesUsed, hasArmenianFont);
+    doc.text(labels.sourcesUsed, margin, yPosition);
     yPosition += 8;
     
     doc.setFontSize(9);
-    doc.setFont("helvetica", "normal");
     
     data.sources.forEach((source, index) => {
       if (yPosition > pageHeight - contentBottomMargin) {
         doc.addPage();
-        addHeader(doc, data.caseNumber, exportDate, data.language);
+        addHeader(doc, data.caseNumber, exportDate, lang, hasArmenianFont);
         yPosition = contentTopMargin;
         doc.setFontSize(9);
-        doc.setFont("helvetica", "normal");
         doc.setTextColor(0);
       }
-      doc.text(`${index + 1}. ${source.title} (${source.category}) - ${source.source_name}`, margin, yPosition);
+      const sourceText = `${index + 1}. ${source.title} (${source.category}) - ${source.source_name}`;
+      selectFont(doc, sourceText, hasArmenianFont);
+      doc.text(sourceText, margin, yPosition);
       yPosition += 5;
     });
   }
@@ -205,7 +296,7 @@ export function exportAnalysisToPDF(data: AnalysisExportData): void {
   const totalPages = doc.getNumberOfPages();
   for (let i = 1; i <= totalPages; i++) {
     doc.setPage(i);
-    addFooter(doc, disclaimer, i, totalPages);
+    addFooter(doc, i, totalPages, hasArmenianFont);
   }
   
   // Save
@@ -213,16 +304,15 @@ export function exportAnalysisToPDF(data: AnalysisExportData): void {
   doc.save(filename);
 }
 
-export function exportMultipleAnalysesToPDF(
+export async function exportMultipleAnalysesToPDF(
   caseNumber: string,
   caseTitle: string,
   analyses: Array<{ role: string; text: string; sources?: Array<{ title: string; category: string; source_name: string }> }>,
   language: "hy" | "en" = "hy"
-): void {
+): Promise<void> {
   const doc = new jsPDF();
-  const isArmenian = language === "hy";
-  const disclaimer = isArmenian ? DISCLAIMER_HY : DISCLAIMER_EN;
   const exportDate = new Date();
+  const labels = LABELS[language];
   
   const pageWidth = doc.internal.pageSize.getWidth();
   const pageHeight = doc.internal.pageSize.getHeight();
@@ -231,19 +321,32 @@ export function exportMultipleAnalysesToPDF(
   const contentTopMargin = 18;
   const contentBottomMargin = 35;
   
+  // Try to load Armenian font
+  let hasArmenianFont = false;
+  try {
+    await registerArmenianFont(doc);
+    hasArmenianFont = true;
+  } catch (error) {
+    console.warn("Could not load Armenian font, using fallback:", error);
+  }
+  
   // Title page
-  addHeader(doc, caseNumber, exportDate, language);
+  addHeader(doc, caseNumber, exportDate, language, hasArmenianFont);
   
   doc.setFontSize(24);
-  doc.setFont("helvetica", "bold");
+  selectBoldFont(doc, "Ai Legal Armenia", hasArmenianFont);
   doc.text("Ai Legal Armenia", pageWidth / 2, 50, { align: "center" });
   
   doc.setFontSize(18);
-  doc.text(isArmenian ? "\u053C\u053B\u0531\u053F\u0531\u054F\u0531\u054C \u0533\u0548\u054C\u053E\u053B \u054E\u0535\u054C\u053C\u0548\u0552\u0538\u054F\u0545\u0548\u0552\u0546" : "COMPLETE CASE ANALYSIS", pageWidth / 2, 75, { align: "center" });
+  selectBoldFont(doc, labels.fullCaseAnalysis, hasArmenianFont);
+  doc.text(labels.fullCaseAnalysis, pageWidth / 2, 75, { align: "center" });
   
   doc.setFontSize(14);
-  doc.text(`${isArmenian ? "\u0533\u0578\u0580\u056E:" : "Case:"} ${caseNumber}`, pageWidth / 2, 100, { align: "center" });
+  const caseText = `${labels.case} ${caseNumber}`;
+  selectFont(doc, caseText, hasArmenianFont);
+  doc.text(caseText, pageWidth / 2, 100, { align: "center" });
   
+  selectFont(doc, caseTitle, hasArmenianFont);
   const titleLines = doc.splitTextToSize(caseTitle, maxWidth);
   doc.text(titleLines, pageWidth / 2, 115, { align: "center" });
   
@@ -251,41 +354,34 @@ export function exportMultipleAnalysesToPDF(
   const locale = language === 'hy' ? 'hy-AM' : 'en-US';
   doc.text(exportDate.toLocaleDateString(locale), pageWidth / 2, 140, { align: "center" });
   
-  // Role labels
-  const roleLabels: Record<string, Record<string, string>> = {
-    advocate: { hy: "\u0553\u0561\u057D\u057F\u0561\u0562\u0561\u0576 (\u054A\u0561\u0577\u057F\u057A\u0561\u0576)", en: "Advocate (Defense)" },
-    prosecutor: { hy: "\u0544\u0565\u0572\u0561\u0564\u0580\u0578\u0572", en: "Prosecutor" },
-    judge: { hy: "\u0534\u0561\u057F\u0561\u057E\u0578\u0580", en: "Judge" },
-    aggregator: { hy: "\u053C\u056B\u0561\u056F\u0561\u057F\u0561\u0580 \u057E\u0565\u0580\u056C\u0578\u0582\u056E\u0578\u0582\u0569\u0575\u0578\u0582\u0576", en: "Complete Analysis" }
-  };
-  
   // Each analysis on new page
   for (const analysis of analyses) {
     doc.addPage();
     
     // Header
-    addHeader(doc, caseNumber, exportDate, language);
+    addHeader(doc, caseNumber, exportDate, language, hasArmenianFont);
     
     // Analysis Title
     doc.setFontSize(16);
-    doc.setFont("helvetica", "bold");
+    const roleText = ROLE_LABELS[analysis.role]?.[language] || analysis.role;
+    selectBoldFont(doc, roleText, hasArmenianFont);
     doc.setTextColor(0);
-    doc.text(roleLabels[analysis.role]?.[language] || analysis.role, margin, 25);
-    doc.setFont("helvetica", "normal");
+    doc.text(roleText, margin, 25);
     
     let yPosition = 35;
     
     // Analysis content
     doc.setFontSize(10);
+    selectFont(doc, analysis.text, hasArmenianFont);
     const analysisLines = doc.splitTextToSize(analysis.text, maxWidth);
     
     for (const line of analysisLines) {
       if (yPosition > pageHeight - contentBottomMargin) {
         doc.addPage();
-        addHeader(doc, caseNumber, exportDate, language);
+        addHeader(doc, caseNumber, exportDate, language, hasArmenianFont);
         yPosition = contentTopMargin;
         doc.setFontSize(10);
-        doc.setFont("helvetica", "normal");
+        selectFont(doc, line, hasArmenianFont);
         doc.setTextColor(0);
       }
       doc.text(line, margin, yPosition);
@@ -298,28 +394,28 @@ export function exportMultipleAnalysesToPDF(
       
       if (yPosition > pageHeight - contentBottomMargin - 20) {
         doc.addPage();
-        addHeader(doc, caseNumber, exportDate, language);
+        addHeader(doc, caseNumber, exportDate, language, hasArmenianFont);
         yPosition = contentTopMargin;
       }
       
       doc.setFontSize(12);
-      doc.setFont("helvetica", "bold");
-      doc.text(isArmenian ? "\u0555\u0563\u057F\u0561\u0563\u0578\u0580\u056E\u057E\u0561\u056E \u0561\u0572\u0562\u0575\u0578\u0582\u0580\u0576\u0565\u0580" : "Sources Used", margin, yPosition);
+      selectBoldFont(doc, labels.sourcesUsed, hasArmenianFont);
+      doc.text(labels.sourcesUsed, margin, yPosition);
       yPosition += 8;
       
       doc.setFontSize(9);
-      doc.setFont("helvetica", "normal");
       
       analysis.sources.forEach((source, index) => {
         if (yPosition > pageHeight - contentBottomMargin) {
           doc.addPage();
-          addHeader(doc, caseNumber, exportDate, language);
+          addHeader(doc, caseNumber, exportDate, language, hasArmenianFont);
           yPosition = contentTopMargin;
           doc.setFontSize(9);
-          doc.setFont("helvetica", "normal");
           doc.setTextColor(0);
         }
-        doc.text(`${index + 1}. ${source.title} (${source.category}) - ${source.source_name}`, margin, yPosition);
+        const sourceText = `${index + 1}. ${source.title} (${source.category}) - ${source.source_name}`;
+        selectFont(doc, sourceText, hasArmenianFont);
+        doc.text(sourceText, margin, yPosition);
         yPosition += 5;
       });
     }
@@ -329,18 +425,18 @@ export function exportMultipleAnalysesToPDF(
   const totalPages = doc.getNumberOfPages();
   for (let i = 1; i <= totalPages; i++) {
     doc.setPage(i);
-    addFooter(doc, disclaimer, i, totalPages);
+    addFooter(doc, i, totalPages, hasArmenianFont);
   }
   
   const filename = `AI_Legal_${caseNumber}_Full_Analysis_${exportDate.toISOString().split("T")[0]}.pdf`;
   doc.save(filename);
 }
 
-export function exportCaseDetailToPDF(data: CaseDetailExportData): void {
+export async function exportCaseDetailToPDF(data: CaseDetailExportData): Promise<void> {
   const doc = new jsPDF();
-  const isArmenian = data.language === "hy";
-  const disclaimer = isArmenian ? DISCLAIMER_HY : DISCLAIMER_EN;
   const exportDate = new Date();
+  const lang = data.language || "hy";
+  const labels = LABELS[lang];
   
   const pageWidth = doc.internal.pageSize.getWidth();
   const pageHeight = doc.internal.pageSize.getHeight();
@@ -349,8 +445,17 @@ export function exportCaseDetailToPDF(data: CaseDetailExportData): void {
   const contentTopMargin = 18;
   const contentBottomMargin = 35;
   
+  // Try to load Armenian font
+  let hasArmenianFont = false;
+  try {
+    await registerArmenianFont(doc);
+    hasArmenianFont = true;
+  } catch (error) {
+    console.warn("Could not load Armenian font, using fallback:", error);
+  }
+  
   // Add header
-  addHeader(doc, data.caseNumber, exportDate, data.language);
+  addHeader(doc, data.caseNumber, exportDate, lang, hasArmenianFont);
   
   let yPosition = 20;
   
@@ -358,7 +463,7 @@ export function exportCaseDetailToPDF(data: CaseDetailExportData): void {
   const checkPageOverflow = (requiredSpace: number) => {
     if (yPosition + requiredSpace > pageHeight - contentBottomMargin) {
       doc.addPage();
-      addHeader(doc, data.caseNumber, exportDate, data.language);
+      addHeader(doc, data.caseNumber, exportDate, lang, hasArmenianFont);
       yPosition = contentTopMargin;
       doc.setFontSize(10);
       doc.setTextColor(0);
@@ -369,46 +474,45 @@ export function exportCaseDetailToPDF(data: CaseDetailExportData): void {
   
   // Title
   doc.setFontSize(18);
-  doc.setFont("helvetica", "bold");
-  doc.text(isArmenian ? "ԳՈՐԾԻ ՄԱՆՐԱՄԱՍՆԵՐ" : "CASE DETAILS", pageWidth / 2, yPosition, { align: "center" });
-  doc.setFont("helvetica", "normal");
+  selectBoldFont(doc, labels.caseDetails, hasArmenianFont);
+  doc.text(labels.caseDetails, pageWidth / 2, yPosition, { align: "center" });
   yPosition += 15;
   
   // Case Number and Title
   doc.setFontSize(12);
-  doc.setFont("helvetica", "bold");
-  doc.text(isArmenian ? "Գործի համար:" : "Case Number:", margin, yPosition);
-  doc.setFont("helvetica", "normal");
+  selectBoldFont(doc, labels.caseNumber, hasArmenianFont);
+  doc.text(labels.caseNumber, margin, yPosition);
+  selectFont(doc, data.caseNumber, hasArmenianFont);
   doc.text(data.caseNumber, margin + 40, yPosition);
   yPosition += 8;
   
-  doc.setFont("helvetica", "bold");
-  doc.text(isArmenian ? "Վերնագիր:" : "Title:", margin, yPosition);
-  doc.setFont("helvetica", "normal");
+  selectBoldFont(doc, labels.title, hasArmenianFont);
+  doc.text(labels.title, margin, yPosition);
+  selectFont(doc, data.caseTitle, hasArmenianFont);
   const titleLines = doc.splitTextToSize(data.caseTitle, maxWidth - 30);
   doc.text(titleLines, margin + 30, yPosition);
   yPosition += titleLines.length * 6 + 8;
   
   // Status and Priority
   checkPageOverflow(16);
-  doc.setFont("helvetica", "bold");
-  doc.text(isArmenian ? "Կարգավիճակ:" : "Status:", margin, yPosition);
-  doc.setFont("helvetica", "normal");
+  selectBoldFont(doc, labels.status, hasArmenianFont);
+  doc.text(labels.status, margin, yPosition);
+  selectFont(doc, data.status, hasArmenianFont);
   doc.text(data.status, margin + 35, yPosition);
   yPosition += 8;
   
-  doc.setFont("helvetica", "bold");
-  doc.text(isArmenian ? "Առաջնահերթություն:" : "Priority:", margin, yPosition);
-  doc.setFont("helvetica", "normal");
+  selectBoldFont(doc, labels.priority, hasArmenianFont);
+  doc.text(labels.priority, margin, yPosition);
+  selectFont(doc, data.priority, hasArmenianFont);
   doc.text(data.priority, margin + 55, yPosition);
   yPosition += 8;
   
   // Court information
   if (data.courtName) {
     checkPageOverflow(8);
-    doc.setFont("helvetica", "bold");
-    doc.text(isArmenian ? "Դատարան:" : "Court:", margin, yPosition);
-    doc.setFont("helvetica", "normal");
+    selectBoldFont(doc, labels.court, hasArmenianFont);
+    doc.text(labels.court, margin, yPosition);
+    selectFont(doc, data.courtName, hasArmenianFont);
     const courtLines = doc.splitTextToSize(data.courtName, maxWidth - 30);
     doc.text(courtLines, margin + 30, yPosition);
     yPosition += courtLines.length * 6 + 4;
@@ -416,25 +520,25 @@ export function exportCaseDetailToPDF(data: CaseDetailExportData): void {
   
   if (data.courtDate) {
     checkPageOverflow(8);
-    doc.setFont("helvetica", "bold");
-    doc.text(isArmenian ? "Դատական նիստ:" : "Court Date:", margin, yPosition);
-    doc.setFont("helvetica", "normal");
+    selectBoldFont(doc, labels.courtDate, hasArmenianFont);
+    doc.text(labels.courtDate, margin, yPosition);
+    selectFont(doc, data.courtDate, hasArmenianFont);
     doc.text(data.courtDate, margin + 40, yPosition);
     yPosition += 8;
   }
   
   // Dates
   checkPageOverflow(16);
-  const locale = data.language === 'hy' ? 'hy-AM' : 'en-US';
-  doc.setFont("helvetica", "bold");
-  doc.text(isArmenian ? "Ստեղծվել է:" : "Created:", margin, yPosition);
-  doc.setFont("helvetica", "normal");
+  const locale = lang === 'hy' ? 'hy-AM' : 'en-US';
+  selectBoldFont(doc, labels.created, hasArmenianFont);
+  doc.text(labels.created, margin, yPosition);
+  selectFont(doc, "", hasArmenianFont);
   doc.text(data.createdAt.toLocaleString(locale), margin + 35, yPosition);
   yPosition += 8;
   
-  doc.setFont("helvetica", "bold");
-  doc.text(isArmenian ? "Թարմացվել է:" : "Updated:", margin, yPosition);
-  doc.setFont("helvetica", "normal");
+  selectBoldFont(doc, labels.updated, hasArmenianFont);
+  doc.text(labels.updated, margin, yPosition);
+  selectFont(doc, "", hasArmenianFont);
   doc.text(data.updatedAt.toLocaleString(locale), margin + 35, yPosition);
   yPosition += 15;
   
@@ -448,12 +552,12 @@ export function exportCaseDetailToPDF(data: CaseDetailExportData): void {
   if (data.description) {
     checkPageOverflow(20);
     doc.setFontSize(14);
-    doc.setFont("helvetica", "bold");
-    doc.text(isArmenian ? "Նկարագրություն" : "Description", margin, yPosition);
+    selectBoldFont(doc, labels.description, hasArmenianFont);
+    doc.text(labels.description, margin, yPosition);
     yPosition += 8;
     
     doc.setFontSize(10);
-    doc.setFont("helvetica", "normal");
+    selectFont(doc, data.description, hasArmenianFont);
     const descLines = doc.splitTextToSize(data.description, maxWidth);
     
     for (const line of descLines) {
@@ -468,12 +572,12 @@ export function exportCaseDetailToPDF(data: CaseDetailExportData): void {
   if (data.facts) {
     checkPageOverflow(20);
     doc.setFontSize(14);
-    doc.setFont("helvetica", "bold");
-    doc.text(isArmenian ? "Փաստական հանգամանքներ" : "Facts", margin, yPosition);
+    selectBoldFont(doc, labels.facts, hasArmenianFont);
+    doc.text(labels.facts, margin, yPosition);
     yPosition += 8;
     
     doc.setFontSize(10);
-    doc.setFont("helvetica", "normal");
+    selectFont(doc, data.facts, hasArmenianFont);
     const factsLines = doc.splitTextToSize(data.facts, maxWidth);
     
     for (const line of factsLines) {
@@ -488,12 +592,12 @@ export function exportCaseDetailToPDF(data: CaseDetailExportData): void {
   if (data.legalQuestion) {
     checkPageOverflow(20);
     doc.setFontSize(14);
-    doc.setFont("helvetica", "bold");
-    doc.text(isArmenian ? "Իրավական հարց" : "Legal Question", margin, yPosition);
+    selectBoldFont(doc, labels.legalQuestion, hasArmenianFont);
+    doc.text(labels.legalQuestion, margin, yPosition);
     yPosition += 8;
     
     doc.setFontSize(10);
-    doc.setFont("helvetica", "normal");
+    selectFont(doc, data.legalQuestion, hasArmenianFont);
     const legalLines = doc.splitTextToSize(data.legalQuestion, maxWidth);
     
     for (const line of legalLines) {
@@ -508,12 +612,12 @@ export function exportCaseDetailToPDF(data: CaseDetailExportData): void {
   if (data.notes) {
     checkPageOverflow(20);
     doc.setFontSize(14);
-    doc.setFont("helvetica", "bold");
-    doc.text(isArmenian ? "Նշումներ" : "Notes", margin, yPosition);
+    selectBoldFont(doc, labels.notes, hasArmenianFont);
+    doc.text(labels.notes, margin, yPosition);
     yPosition += 8;
     
     doc.setFontSize(10);
-    doc.setFont("helvetica", "normal");
+    selectFont(doc, data.notes, hasArmenianFont);
     const notesLines = doc.splitTextToSize(data.notes, maxWidth);
     
     for (const line of notesLines) {
@@ -528,17 +632,18 @@ export function exportCaseDetailToPDF(data: CaseDetailExportData): void {
   if (data.files && data.files.length > 0) {
     checkPageOverflow(20);
     doc.setFontSize(14);
-    doc.setFont("helvetica", "bold");
-    doc.text(isArmenian ? "Կցված ֆայլեր" : "Attached Files", margin, yPosition);
+    selectBoldFont(doc, labels.attachedFiles, hasArmenianFont);
+    doc.text(labels.attachedFiles, margin, yPosition);
     yPosition += 8;
     
     doc.setFontSize(9);
-    doc.setFont("helvetica", "normal");
     
     data.files.forEach((file, index) => {
       checkPageOverflow(6);
       const sizeKB = (file.file_size / 1024).toFixed(2);
-      doc.text(`${index + 1}. ${file.original_filename} (${sizeKB} KB) - ${new Date(file.created_at).toLocaleDateString(locale)}`, margin, yPosition);
+      const fileText = `${index + 1}. ${file.original_filename} (${sizeKB} KB) - ${new Date(file.created_at).toLocaleDateString(locale)}`;
+      selectFont(doc, fileText, hasArmenianFont);
+      doc.text(fileText, margin, yPosition);
       yPosition += 5;
     });
     yPosition += 10;
@@ -548,21 +653,21 @@ export function exportCaseDetailToPDF(data: CaseDetailExportData): void {
   if (data.timeline && data.timeline.length > 0) {
     checkPageOverflow(20);
     doc.setFontSize(14);
-    doc.setFont("helvetica", "bold");
-    doc.text(isArmenian ? "Ժամանակագրություն" : "Timeline", margin, yPosition);
+    selectBoldFont(doc, labels.timeline, hasArmenianFont);
+    doc.text(labels.timeline, margin, yPosition);
     yPosition += 8;
     
     doc.setFontSize(9);
-    doc.setFont("helvetica", "normal");
     
     data.timeline.forEach((event) => {
       checkPageOverflow(10);
-      doc.setFont("helvetica", "bold");
-      doc.text(`${new Date(event.timestamp).toLocaleString(locale)} - ${event.title}`, margin, yPosition);
+      const eventTitle = `${new Date(event.timestamp).toLocaleString(locale)} - ${event.title}`;
+      selectBoldFont(doc, eventTitle, hasArmenianFont);
+      doc.text(eventTitle, margin, yPosition);
       yPosition += 5;
       
       if (event.description) {
-        doc.setFont("helvetica", "normal");
+        selectFont(doc, event.description, hasArmenianFont);
         const descLines = doc.splitTextToSize(`  ${event.description}`, maxWidth);
         for (const line of descLines) {
           checkPageOverflow(4);
@@ -578,7 +683,7 @@ export function exportCaseDetailToPDF(data: CaseDetailExportData): void {
   const totalPages = doc.getNumberOfPages();
   for (let i = 1; i <= totalPages; i++) {
     doc.setPage(i);
-    addFooter(doc, disclaimer, i, totalPages);
+    addFooter(doc, i, totalPages, hasArmenianFont);
   }
   
   // Save
