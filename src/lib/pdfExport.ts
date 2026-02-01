@@ -115,15 +115,26 @@ function addHeader(doc: jsPDF, caseNumber: string, exportDate: Date, language: "
   doc.setFontSize(9);
   doc.setTextColor(100, 100, 100);
   
-  selectFont(doc, "Ai Legal Armenia", hasArmenianFont);
+  // Brand name - latin only
+  doc.setFont("helvetica", "normal");
   doc.text("Ai Legal Armenia", margin, 12);
   
   const locale = language === 'hy' ? 'hy-AM' : 'en-US';
   const dateStr = exportDate.toLocaleDateString(locale);
-  // Fixed: Use proper Armenian word for "Case"
-  const caseLabel = language === 'hy' ? '\u0533\u0578\u0580\u056E' : 'Case';
+  // Use proper Armenian word for "Case" with № symbol
+  const caseLabel = language === 'hy' ? '\u0533\u0578\u0580\u056E \u2116' : 'Case #';
+  const caseHeaderText = `${caseLabel} ${caseNumber}`;
   
-  doc.text(`${caseLabel}: ${caseNumber}`, pageWidth / 2, 12, { align: "center" });
+  // Force Armenian font for case header if it contains Armenian/Cyrillic
+  if (hasArmenianFont && (containsArmenian(caseHeaderText) || containsCyrillic(caseHeaderText) || containsArmenian(caseNumber))) {
+    setArmenianFont(doc);
+  } else {
+    doc.setFont("helvetica", "normal");
+  }
+  doc.text(caseHeaderText, pageWidth / 2, 12, { align: "center" });
+  
+  // Date - latin numerals
+  doc.setFont("helvetica", "normal");
   doc.text(dateStr, pageWidth - margin, 12, { align: "right" });
   doc.restoreGraphicsState();
 }
@@ -357,28 +368,40 @@ export async function exportMultipleAnalysesToPDF(
   // Title page
   addHeader(doc, caseNumber, exportDate, language, hasArmenianFont);
   
+  // Brand name - use bold helvetica
   doc.setFontSize(24);
   doc.setTextColor(0, 0, 0);
-  selectBoldFont(doc, "Ai Legal Armenia", hasArmenianFont);
+  doc.setFont("helvetica", "bold");
   doc.text("Ai Legal Armenia", pageWidth / 2, 50, { align: "center" });
   
+  // Main title - Armenian text
   doc.setFontSize(18);
   doc.setTextColor(0, 0, 0);
-  selectBoldFont(doc, labels.fullCaseAnalysis, hasArmenianFont);
+  if (hasArmenianFont) {
+    setArmenianFont(doc);
+  }
   doc.text(labels.fullCaseAnalysis, pageWidth / 2, 75, { align: "center" });
   
+  // Case number with Armenian label
   doc.setFontSize(14);
   doc.setTextColor(0, 0, 0);
   const caseText = `${labels.case} ${caseNumber}`;
-  selectFont(doc, caseText, hasArmenianFont);
+  if (hasArmenianFont) {
+    setArmenianFont(doc);
+  }
   doc.text(caseText, pageWidth / 2, 100, { align: "center" });
   
-  selectFont(doc, caseTitle, hasArmenianFont);
+  // Case title - likely Armenian
+  if (hasArmenianFont) {
+    setArmenianFont(doc);
+  }
   const titleLines = doc.splitTextToSize(caseTitle, maxWidth);
   doc.text(titleLines, pageWidth / 2, 115, { align: "center" });
   
+  // Date - numeric, use helvetica
   doc.setFontSize(12);
   doc.setTextColor(0, 0, 0);
+  doc.setFont("helvetica", "normal");
   const locale = language === 'hy' ? 'hy-AM' : 'en-US';
   doc.text(exportDate.toLocaleDateString(locale), pageWidth / 2, 140, { align: "center" });
   
