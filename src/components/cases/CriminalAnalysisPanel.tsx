@@ -2,7 +2,7 @@ import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Loader2, CheckCircle2, AlertCircle, Scale } from "lucide-react";
+import { Loader2, CheckCircle2, AlertCircle, Scale, Save } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import ReactMarkdown from "react-markdown";
@@ -23,6 +23,7 @@ interface ModuleResult {
   analysis: string;
   sources: Array<{ title: string; category: string; source_name: string }>;
   timestamp: Date;
+  savedId?: string; // Track if already saved
 }
 
 interface CriminalAnalysisPanelProps {
@@ -103,6 +104,7 @@ export function CriminalAnalysisPanel({
 }: CriminalAnalysisPanelProps) {
   const { t } = useTranslation(["cases", "ai"]);
   const [loadingModule, setLoadingModule] = useState<CriminalModule | null>(null);
+  const [savingModule, setSavingModule] = useState<CriminalModule | null>(null);
   const [results, setResults] = useState<Record<CriminalModule, ModuleResult | null>>({
     defense_analysis: null,
     prosecution_analysis: null,
@@ -170,6 +172,44 @@ export function CriminalAnalysisPanel({
       toast.error(t("ai:analysis_failed"));
     } finally {
       setLoadingModule(null);
+    }
+  };
+
+  // Save analysis to database
+  const saveAnalysis = async (moduleId: CriminalModule) => {
+    const result = results[moduleId];
+    if (!result || result.savedId) return;
+
+    setSavingModule(moduleId);
+    try {
+      const { data: userData } = await supabase.auth.getUser();
+      
+      const { data, error } = await supabase
+        .from("ai_analysis")
+        .insert([{
+          case_id: caseId,
+          role: moduleId as string,
+          response_text: result.analysis,
+          sources_used: JSON.parse(JSON.stringify(result.sources)),
+          created_by: userData?.user?.id || null
+        }])
+        .select("id")
+        .single();
+
+      if (error) throw error;
+
+      // Update local state to mark as saved
+      setResults(prev => ({
+        ...prev,
+        [moduleId]: { ...result, savedId: data.id }
+      }));
+
+      toast.success(t("ai:analysis_complete") + " - " + t("ai:save_analysis"));
+    } catch (error) {
+      console.error("Save analysis error:", error);
+      toast.error(t("ai:analysis_failed"));
+    } finally {
+      setSavingModule(null);
     }
   };
 
@@ -248,13 +288,31 @@ export function CriminalAnalysisPanel({
                 <CardTitle className="text-base">
                   {MODULES.find(m => m.id === expandedModule)?.label}
                 </CardTitle>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => setExpandedModule(null)}
-                >
-                  {t("common:close", "\u0553\u0561\u056F\u0565\u056C")}
-                </Button>
+                <div className="flex items-center gap-2">
+                  {/* Save Analysis Button */}
+                  <Button
+                    variant={results[expandedModule]?.savedId ? "secondary" : "default"}
+                    size="sm"
+                    onClick={() => saveAnalysis(expandedModule)}
+                    disabled={savingModule === expandedModule || !!results[expandedModule]?.savedId}
+                  >
+                    {savingModule === expandedModule ? (
+                      <Loader2 className="h-4 w-4 animate-spin mr-1" />
+                    ) : (
+                      <Save className="h-4 w-4 mr-1" />
+                    )}
+                    {results[expandedModule]?.savedId 
+                      ? t("common:saved", "\u054A\u0561\u0570\u057A\u0561\u0576\u057E\u0561\u056E \u0567") 
+                      : t("ai:save_analysis")}
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => setExpandedModule(null)}
+                  >
+                    {t("common:close", "\u0553\u0561\u056F\u0565\u056C")}
+                  </Button>
+                </div>
               </div>
             </CardHeader>
             <CardContent>
