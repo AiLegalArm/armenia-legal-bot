@@ -439,14 +439,15 @@ serve(async (req) => {
       }
     }
 
-    // Fetch case files content (OCR results and audio transcriptions) if caseId is provided
+    // Fetch case files content (OCR results, audio transcriptions, and raw file content) if caseId is provided
     let caseFilesContext = "";
+    const fileContentsForVision: Array<{ name: string; base64: string; mimeType: string }> = [];
     
     if (caseId) {
-      // Get case files with their OCR results
+      // Get case files
       const { data: caseFiles, error: filesError } = await supabase
         .from("case_files")
-        .select("id, original_filename, file_type")
+        .select("id, original_filename, file_type, storage_path")
         .eq("case_id", caseId)
         .is("deleted_at", null);
 
@@ -467,38 +468,148 @@ serve(async (req) => {
 
         // Build file context mapping
         const fileMap = new Map(caseFiles.map(f => [f.id, f]));
+        const ocrFileIds = new Set(ocrResults?.map(r => r.file_id) || []);
+        const transFileIds = new Set(transcriptions?.map(t => t.file_id) || []);
         
+        // Process OCR results
         if (!ocrError && ocrResults && ocrResults.length > 0) {
-          caseFilesContext += "\n\n## Case Documents (OCR Extracted Text):\n\n";
+          caseFilesContext += "\n\n## \u0533\u0578\u0580\u056E\u056B \u0583\u0561\u057D\u057F\u0561\u0569\u0572\u0569\u0565\u0580 (Case Documents - OCR):\n\n";
           ocrResults.forEach((ocr, index) => {
             const file = fileMap.get(ocr.file_id);
             const fileName = file?.original_filename || "Unknown document";
             const text = ocr.extracted_text || "";
-            // Limit each document to 3000 chars to avoid context overflow
-            const truncatedText = text.length > 3000 ? text.substring(0, 3000) + "..." : text;
-            caseFilesContext += `### Document ${index + 1}: ${fileName}\n`;
+            // Increased limit to 8000 chars for better analysis
+            const truncatedText = text.length > 8000 ? text.substring(0, 8000) + "..." : text;
+            caseFilesContext += `### \u0553\u0561\u057D\u057F\u0561\u0569\u0578\u0582\u0572\u0569 ${index + 1}: ${fileName}\n`;
             if (ocr.confidence) {
-              caseFilesContext += `Confidence: ${(ocr.confidence * 100).toFixed(0)}%\n`;
+              caseFilesContext += `\u054E\u057D\u057f\u0561\u0570\u0578\u0582\u0569\u0575\u0578\u0582\u0576: ${(ocr.confidence * 100).toFixed(0)}%\n`;
             }
             caseFilesContext += `${truncatedText}\n\n`;
           });
         }
 
+        // Process audio transcriptions
         if (!transError && transcriptions && transcriptions.length > 0) {
-          caseFilesContext += "\n\n## Audio Transcriptions:\n\n";
+          caseFilesContext += "\n\n## \u0531\u0578\u0582\u0564\u056B\u0578 \u057f\u0580\u0561\u0576\u057d\u056F\u0580\u056B\u057a\u0581\u056B\u0561\u0576\u0565\u0580 (Audio Transcriptions):\n\n";
           transcriptions.forEach((trans, index) => {
             const file = fileMap.get(trans.file_id);
             const fileName = file?.original_filename || "Unknown audio";
             const text = trans.transcription_text || "";
-            // Limit each transcription to 3000 chars
-            const truncatedText = text.length > 3000 ? text.substring(0, 3000) + "..." : text;
-            caseFilesContext += `### Audio ${index + 1}: ${fileName}\n`;
+            const truncatedText = text.length > 8000 ? text.substring(0, 8000) + "..." : text;
+            caseFilesContext += `### \u0531\u0578\u0582\u0564\u056B\u0578 ${index + 1}: ${fileName}\n`;
             if (trans.confidence) {
-              caseFilesContext += `Confidence: ${(trans.confidence * 100).toFixed(0)}%\n`;
+              caseFilesContext += `\u054E\u057d\u057f\u0561\u0570\u0578\u0582\u0569\u0575\u0578\u0582\u0576: ${(trans.confidence * 100).toFixed(0)}%\n`;
             }
             caseFilesContext += `${truncatedText}\n\n`;
           });
         }
+
+        // For files without OCR/transcription, try to read them directly
+        const filesWithoutProcessing = caseFiles.filter(f => 
+          !ocrFileIds.has(f.id) && !transFileIds.has(f.id)
+        );
+        
+        if (filesWithoutProcessing.length > 0) {
+          console.log(`Found ${filesWithoutProcessing.length} files without OCR/transcription, attempting direct read`);
+          
+          for (const file of filesWithoutProcessing) {
+            try {
+              const fileType = file.file_type?.toLowerCase() || "";
+              const fileName = file.original_filename || "unknown";
+              
+              // For images, download and prepare for Vision analysis
+              if (fileType.includes("image") || fileType.includes("jpeg") || fileType.includes("jpg") || fileType.includes("png")) {
+                const { data: fileData, error: downloadError } = await supabase.storage
+                  .from("case-files")
+                  .download(file.storage_path);
+                
+                if (!downloadError && fileData) {
+                  const buffer = await fileData.arrayBuffer();
+                  const base64 = btoa(String.fromCharCode(...new Uint8Array(buffer)));
+                  fileContentsForVision.push({
+                    name: fileName,
+                    base64: base64,
+                    mimeType: fileType.includes("png") ? "image/png" : "image/jpeg"
+                  });
+                }
+              }
+              // For DOCX files, extract text
+              else if (fileType.includes("docx") || fileName.endsWith(".docx")) {
+                const { data: fileData, error: downloadError } = await supabase.storage
+                  .from("case-files")
+                  .download(file.storage_path);
+                
+                if (!downloadError && fileData) {
+                  try {
+                    const buffer = await fileData.arrayBuffer();
+                    const uint8 = new Uint8Array(buffer);
+                    
+                    // DOCX is a ZIP file, find document.xml
+                    const zip = await unzipDocx(uint8);
+                    if (zip) {
+                      const truncatedText = zip.length > 8000 ? zip.substring(0, 8000) + "..." : zip;
+                      caseFilesContext += `\n### DOCX \u0553\u0561\u057d\u057f\u0561\u0569\u0578\u0582\u0572\u0569: ${fileName}\n${truncatedText}\n\n`;
+                    }
+                  } catch (parseErr) {
+                    console.error(`Failed to parse DOCX ${fileName}:`, parseErr);
+                  }
+                }
+              }
+              // For PDF files without OCR, note that they need processing
+              else if (fileType.includes("pdf")) {
+                caseFilesContext += `\n### PDF \u0553\u0561\u057d\u057f\u0561\u0569\u0578\u0582\u0572\u0569 (\u0579\u056B \u0574\u0577\u0561\u056F\u057e\u0561\u056E): ${fileName}\n(\u0531\u0575\u057d PDF \u0586\u0561\u0575\u056c\u0568 \u0564\u0565\u057c OCR \u0579\u056B \u0561\u0576\u0581\u0565\u056c, \u056d\u0576\u0564\u0580\u0578\u0582\u0574 \u0565\u0576\u0584 \u0576\u0561\u056d \u0563\u0578\u0580\u056e\u0561\u0580\u056f\u0565\u056c OCR \u0570\u0561\u0574\u0561\u056a\u0578\u0572\u0578\u057e)\n\n`;
+              }
+            } catch (fileReadError) {
+              console.error(`Error reading file ${file.original_filename}:`, fileReadError);
+            }
+          }
+        }
+      }
+    }
+    
+    // Helper function to extract text from DOCX
+    async function unzipDocx(data: Uint8Array): Promise<string | null> {
+      try {
+        // Simple DOCX text extraction - find document.xml in the ZIP
+        const textDecoder = new TextDecoder("utf-8");
+        const dataStr = textDecoder.decode(data);
+        
+        // Look for the document.xml content between ZIP headers
+        // DOCX stores main content in word/document.xml
+        const pkSignature = String.fromCharCode(0x50, 0x4B, 0x03, 0x04);
+        
+        if (!dataStr.startsWith(pkSignature)) {
+          return null;
+        }
+        
+        // Find XML content patterns and extract text between tags
+        const xmlTagPattern = /<w:t[^>]*>([^<]*)<\/w:t>/g;
+        const matches: string[] = [];
+        let match;
+        
+        // Convert to text and search for w:t tags (Word text elements)
+        const fullText = textDecoder.decode(data);
+        while ((match = xmlTagPattern.exec(fullText)) !== null) {
+          if (match[1]) {
+            matches.push(match[1]);
+          }
+        }
+        
+        if (matches.length > 0) {
+          return matches.join(" ");
+        }
+        
+        // Fallback: extract any readable text
+        const readableText = fullText
+          .replace(/<[^>]+>/g, " ")
+          .replace(/[^\u0000-\u007F\u0400-\u04FF\u0530-\u058F\u0020-\u007E]/g, " ")
+          .replace(/\s+/g, " ")
+          .trim();
+        
+        return readableText.length > 100 ? readableText.substring(0, 15000) : null;
+      } catch (err) {
+        console.error("DOCX parse error:", err);
+        return null;
       }
     }
 
@@ -578,7 +689,46 @@ Please provide your professional legal analysis from your designated role perspe
       systemPrompt = SYSTEM_PROMPTS[role as keyof typeof SYSTEM_PROMPTS];
     }
 
-    // Call Legal AI (GPT-5 for high-quality Armenian legal reasoning)
+    // Build message content with vision support for images
+    let messageContent: any;
+    
+    if (fileContentsForVision.length > 0) {
+      // Use multimodal message format with images
+      console.log(`Including ${fileContentsForVision.length} images for Vision analysis`);
+      
+      const contentParts: any[] = [
+        { type: "text", text: userMessage }
+      ];
+      
+      // Add images (limit to 5 to avoid token overflow)
+      const imagesToInclude = fileContentsForVision.slice(0, 5);
+      for (const img of imagesToInclude) {
+        contentParts.push({
+          type: "image_url",
+          image_url: {
+            url: `data:${img.mimeType};base64,${img.base64}`
+          }
+        });
+        // Add filename reference
+        contentParts.push({
+          type: "text", 
+          text: `[\u054A\u0561\u057f\u056F\u0565\u0580: ${img.name}]`
+        });
+      }
+      
+      if (fileContentsForVision.length > 5) {
+        contentParts.push({
+          type: "text",
+          text: `\n(\u0546\u0577\u0578\u0582\u0574: ${fileContentsForVision.length - 5} \u056C\u0580\u0561\u0581\u0578\u0582\u0581\u056B\u0579 \u057A\u0561\u057f\u056F\u0565\u0580 \u0579\u0565\u0576 \u0576\u0565\u0580\u0561\u057c\u057E\u0565\u056c \u057d\u0561\u0570\u0574\u0561\u0576\u0561\u0583\u0561\u056f\u0574\u0561\u0576 \u057a\u0561\u057f\u0573\u0561\u057c\u0578\u057e)`
+        });
+      }
+      
+      messageContent = contentParts;
+    } else {
+      messageContent = userMessage;
+    }
+
+    // Call Legal AI (Gemini Pro for high-quality Armenian legal reasoning with vision)
     const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
       method: "POST",
       headers: {
@@ -589,7 +739,7 @@ Please provide your professional legal analysis from your designated role perspe
         model: "google/gemini-2.5-pro",
         messages: [
           { role: "system", content: systemPrompt },
-          { role: "user", content: userMessage }
+          { role: "user", content: messageContent }
         ],
         temperature: 0.7,
         top_p: 0.92,
