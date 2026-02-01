@@ -428,16 +428,15 @@ const CaseDetail = () => {
             </div>
           </div>
           {canEdit && (
-            <div className="grid grid-cols-3 sm:flex sm:flex-wrap gap-2">
+            <div className="flex flex-wrap gap-2">
               {/* Quick Complaint Generation Dropdown */}
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
-                  <Button variant="default" size="sm" className="flex-col sm:flex-row h-auto py-2 sm:py-2 sm:h-9">
-                    <Gavel className="h-4 w-4 sm:mr-2" />
-                    <span className="text-xs sm:text-sm mt-1 sm:mt-0 hidden sm:inline">
-                      {i18n.language === 'hy' ? '\u0546\u0565\u0580\u056F\u0561\u0575\u0561\u0581\u0576\u0565\u056C \u0562\u0578\u0572\u0578\u0584' : i18n.language === 'en' ? 'File Complaint' : '\u041F\u043E\u0434\u0430\u0442\u044C \u0436\u0430\u043B\u043E\u0431\u0443'}
+                  <Button variant="default" size="sm" className="flex-1 sm:flex-none min-w-0">
+                    <Gavel className="h-4 w-4 sm:mr-2 shrink-0" />
+                    <span className="text-xs sm:text-sm truncate">
+                      {i18n.language === 'hy' ? '\u0532\u0578\u0572\u0578\u0584' : i18n.language === 'en' ? 'Complaint' : '\u0416\u0430\u043B\u043E\u0431\u0430'}
                     </span>
-                    <span className="text-xs mt-1 sm:hidden">{'\u0532\u0578\u0572\u0578\u0584'}</span>
                   </Button>
                 </DropdownMenuTrigger>
                 <DropdownMenuContent align="end">
@@ -466,15 +465,17 @@ const CaseDetail = () => {
                 </DropdownMenuContent>
               </DropdownMenu>
               
-              <Button variant="outline" size="sm" onClick={() => setEditFormOpen(true)} className="flex-col sm:flex-row h-auto py-2 sm:py-2 sm:h-9">
-                <Edit className="h-4 w-4 sm:mr-2" />
-                <span className="text-xs sm:text-sm mt-1 sm:mt-0 hidden sm:inline">{t('edit_case')}</span>
-                <span className="text-xs mt-1 sm:hidden">{'\u053D\u0574\u0562.'}</span>
+              <Button variant="outline" size="sm" onClick={() => setEditFormOpen(true)} className="flex-1 sm:flex-none min-w-0">
+                <Edit className="h-4 w-4 sm:mr-2 shrink-0" />
+                <span className="text-xs sm:text-sm truncate">
+                  {i18n.language === 'hy' ? '\u053D\u0574\u0562.' : t('edit_case')}
+                </span>
               </Button>
-              <Button variant="destructive" size="sm" onClick={() => setDeleteDialogOpen(true)} className="flex-col sm:flex-row h-auto py-2 sm:py-2 sm:h-9">
-                <Trash2 className="h-4 w-4 sm:mr-2" />
-                <span className="text-xs sm:text-sm mt-1 sm:mt-0 hidden sm:inline">{t('delete_case')}</span>
-                <span className="text-xs mt-1 sm:hidden">{'\u054B\u0576\u057B\u0565\u056C'}</span>
+              <Button variant="destructive" size="sm" onClick={() => setDeleteDialogOpen(true)} className="flex-1 sm:flex-none min-w-0">
+                <Trash2 className="h-4 w-4 sm:mr-2 shrink-0" />
+                <span className="text-xs sm:text-sm truncate">
+                  {i18n.language === 'hy' ? '\u054B\u0576\u057B\u0565\u056C' : t('delete_case')}
+                </span>
               </Button>
             </div>
           )}

@@ -6,22 +6,31 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
-const SYSTEM_PROMPT = `You are an expert legal analyst for Armenian (RA) law cases. Your task is to extract two key pieces of information from case materials:
+const SYSTEM_PROMPT = `You are an expert legal analyst for Armenian (RA) law cases. Your task is to extract key pieces of information from case materials:
 
-1. FACTS (\u0553\u0561\u057D\u057F\u0565\u0580): 
+1. CASE NUMBER (\u0533\u0578\u0580\u056E\u056B \u0570\u0561\u0574\u0561\u0580):
+   - Look for patterns like: \u053F\u0534/1718/02/24, \u0535\u0531\u0534/1234/01/25, \u053F\u0534-1234-2024, etc.
+   - Court case numbers often follow format: XX/NNNN/NN/NN or XX-NNNN-NNNN
+   - Also look for: "\u0563\u0578\u0580\u056E N", "\u0563\u0578\u0580\u056E \u0569\u056B\u057E", "case N", "\u0564\u0565\u056C\u0578 N"
+   - Extract the EXACT case number as written in the document
+
+2. FACTS (\u0553\u0561\u057D\u057F\u0565\u0580): 
    - Concrete facts of what happened
    - When and where it occurred
    - Involved parties: victim, defendant, plaintiff, body
    - Amounts, damages involved
 
-2. LEGAL QUESTION (\u053B\u0580\u0561\u057E\u0561\u0562\u0561\u0576\u0561\u056F\u0561\u0576 \u0570\u0561\u0580\u0581):
+3. LEGAL QUESTION (\u053B\u0580\u0561\u057E\u0561\u0562\u0561\u0576\u0561\u056F\u0561\u0576 \u0570\u0561\u0580\u0581):
    - What legal issue needs to be resolved
    - Which articles or laws may apply
    - What documents to collect, what questions to answer for lawyers
 
 Extract from case materials (description, OCR results, audio transcriptions).
 
-IMPORTANT: Always respond in Armenian (\u0540\u0561\u0575\u0565\u0580\u0565\u0576). Extract specific, concrete information from the provided documents.`;
+IMPORTANT: 
+- Always respond in Armenian (\u0540\u0561\u0575\u0565\u0580\u0565\u0576). 
+- Extract specific, concrete information from the provided documents.
+- For case_number, return the EXACT number found in documents (e.g., "\u053F\u0534/1718/02/24"), or empty string if not found.`;
 
 serve(async (req) => {
   if (req.method === "OPTIONS") {
@@ -141,10 +150,14 @@ serve(async (req) => {
             type: "function",
             function: {
               name: "extract_case_fields",
-              description: "Extract case facts and legal question from provided materials",
+              description: "Extract case number, facts and legal question from provided materials",
               parameters: {
                 type: "object",
                 properties: {
+                  case_number: {
+                    type: "string",
+                    description: "Case number found in documents (e.g., \u053F\u0534/1718/02/24, \u0535\u0531\u0534/1234/01/25). Return empty string if not found."
+                  },
                   facts: {
                     type: "string",
                     description: "Case facts in Armenian - concrete details of what happened, when, where, involved parties, amounts"
@@ -154,7 +167,7 @@ serve(async (req) => {
                     description: "Legal question in Armenian - what legal issue needs resolution, which laws apply"
                   }
                 },
-                required: ["facts", "legal_question"]
+                required: ["case_number", "facts", "legal_question"]
               }
             }
           }
@@ -194,14 +207,22 @@ serve(async (req) => {
     const extractedFields = JSON.parse(toolCall.function.arguments);
     console.log("Extracted fields:", extractedFields);
 
+    // Build update object - only update case_number if found
+    const updateData: Record<string, unknown> = {
+      facts: extractedFields.facts,
+      legal_question: extractedFields.legal_question,
+      updated_at: new Date().toISOString()
+    };
+
+    // Only update case_number if AI found one in documents
+    if (extractedFields.case_number && extractedFields.case_number.trim()) {
+      updateData.case_number = extractedFields.case_number.trim();
+    }
+
     // Update case with extracted fields
     const { error: updateError } = await supabase
       .from("cases")
-      .update({
-        facts: extractedFields.facts,
-        legal_question: extractedFields.legal_question,
-        updated_at: new Date().toISOString()
-      })
+      .update(updateData)
       .eq("id", caseId);
 
     if (updateError) {
@@ -213,6 +234,7 @@ serve(async (req) => {
     return new Response(
       JSON.stringify({
         success: true,
+        case_number: extractedFields.case_number || null,
         facts: extractedFields.facts,
         legal_question: extractedFields.legal_question
       }),
