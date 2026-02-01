@@ -594,7 +594,7 @@ Please provide your professional legal analysis from your designated role perspe
         temperature: 0.7,
         top_p: 0.92,
         frequency_penalty: 1.2,
-        max_tokens: 4000,
+        max_tokens: 16384,
       }),
     });
 

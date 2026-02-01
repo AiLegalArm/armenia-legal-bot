@@ -11,36 +11,36 @@ interface AnalysisExportData {
   language?: "hy" | "en";
 }
 
-const DISCLAIMER_HY = "NAKHAZDUSGUTYUN: Suyn verlutsutyuny nakhatesvats e miayn teghekatvakin npataknerov ev chi handisanum iravabanakin khorhrdatvutyun. Misht khorhrdaktsek litsenzavorvats iravabani het. Ardyunqnery khorhrdatvakan en ev voch mek iravabanakin uzh chunen.";
+const DISCLAIMER_HY = "\u0546\u0531\u053D\u0531\u0536\u0533\u0548\u0552\u054D\u0553\u054A\u054F\u0545\u0548\u0552\u0546: \u054D\u0578\u0582\u0575\u0576 \u057E\u0565\u0580\u056C\u0578\u0582\u056E\u0578\u0582\u0569\u0575\u0578\u0582\u0576\u0568 \u0576\u0561\u056D\u0561\u057F\u0565\u057D\u057E\u0561\u056E \u0567 \u0574\u056B\u0561\u0575\u0576 \u057F\u0565\u0572\u0565\u056F\u0561\u057F\u057E\u0561\u056F\u0561\u0576 \u0576\u057A\u0561\u057F\u0561\u056F\u0576\u0565\u0580\u0578\u057E \u0587 \u0579\u056B \u0570\u0561\u0576\u0564\u056B\u057D\u0561\u0576\u0578\u0582\u0574 \u056B\u0580\u0561\u057E\u0561\u0562\u0561\u0576\u0561\u056F\u0561\u0576 \u056D\u0578\u0580\u0570\u0580\u0564\u0561\u057F\u057E\u0578\u0582\u0569\u0575\u0578\u0582\u0576: \u0544\u056B\u0577\u057F \u056D\u0578\u0580\u0570\u0580\u0564\u0561\u056F\u0581\u0565\u0584 \u056C\u056B\u0581\u0565\u0576\u0566\u0561\u057E\u0578\u0580\u057E\u0561\u056E \u056B\u0580\u0561\u057E\u0561\u0562\u0561\u0576\u056B \u0570\u0565\u057F: \u0531\u0580\u0564\u0575\u0578\u0582\u0576\u0584\u0576\u0565\u0580\u0568 \u056D\u0578\u0580\u0570\u0580\u0564\u0561\u057F\u057E\u0561\u056F\u0561\u0576 \u0565\u0576 \u0587 \u0578\u0579 \u0574\u0565\u056F \u056B\u0580\u0561\u057E\u0561\u0562\u0561\u0576\u0561\u056F\u0561\u0576 \u0578\u0582\u056A \u0579\u0578\u0582\u0576\u0565\u0576:";
 
 const DISCLAIMER_EN = "DISCLAIMER: This analysis is for informational purposes only and does not constitute legal advice. Always consult with a licensed attorney for legal matters. The results are advisory and have no legal force.";
 
-// Labels in transliterated Armenian (for PDF compatibility) and English
+// Labels in native Armenian Unicode and English
 const LABELS = {
   hy: {
-    legalAnalysisReport: "IRAVABANAKIN VERLUTSUTYUN",
-    caseNumber: "Gortsi hamar:",
-    caseTitle: "Vernagir:",
-    analysisRole: "Verlutsutyun der:",
-    date: "Amsativ:",
-    analysis: "Verlutsutyun",
-    sourcesUsed: "Ogtagortsats aghbyurner",
-    fullCaseAnalysis: "LIAKATAR GORTSI VERLUTSUTYUN",
-    case: "Gorts:",
-    caseDetails: "GORTSI MANRAMASNER",
-    title: "Vernagir:",
-    status: "Kargavitchak:",
-    priority: "Arajnahertutyun:",
-    court: "Dataran:",
-    courtDate: "Datakan nist:",
-    created: "Steghtsvel e:",
-    updated: "Tarmatsvel e:",
-    description: "Nkaragrutyun",
-    facts: "Pastvakan hangamanqner",
-    legalQuestion: "Iravakan harts",
-    notes: "Nshumner",
-    attachedFiles: "Ktsvats fayler",
-    timeline: "Zhamanakagrutyn"
+    legalAnalysisReport: "\u053B\u054A\u0531\u054E\u0531\u0532\u0531\u0546\u0531\u053F\u0531\u0546 \u054E\u0535\u054A\u053C\u0548\u0552\u053E\u0548\u0552\u0539\u0545\u0548\u0552\u0546",
+    caseNumber: "\u0533\u0578\u0580\u056E\u056B \u0570\u0561\u0574\u0561\u0580:",
+    caseTitle: "\u054E\u0565\u0580\u0576\u0561\u0563\u056B\u0580:",
+    analysisRole: "\u054E\u0565\u0580\u056C\u0578\u0582\u056E\u0578\u0582\u0569\u0575\u0561\u0576 \u0564\u0565\u0580:",
+    date: "\u0531\u0574\u057D\u0561\u0569\u056B\u057E:",
+    analysis: "\u054E\u0565\u0580\u056C\u0578\u0582\u056E\u0578\u0582\u0569\u0575\u0578\u0582\u0576",
+    sourcesUsed: "\u0555\u0563\u057F\u0561\u0563\u0578\u0580\u056E\u057E\u0561\u056E \u0561\u0572\u0562\u0575\u0578\u0582\u0580\u0576\u0565\u0580",
+    fullCaseAnalysis: "\u053C\u053B\u0531\u053F\u0531\u054F\u0531\u054A \u0533\u0548\u054A\u053E\u053B \u054E\u0535\u054A\u053C\u0548\u0552\u053E\u0548\u0552\u0539\u0545\u0548\u0552\u0546",
+    case: "\u0533\u0578\u0580\u056E:",
+    caseDetails: "\u0533\u0548\u054A\u053E\u053B \u0544\u0531\u0546\u054A\u0531\u0544\u0531\u054D\u0546\u0535\u054A",
+    title: "\u054E\u0565\u0580\u0576\u0561\u0563\u056B\u0580:",
+    status: "\u053F\u0561\u0580\u0563\u0561\u057E\u056B\u0573\u0561\u056F:",
+    priority: "\u0531\u057C\u0561\u057B\u0576\u0561\u0570\u0565\u0580\u057F\u0578\u0582\u0569\u0575\u0578\u0582\u0576:",
+    court: "\u0534\u0561\u057F\u0561\u0580\u0561\u0576:",
+    courtDate: "\u0534\u0561\u057F\u0561\u056F\u0561\u0576 \u0576\u056B\u057D\u057F:",
+    created: "\u054D\u057F\u0565\u0572\u056E\u057E\u0565\u056C \u0567:",
+    updated: "\u0539\u0561\u0580\u0574\u0561\u0581\u057E\u0565\u056C \u0567:",
+    description: "\u0546\u056F\u0561\u0580\u0561\u0563\u0580\u0578\u0582\u0569\u0575\u0578\u0582\u0576",
+    facts: "\u0553\u0561\u057D\u057F\u0561\u056F\u0561\u0576 \u0570\u0561\u0576\u0563\u0561\u0574\u0561\u0576\u0584\u0576\u0565\u0580",
+    legalQuestion: "\u053B\u0580\u0561\u057E\u0561\u056F\u0561\u0576 \u0570\u0561\u0580\u0581",
+    notes: "\u0546\u0577\u0578\u0582\u0574\u0576\u0565\u0580",
+    attachedFiles: "\u053F\u0581\u057E\u0561\u056E \u0586\u0561\u0575\u056C\u0565\u0580",
+    timeline: "\u053A\u0561\u0574\u0561\u0576\u0561\u056F\u0561\u0563\u0580\u0578\u0582\u0569\u0575\u0578\u0582\u0576"
   },
   en: {
     legalAnalysisReport: "LEGAL ANALYSIS REPORT",
@@ -71,10 +71,18 @@ const LABELS = {
 
 // Role labels
 const ROLE_LABELS: Record<string, Record<string, string>> = {
-  advocate: { hy: "Pashtpan (Pastaban)", en: "Advocate (Defense)" },
-  prosecutor: { hy: "Meghadrogh", en: "Prosecutor" },
-  judge: { hy: "Datavor", en: "Judge" },
-  aggregator: { hy: "Liakatar verlutsutyun", en: "Complete Analysis" }
+  advocate: { hy: "\u054A\u0561\u0577\u057F\u057A\u0561\u0576 (\u0553\u0561\u057D\u057F\u0561\u0562\u0561\u0576)", en: "Advocate (Defense)" },
+  prosecutor: { hy: "\u0544\u0565\u0572\u0561\u0564\u0580\u0578\u0572", en: "Prosecutor" },
+  judge: { hy: "\u0534\u0561\u057F\u0561\u057E\u0578\u0580", en: "Judge" },
+  aggregator: { hy: "\u053C\u056B\u0561\u056F\u0561\u057F\u0561\u0580 \u057E\u0565\u0580\u056C\u0578\u0582\u056E\u0578\u0582\u0569\u0575\u0578\u0582\u0576", en: "Complete Analysis" },
+  defense_analysis: { hy: "\u054A\u0561\u0577\u057F\u057A\u0561\u0576\u0561\u056F\u0561\u0576 \u057E\u0565\u0580\u056C\u0578\u0582\u056E\u0578\u0582\u0569\u0575\u0578\u0582\u0576", en: "Defense Analysis" },
+  prosecution_analysis: { hy: "\u0544\u0565\u0572\u0561\u0564\u0580\u0561\u0576\u0584\u056B \u057E\u0565\u0580\u056C\u0578\u0582\u056E\u0578\u0582\u0569\u0575\u0578\u0582\u0576", en: "Prosecution Analysis" },
+  judge_analysis: { hy: "\u0534\u0561\u057F\u0561\u056F\u0561\u0576 \u057E\u0565\u0580\u056C\u0578\u0582\u056E\u0578\u0582\u0569\u0575\u0578\u0582\u0576", en: "Judicial Analysis" },
+  evidence_admissibility: { hy: "\u0531\u057A\u0561\u0581\u0578\u0582\u0575\u0581\u0576\u0565\u0580\u056B \u0561\u0576\u0569\u0578\u0582\u0575\u056C\u0561\u057F\u0580\u0565\u056C\u056B\u0578\u0582\u0569\u0575\u0578\u0582\u0576", en: "Evidence Admissibility" },
+  charge_qualification: { hy: "\u0544\u0565\u0572\u0561\u0564\u0580\u0561\u0576\u0584\u056B \u0570\u0561\u0574\u0561\u057A\u0561\u057F\u0561\u057D\u056D\u0561\u0576\u0578\u0582\u0569\u0575\u0578\u0582\u0576", en: "Charge Qualification" },
+  procedural_violations: { hy: "\u0534\u0561\u057F\u0561\u057E\u0561\u0580\u0561\u056F\u0561\u0576 \u056D\u0561\u056D\u057F\u0578\u0582\u0574\u0576\u0565\u0580", en: "Procedural Violations" },
+  substantive_law_violations: { hy: "\u0546\u0575\u0578\u0582\u0569\u0561\u056F\u0561\u0576 \u056D\u0561\u056D\u057F\u0578\u0582\u0574\u0576\u0565\u0580", en: "Substantive Violations" },
+  fair_trial_and_rights: { hy: "\u0531\u0580\u0564\u0561\u0580 \u0564\u0561\u057F\u0561\u0584\u0576\u0576\u0578\u0582\u0569\u0575\u0578\u0582\u0576", en: "Fair Trial & Rights" }
 };
 
 // Determine the best font to use based on text content

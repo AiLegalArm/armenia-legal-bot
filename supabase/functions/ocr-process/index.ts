@@ -114,6 +114,7 @@ serve(async (req) => {
     
     let imageContent: { type: string; image_url?: { url: string }; text?: string } | null = null;
     let docxTextContent: string | null = null;
+    let docxImages: string[] = []; // Base64 images extracted from DOCX
     let fileBuffer: ArrayBuffer | null = null;
     
     // Check if this is a base64 data URL (sent directly from client)
@@ -168,23 +169,19 @@ serve(async (req) => {
       fileBuffer = await fileResponse.arrayBuffer();
     }
     
-    // Handle DOCX files - improved extraction using multiple methods
+    // Handle DOCX files - extract both text AND embedded images
     if (isDocx && fileBuffer) {
-      console.log("Extracting text from DOCX file using improved parser...");
+      console.log("Extracting text and images from DOCX file...");
       try {
         const bytes = new Uint8Array(fileBuffer);
         
-        // DOCX is a ZIP file containing XML. We'll use a more robust extraction approach.
-        // First, try to find and decompress the document.xml file from the ZIP structure
-        
-        // Convert to string for text extraction (DOCX internal XML is UTF-8)
+        // DOCX is a ZIP file containing XML. We'll extract text and images.
         const decoder = new TextDecoder('utf-8', { fatal: false });
         const rawContent = decoder.decode(bytes);
         
         const textMatches: string[] = [];
         
         // Method 1: Extract text from <w:t> tags (Word text runs)
-        // This handles the main document content
         const wtRegex = /<w:t[^>]*>([^<]+)<\/w:t>/g;
         let match;
         while ((match = wtRegex.exec(rawContent)) !== null) {
@@ -194,13 +191,10 @@ serve(async (req) => {
         }
         
         // Method 2: Also check for paragraph breaks to preserve structure
-        // Replace paragraph markers with newlines
         let structuredText = textMatches.join('');
         
-        // Check for paragraph boundaries in the original content
         const paragraphBoundaries = rawContent.match(/<\/w:p>/g);
         if (paragraphBoundaries && paragraphBoundaries.length > 1) {
-          // Re-extract with paragraph awareness
           const paragraphRegex = /<w:p[^>]*>([\s\S]*?)<\/w:p>/g;
           const paragraphs: string[] = [];
           
@@ -224,14 +218,12 @@ serve(async (req) => {
           }
         }
         
-        // Method 3: Fallback - extract any readable Armenian/Russian/English text
+        // Method 3: Fallback - extract any readable text
         if (!structuredText || structuredText.length < 20) {
           console.log("Primary extraction failed, using fallback...");
-          // Look for readable text patterns (Armenian, Russian, English characters)
-          const readableRegex = /[\u0531-\u058F\u0400-\u04FF\u0041-\u007Aa-z0-9\s.,!?;:'"()\-–—«»„"]+/g;
+          const readableRegex = /[\u0531-\u058F\u0400-\u04FF\u0041-\u007Aa-z0-9\s.,!?;:'"()\-\u2013\u2014\u00AB\u00BB\u201E\u201C]+/g;
           const readableMatches = rawContent.match(readableRegex);
           if (readableMatches) {
-            // Filter out XML artifacts and short fragments
             const cleanMatches = readableMatches
               .filter(t => t.length > 5 && !/^[\s\d.,]+$/.test(t))
               .filter(t => !t.includes('xml') && !t.includes('schemas') && !t.includes('microsoft'));
@@ -241,20 +233,78 @@ serve(async (req) => {
           }
         }
         
-        // Final check
+        // Extract embedded images from DOCX (they are in word/media/ folder)
+        // Look for image signatures in the binary data
+        const imageSignatures = [
+          { sig: [0x89, 0x50, 0x4E, 0x47], mime: 'image/png' },    // PNG
+          { sig: [0xFF, 0xD8, 0xFF], mime: 'image/jpeg' },          // JPEG
+        ];
+        
+        for (let i = 0; i < bytes.length - 4; i++) {
+          for (const { sig, mime } of imageSignatures) {
+            let match = true;
+            for (let j = 0; j < sig.length; j++) {
+              if (bytes[i + j] !== sig[j]) {
+                match = false;
+                break;
+              }
+            }
+            if (match) {
+              // Found image start, now find the end
+              let endIndex = i + 1000; // Minimum chunk
+              
+              if (mime === 'image/png') {
+                // PNG ends with IEND chunk
+                for (let k = i + sig.length; k < bytes.length - 8; k++) {
+                  if (bytes[k] === 0x49 && bytes[k+1] === 0x45 && bytes[k+2] === 0x4E && bytes[k+3] === 0x44) {
+                    endIndex = k + 8; // Include IEND and CRC
+                    break;
+                  }
+                }
+              } else if (mime === 'image/jpeg') {
+                // JPEG ends with FFD9
+                for (let k = i + sig.length; k < bytes.length - 1; k++) {
+                  if (bytes[k] === 0xFF && bytes[k+1] === 0xD9) {
+                    endIndex = k + 2;
+                    break;
+                  }
+                }
+              }
+              
+              if (endIndex > i + 100 && endIndex - i < 5000000) { // Reasonable image size
+                const imgBytes = bytes.slice(i, endIndex);
+                let binary = '';
+                const chunkSize = 8192;
+                for (let c = 0; c < imgBytes.length; c += chunkSize) {
+                  const chunk = imgBytes.subarray(c, Math.min(c + chunkSize, imgBytes.length));
+                  binary += String.fromCharCode.apply(null, chunk as unknown as number[]);
+                }
+                const base64Img = btoa(binary);
+                if (base64Img.length > 1000) { // Valid image size
+                  docxImages.push("data:" + mime + ";base64," + base64Img);
+                  console.log("Extracted embedded image: " + mime + ", size: " + base64Img.length + " chars");
+                }
+                i = endIndex - 1; // Skip past this image
+              }
+            }
+          }
+        }
+        
+        console.log("Found " + docxImages.length + " embedded images in DOCX");
+        
+        // Final check for text
         if (structuredText && structuredText.length >= 20) {
-          // Clean up multiple spaces and normalize
           docxTextContent = structuredText
             .replace(/\s+/g, ' ')
             .replace(/\n\s+\n/g, '\n\n')
             .trim();
-          console.log(`Successfully extracted ${docxTextContent.length} characters from DOCX`);
-        } else {
-          throw new Error('Could not extract meaningful text from DOCX');
+          console.log("Successfully extracted " + docxTextContent.length + " characters from DOCX");
+        } else if (docxImages.length === 0) {
+          throw new Error('Could not extract meaningful text or images from DOCX');
         }
       } catch (docxError) {
         console.error("DOCX extraction error:", docxError);
-        throw new Error(`Failed to extract text from DOCX file: ${docxError instanceof Error ? docxError.message : 'Unknown error'}. Try converting to PDF.`);
+        throw new Error("Failed to extract content from DOCX file: " + (docxError instanceof Error ? docxError.message : 'Unknown error') + ". Try converting to PDF.");
       }
     } else if (!imageContent && fileBuffer) {
       // For PDF and images downloaded from URL - convert to base64 for vision model
@@ -291,18 +341,46 @@ serve(async (req) => {
     // Build request based on file type
     let messages;
     
-    if (docxTextContent) {
-      // For DOCX: send extracted text for analysis/structuring
-      messages = [
-        { role: "system", content: OCR_SYSTEM_PROMPT },
-        { 
-          role: "user", 
-          content: `This is extracted text from a Word document (DOCX). File name: ${fileName}. Please analyze and structure this Armenian legal document text, preserving exact legal terminology. If there are any formatting issues or unclear sections, note them in warnings.
-
-Extracted text:
-${docxTextContent}`
+    if (docxTextContent || docxImages.length > 0) {
+      // For DOCX: send extracted text and/or images for analysis
+      if (docxImages.length > 0) {
+        // DOCX has embedded images - use vision model
+        const contentParts: Array<{type: string; text?: string; image_url?: {url: string}}> = [];
+        
+        // Add text instruction
+        let instructionText = "This is content extracted from a Word document (DOCX). File name: " + fileName + ". ";
+        if (docxTextContent) {
+          instructionText += "The document contains both text and embedded images/screenshots. Please:\n1. First, extract and transcribe ALL text from the embedded images (especially screenshots of documents)\n2. Then combine with the extracted text below\n3. Preserve all Armenian legal terminology\n\nExtracted text from DOCX:\n" + docxTextContent;
+        } else {
+          instructionText += "The document appears to contain only images/screenshots. Please extract ALL text from these images, focusing on Armenian legal terminology.";
         }
-      ];
+        
+        contentParts.push({ type: "text", text: instructionText });
+        
+        // Add all extracted images (limit to first 5 to avoid token limits)
+        const imagesToProcess = docxImages.slice(0, 5);
+        for (const imgData of imagesToProcess) {
+          contentParts.push({
+            type: "image_url",
+            image_url: { url: imgData }
+          });
+        }
+        
+        messages = [
+          { role: "system", content: OCR_SYSTEM_PROMPT },
+          { role: "user", content: contentParts }
+        ];
+        console.log("Using vision model for DOCX with " + imagesToProcess.length + " embedded images");
+      } else {
+        // Text-only DOCX
+        messages = [
+          { role: "system", content: OCR_SYSTEM_PROMPT },
+          { 
+            role: "user", 
+            content: "This is extracted text from a Word document (DOCX). File name: " + fileName + ". Please analyze and structure this Armenian legal document text, preserving exact legal terminology. If there are any formatting issues or unclear sections, note them in warnings.\n\nExtracted text:\n" + docxTextContent
+          }
+        ];
+      }
     } else if (imageContent) {
       // For PDF and images: use vision model
       messages = [
@@ -312,7 +390,7 @@ ${docxTextContent}`
           content: [
             { 
               type: "text", 
-              text: `Please extract all text from this ${isPdf ? 'PDF document' : 'document image'}. File name: ${fileName}. Focus on accurate Armenian legal terminology preservation.` 
+              text: "Please extract all text from this " + (isPdf ? 'PDF document' : 'document image') + ". File name: " + fileName + ". Focus on accurate Armenian legal terminology preservation."
             },
             imageContent
           ]
