@@ -23,6 +23,8 @@ import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Switch } from '@/components/ui/switch';
+import { Label } from '@/components/ui/label';
 import { exportAnalysisToPDF, exportMultipleAnalysesToPDF, exportCaseDetailToPDF } from '@/lib/pdfExport';
 import { PdfExportButton } from '@/components/PdfExportButton';
 import { format } from 'date-fns';
@@ -97,6 +99,13 @@ const CaseDetail = () => {
   const [documentGeneratorOpen, setDocumentGeneratorOpen] = useState(false);
   const [preselectedDocumentType, setPreselectedDocumentType] = useState<'appeal' | 'cassation' | null>(null);
   const [isExtracting, setIsExtracting] = useState(false);
+  
+  // Role toggles for analysis
+  const [enabledRoles, setEnabledRoles] = useState({
+    advocate: true,
+    prosecutor: true,
+    judge: true,
+  });
   const [aiCreditsExhaustedLocal, setAiCreditsExhaustedLocal] = useState(false);
   
   // Combine both sources of credits exhausted state
@@ -242,8 +251,37 @@ const CaseDetail = () => {
 
   const handleStartAnalysis = async () => {
     if (!caseData) return;
-    await runAllRoles(caseData.id, caseData.facts, caseData.legal_question || '');
+    
+    // Check if aggregator can be enabled (all other roles must be enabled)
+    const canRunAggregator = enabledRoles.advocate && enabledRoles.prosecutor && enabledRoles.judge;
+    
+    // Run only enabled roles
+    const rolesToRun: AIRole[] = [];
+    if (enabledRoles.advocate) rolesToRun.push('advocate');
+    if (enabledRoles.prosecutor) rolesToRun.push('prosecutor');
+    if (enabledRoles.judge) rolesToRun.push('judge');
+    
+    if (rolesToRun.length === 0) {
+      toast({
+        title: i18n.language === 'hy' ? '\u0538\u0576\u057F\u0580\u0565\u0584 \u0563\u0578\u0576\u0565 \u0574\u0565\u056F \u0564\u0565\u0580' : i18n.language === 'en' ? 'Select at least one role' : '\u0412\u044B\u0431\u0435\u0440\u0438\u0442\u0435 \u0445\u043E\u0442\u044F \u0431\u044B \u043E\u0434\u043D\u0443 \u0440\u043E\u043B\u044C',
+        variant: 'destructive'
+      });
+      return;
+    }
+    
+    // Run selected roles in parallel
+    for (const role of rolesToRun) {
+      await analyzeCase(role, caseData.id, caseData.facts, caseData.legal_question || '');
+    }
+    
+    // Run aggregator only if all roles were enabled
+    if (canRunAggregator) {
+      await analyzeCase('aggregator', caseData.id, caseData.facts, caseData.legal_question || '');
+    }
   };
+  
+  // Helper to check if aggregator can be enabled
+  const canEnableAggregator = enabledRoles.advocate && enabledRoles.prosecutor && enabledRoles.judge;
 
   const handleExportSingleAnalysis = async (role: AIRole) => {
     if (!caseData || !results[role]) return;
@@ -736,6 +774,65 @@ const CaseDetail = () => {
                           <p className="text-sm text-muted-foreground mb-4">
                             {t('ai:analysis_placeholder', 'AI analysis will appear here')}
                           </p>
+                          
+                          {/* Role Toggle Switches */}
+                          <div className="mb-6 p-4 rounded-lg border bg-muted/30">
+                            <p className="text-sm font-medium mb-3">
+                              {i18n.language === 'hy' ? '\u054E\u0565\u0580\u056C\u0578\u0582\u056E\u0578\u0582\u0569\u0575\u0561\u0576 \u0564\u0565\u0580\u0565\u0580' : i18n.language === 'en' ? 'Analysis Roles' : '\u0420\u043E\u043B\u0438 \u0430\u043D\u0430\u043B\u0438\u0437\u0430'}
+                            </p>
+                            <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+                              {/* Prosecutor Toggle */}
+                              <div className="flex items-center space-x-2">
+                                <Switch
+                                  id="role-prosecutor"
+                                  checked={enabledRoles.prosecutor}
+                                  onCheckedChange={(checked) => setEnabledRoles(prev => ({ ...prev, prosecutor: checked }))}
+                                />
+                                <Label htmlFor="role-prosecutor" className="text-sm cursor-pointer">
+                                  {i18n.language === 'hy' ? '\u0544\u0565\u0572\u0561\u0564\u0580\u0578\u0572' : i18n.language === 'en' ? 'Prosecutor' : '\u041F\u0440\u043E\u043A\u0443\u0440\u043E\u0440'}
+                                </Label>
+                              </div>
+                              
+                              {/* Judge Toggle */}
+                              <div className="flex items-center space-x-2">
+                                <Switch
+                                  id="role-judge"
+                                  checked={enabledRoles.judge}
+                                  onCheckedChange={(checked) => setEnabledRoles(prev => ({ ...prev, judge: checked }))}
+                                />
+                                <Label htmlFor="role-judge" className="text-sm cursor-pointer">
+                                  {i18n.language === 'hy' ? '\u0534\u0561\u057F\u0561\u057E\u0578\u0580' : i18n.language === 'en' ? 'Judge' : '\u0421\u0443\u0434\u044C\u044F'}
+                                </Label>
+                              </div>
+                              
+                              {/* Aggregator Toggle - disabled if any other role is off */}
+                              <div className="flex items-center space-x-2">
+                                <Switch
+                                  id="role-aggregator"
+                                  checked={canEnableAggregator}
+                                  disabled={true}
+                                  className={!canEnableAggregator ? 'opacity-50' : ''}
+                                />
+                                <Label 
+                                  htmlFor="role-aggregator" 
+                                  className={`text-sm ${!canEnableAggregator ? 'text-muted-foreground' : 'cursor-pointer'}`}
+                                >
+                                  {i18n.language === 'hy' ? '\u0531\u0563\u0580\u0565\u0563\u0561\u057F\u0578\u0580' : i18n.language === 'en' ? 'Aggregator' : '\u0410\u0433\u0440\u0435\u0433\u0430\u0442\u043E\u0440'}
+                                </Label>
+                              </div>
+                            </div>
+                            
+                            {!canEnableAggregator && (
+                              <p className="text-xs text-amber-600 dark:text-amber-400 mt-2">
+                                {i18n.language === 'hy' 
+                                  ? '\u0531\u0563\u0580\u0565\u0563\u0561\u057F\u0578\u0580\u0568 \u0570\u0561\u057D\u0561\u0576\u0565\u056C\u056B \u0567 \u0574\u056B\u0561\u0575\u0576 \u0561\u0575\u0576 \u0564\u0565\u057A\u0584\u0578\u0582\u0574, \u0565\u0580\u0562 \u0562\u0578\u056C\u0578\u0580 \u0564\u0565\u0580\u0565\u0580\u0568 \u0574\u056B\u0561\u0581\u057E\u0561\u056E \u0565\u0576' 
+                                  : i18n.language === 'en' 
+                                    ? 'Aggregator is only available when all roles are enabled' 
+                                    : '\u0410\u0433\u0440\u0435\u0433\u0430\u0442\u043E\u0440 \u0434\u043E\u0441\u0442\u0443\u043F\u0435\u043D \u0442\u043E\u043B\u044C\u043A\u043E \u043A\u043E\u0433\u0434\u0430 \u0432\u043A\u043B\u044E\u0447\u0435\u043D\u044B \u0432\u0441\u0435 \u0440\u043E\u043B\u0438'}
+                              </p>
+                            )}
+                          </div>
+                          
                           <Button 
                             className="w-full" 
                             onClick={handleStartAnalysis}
