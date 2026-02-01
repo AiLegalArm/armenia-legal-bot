@@ -76,26 +76,30 @@ export function CourtDateReminderSuggestion({
     <Alert className="border-primary/50 bg-primary/5">
       <Bell className="h-4 w-4" />
       <AlertTitle>{t('court_date_suggestion')}</AlertTitle>
-      <AlertDescription className="flex items-center justify-between mt-2">
-        <span className="text-sm text-muted-foreground">
-          {new Date(courtDate).toLocaleDateString()}
-        </span>
-        <div className="flex items-center gap-2">
-          <Button
-            size="sm"
-            variant="outline"
-            onClick={handleDismiss}
-          >
-            {t('skip')}
-          </Button>
-          <Button
-            size="sm"
-            onClick={handleCreate}
-            disabled={createReminder.isPending}
-          >
-            <Bell className="h-4 w-4 mr-1" />
-            {t('create_court_reminder')}
-          </Button>
+      <AlertDescription className="mt-2">
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
+          <span className="text-sm text-muted-foreground">
+            {new Date(courtDate).toLocaleDateString()}
+          </span>
+          <div className="grid grid-cols-2 gap-2 sm:flex sm:gap-2">
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={handleDismiss}
+              className="w-full sm:w-auto"
+            >
+              {t('skip')}
+            </Button>
+            <Button
+              size="sm"
+              onClick={handleCreate}
+              disabled={createReminder.isPending}
+              className="w-full sm:w-auto"
+            >
+              <Bell className="h-4 w-4 mr-1 shrink-0" />
+              <span className="truncate">{t('create_court_reminder')}</span>
+            </Button>
+          </div>
         </div>
       </AlertDescription>
     </Alert>
