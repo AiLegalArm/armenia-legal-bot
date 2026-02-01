@@ -5,7 +5,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
-import { Loader2, Upload, FileText, X, CheckCircle, AlertCircle, Files, Image } from "lucide-react";
+import { Loader2, Upload, FileText, X, CheckCircle, AlertCircle, Files, Image, Brain } from "lucide-react";
 
 interface UploadedFileState {
   id: string;
@@ -18,6 +18,15 @@ interface UploadedFileState {
 interface DocumentFileUploadProps {
   onFileAnalyzed: (extractedText: string) => void;
   isDisabled?: boolean;
+  documentType?: string; // appeal, cassation, etc.
+  caseData?: {
+    title?: string;
+    case_number?: string;
+    case_type?: string;
+    court?: string;
+    facts?: string;
+    description?: string;
+  };
 }
 
 // Helper to convert File to base64
@@ -55,19 +64,30 @@ function getMimeType(file: File): string {
   return mimeTypes[ext || ''] || 'application/octet-stream';
 }
 
-export function DocumentFileUpload({ onFileAnalyzed, isDisabled }: DocumentFileUploadProps) {
+export function DocumentFileUpload({ onFileAnalyzed, isDisabled, documentType, caseData }: DocumentFileUploadProps) {
   const { i18n, t } = useTranslation();
   const { toast } = useToast();
   const [isProcessing, setIsProcessing] = useState(false);
+  const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [uploadedFiles, setUploadedFiles] = useState<UploadedFileState[]>([]);
+  const [analysisResult, setAnalysisResult] = useState<string>("");
+
+  // Check if this is an appeal/cassation document type that needs AI analysis
+  const needsAIAnalysis = documentType === 'appeal' || documentType === 'cassation' || 
+                          (documentType?.includes('appeal') || documentType?.includes('cassation'));
 
   // Combine all extracted texts and send to parent
-  const updateParentWithAllTexts = useCallback((files: UploadedFileState[]) => {
-    const combinedText = files
-      .filter(f => f.status === "success" && f.extractedText)
-      .map((f, idx) => `--- FILE ${idx + 1}: ${f.file.name} ---\n${f.extractedText}`)
-      .join("\n\n");
-    onFileAnalyzed(combinedText);
+  const updateParentWithAllTexts = useCallback((files: UploadedFileState[], analysis?: string) => {
+    if (analysis) {
+      // If we have AI analysis, use that instead of raw extraction
+      onFileAnalyzed(analysis);
+    } else {
+      const combinedText = files
+        .filter(f => f.status === "success" && f.extractedText)
+        .map((f, idx) => `--- FILE ${idx + 1}: ${f.file.name} ---\n${f.extractedText}`)
+        .join("\n\n");
+      onFileAnalyzed(combinedText);
+    }
   }, [onFileAnalyzed]);
 
   const processFile = useCallback(async (fileState: UploadedFileState): Promise<UploadedFileState> => {
@@ -152,6 +172,79 @@ export function DocumentFileUpload({ onFileAnalyzed, isDisabled }: DocumentFileU
     }
   }, [i18n.language]);
 
+  // Run AI analysis on all files for complaint generation
+  const runAIAnalysis = useCallback(async (files: UploadedFileState[]) => {
+    const successFiles = files.filter(f => f.status === "success");
+    if (successFiles.length === 0) return;
+
+    setIsAnalyzing(true);
+    
+    try {
+      // Prepare files for AI analysis
+      const filesForAnalysis = await Promise.all(
+        successFiles.map(async (f) => {
+          const dataUrl = await fileToBase64(f.file);
+          return {
+            name: f.file.name,
+            content: dataUrl,
+            type: getMimeType(f.file)
+          };
+        })
+      );
+
+      const { data, error } = await supabase.functions.invoke("analyze-files-for-complaint", {
+        body: {
+          files: filesForAnalysis,
+          caseData: caseData || null,
+          documentType: documentType || 'appeal',
+          language: i18n.language
+        }
+      });
+
+      if (error) {
+        console.error("AI analysis error:", error);
+        toast({
+          title: i18n.language === 'hy' ? '\u054E\u0565\u0580\u056C\u0578\u0582\u056E\u0578\u0582\u0569\u0575\u0578\u0582\u0576\u0568 \u0571\u0561\u056D\u0578\u0572\u057E\u0565\u0581' : 
+                 i18n.language === 'en' ? "Analysis failed" : "\u041E\u0448\u0438\u0431\u043A\u0430 \u0430\u043D\u0430\u043B\u0438\u0437\u0430",
+          description: error.message,
+          variant: "destructive",
+        });
+        // Fall back to raw text
+        updateParentWithAllTexts(files);
+        return;
+      }
+
+      if (data?.error) {
+        throw new Error(data.error);
+      }
+
+      const analysis = data?.analysis || "";
+      setAnalysisResult(analysis);
+      updateParentWithAllTexts(files, analysis);
+
+      toast({
+        title: i18n.language === 'hy' ? 'AI \u057E\u0565\u0580\u056C\u0578\u0582\u056E\u0578\u0582\u0569\u0575\u0578\u0582\u0576\u0568 \u0561\u057E\u0561\u0580\u057F\u057E\u0561\u056E \u0567' : 
+               i18n.language === 'en' ? "AI analysis complete" : "AI-\u0430\u043D\u0430\u043B\u0438\u0437 \u0437\u0430\u0432\u0435\u0440\u0448\u0451\u043D",
+        description: i18n.language === 'hy' ? `${successFiles.length} \u0586\u0561\u0575\u056C \u057E\u0565\u0580\u056C\u0578\u0582\u056E\u057E\u0565\u0581` : 
+                     i18n.language === 'en' ? `${successFiles.length} file(s) analyzed` : 
+                     `${successFiles.length} \u0444\u0430\u0439\u043B(\u043E\u0432) \u043F\u0440\u043E\u0430\u043D\u0430\u043B\u0438\u0437\u0438\u0440\u043E\u0432\u0430\u043D\u043E`,
+      });
+
+    } catch (error: any) {
+      console.error("AI analysis error:", error);
+      toast({
+        title: i18n.language === 'hy' ? '\u054E\u0565\u0580\u056C\u0578\u0582\u056E\u0578\u0582\u0569\u0575\u0578\u0582\u0576\u0568 \u0571\u0561\u056D\u0578\u0572\u057E\u0565\u0581' : 
+               i18n.language === 'en' ? "Analysis failed" : "\u041E\u0448\u0438\u0431\u043A\u0430 \u0430\u043D\u0430\u043B\u0438\u0437\u0430",
+        description: error.message,
+        variant: "destructive",
+      });
+      // Fall back to raw text
+      updateParentWithAllTexts(files);
+    } finally {
+      setIsAnalyzing(false);
+    }
+  }, [caseData, documentType, i18n.language, toast, updateParentWithAllTexts]);
+
   const processAllFiles = useCallback(async (newFiles: UploadedFileState[]) => {
     setIsProcessing(true);
     
@@ -169,7 +262,10 @@ export function DocumentFileUpload({ onFileAnalyzed, isDisabled }: DocumentFileU
       // Update with result
       setUploadedFiles(prev => {
         const updated = prev.map(f => f.id === result.id ? result : f);
-        updateParentWithAllTexts(updated);
+        // Don't update parent yet if we need AI analysis
+        if (!needsAIAnalysis) {
+          updateParentWithAllTexts(updated);
+        }
         return updated;
       });
     }
@@ -177,7 +273,7 @@ export function DocumentFileUpload({ onFileAnalyzed, isDisabled }: DocumentFileU
     const successCount = results.filter(r => r.status === "success").length;
     const errorCount = results.filter(r => r.status === "error").length;
 
-    if (successCount > 0) {
+    if (successCount > 0 && !needsAIAnalysis) {
       toast({
         title: i18n.language === 'hy' ? '\u0556\u0561\u0575\u056C\u0565\u0580\u0568 \u057E\u0565\u0580\u056C\u0578\u0582\u056E\u057E\u0565\u0581' : 
                i18n.language === 'en' ? "Files analyzed" : "\u0424\u0430\u0439\u043B\u044B \u043F\u0440\u043E\u0430\u043D\u0430\u043B\u0438\u0437\u0438\u0440\u043E\u0432\u0430\u043D\u044B",
@@ -199,7 +295,24 @@ export function DocumentFileUpload({ onFileAnalyzed, isDisabled }: DocumentFileU
     }
 
     setIsProcessing(false);
-  }, [processFile, updateParentWithAllTexts, toast, i18n.language]);
+
+    // If we need AI analysis and have successful files, run it
+    if (needsAIAnalysis && successCount > 0) {
+      // Get all current files including new results
+      setUploadedFiles(prev => {
+        const allFiles = prev.map(f => {
+          const newResult = results.find(r => r.id === f.id);
+          return newResult || f;
+        });
+        // Run AI analysis on all successful files
+        const allSuccessful = allFiles.filter(f => f.status === "success");
+        if (allSuccessful.length > 0) {
+          runAIAnalysis(allFiles);
+        }
+        return allFiles;
+      });
+    }
+  }, [processFile, updateParentWithAllTexts, toast, i18n.language, needsAIAnalysis, runAIAnalysis]);
 
   const handleFileSelect = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
     const selectedFiles = e.target.files;
@@ -241,15 +354,29 @@ export function DocumentFileUpload({ onFileAnalyzed, isDisabled }: DocumentFileU
   const handleRemoveFile = useCallback((id: string) => {
     setUploadedFiles(prev => {
       const updated = prev.filter(f => f.id !== id);
-      updateParentWithAllTexts(updated);
+      if (!needsAIAnalysis) {
+        updateParentWithAllTexts(updated);
+      } else if (updated.length === 0) {
+        setAnalysisResult("");
+        onFileAnalyzed("");
+      }
       return updated;
     });
-  }, [updateParentWithAllTexts]);
+  }, [updateParentWithAllTexts, needsAIAnalysis, onFileAnalyzed]);
 
   const handleClearAll = useCallback(() => {
     setUploadedFiles([]);
+    setAnalysisResult("");
     onFileAnalyzed("");
   }, [onFileAnalyzed]);
+
+  // Manually trigger AI analysis
+  const handleRunAnalysis = useCallback(() => {
+    const successFiles = uploadedFiles.filter(f => f.status === "success");
+    if (successFiles.length > 0) {
+      runAIAnalysis(uploadedFiles);
+    }
+  }, [uploadedFiles, runAIAnalysis]);
 
   const successCount = uploadedFiles.filter(f => f.status === "success").length;
   const totalChars = uploadedFiles
@@ -259,10 +386,16 @@ export function DocumentFileUpload({ onFileAnalyzed, isDisabled }: DocumentFileU
   // Labels based on language
   const labels = {
     uploadLabel: i18n.language === 'hy' 
-      ? "\u053F\u0561\u0574 \u057E\u0565\u0580\u0562\u0565\u057C\u0576\u0565\u0584 \u0583\u0561\u057D\u057F\u0561\u0569\u0572\u0569\u0565\u0580 AI-\u057E\u0565\u0580\u056C\u0578\u0582\u056E\u0578\u0582\u0569\u0575\u0561\u0576 \u0570\u0561\u0574\u0561\u0580" 
+      ? (needsAIAnalysis 
+          ? "\u054E\u0565\u0580\u0562\u0565\u057C\u0576\u0565\u0584 \u0583\u0561\u057D\u057F\u0561\u0569\u0572\u0569\u0565\u0580 AI-\u057E\u0565\u0580\u056C\u0578\u0582\u056E\u0578\u0582\u0569\u0575\u0561\u0576 \u0570\u0561\u0574\u0561\u0580" 
+          : "\u053F\u0561\u0574 \u057E\u0565\u0580\u0562\u0565\u057C\u0576\u0565\u0584 \u0583\u0561\u057D\u057F\u0561\u0569\u0572\u0569\u0565\u0580")
       : i18n.language === 'en' 
-      ? "Or upload documents for AI analysis" 
-      : "\u0418\u043B\u0438 \u0437\u0430\u0433\u0440\u0443\u0437\u0438\u0442\u0435 \u0434\u043E\u043A\u0443\u043C\u0435\u043D\u0442\u044B \u0434\u043B\u044F AI-\u0430\u043D\u0430\u043B\u0438\u0437\u0430",
+      ? (needsAIAnalysis 
+          ? "Upload documents for AI analysis" 
+          : "Or upload documents") 
+      : (needsAIAnalysis 
+          ? "\u0417\u0430\u0433\u0440\u0443\u0437\u0438\u0442\u0435 \u0434\u043E\u043A\u0443\u043C\u0435\u043D\u0442\u044B \u0434\u043B\u044F AI-\u0430\u043D\u0430\u043B\u0438\u0437\u0430" 
+          : "\u0418\u043B\u0438 \u0437\u0430\u0433\u0440\u0443\u0437\u0438\u0442\u0435 \u0434\u043E\u043A\u0443\u043C\u0435\u043D\u0442\u044B"),
     dropzone: i18n.language === 'hy' 
       ? "PDF, \u0576\u056F\u0561\u0580\u0576\u0565\u0580, \u057F\u0565\u0584\u057D\u057F" 
       : i18n.language === 'en' 
@@ -278,13 +411,16 @@ export function DocumentFileUpload({ onFileAnalyzed, isDisabled }: DocumentFileU
     clearAll: i18n.language === 'hy' ? "\u0544\u0561\u0584\u0580\u0565\u056C" : i18n.language === 'en' ? "Clear all" : "\u041E\u0447\u0438\u0441\u0442\u0438\u0442\u044C",
     waiting: i18n.language === 'hy' ? "\u054D\u057A\u0561\u057D\u0578\u0582\u0574..." : i18n.language === 'en' ? "Waiting..." : "\u041E\u0436\u0438\u0434\u0430\u043D\u0438\u0435...",
     analyzing: i18n.language === 'hy' ? "\u054E\u0565\u0580\u056C\u0578\u0582\u056E\u0578\u0582\u0574..." : i18n.language === 'en' ? "Analyzing..." : "\u0410\u043D\u0430\u043B\u0438\u0437...",
-    failed: i18n.language === 'hy' ? "\u054D\u056D\u0561\u056C" : i18n.language === 'en' ? "Failed" : "\u041E\u0448\u0438\u0431\u043A\u0430"
+    failed: i18n.language === 'hy' ? "\u054D\u056D\u0561\u056C" : i18n.language === 'en' ? "Failed" : "\u041E\u0448\u0438\u0431\u043A\u0430",
+    runAnalysis: i18n.language === 'hy' ? "AI \u057E\u0565\u0580\u056C\u0578\u0582\u056E\u0578\u0582\u0569\u0575\u0578\u0582\u0576" : i18n.language === 'en' ? "Run AI Analysis" : "\u0417\u0430\u043F\u0443\u0441\u0442\u0438\u0442\u044C AI-\u0430\u043D\u0430\u043B\u0438\u0437",
+    aiAnalyzing: i18n.language === 'hy' ? "AI \u057E\u0565\u0580\u056C\u0578\u0582\u056E\u0578\u0582\u0574..." : i18n.language === 'en' ? "AI analyzing..." : "AI-\u0430\u043D\u0430\u043B\u0438\u0437...",
+    aiComplete: i18n.language === 'hy' ? "AI \u057E\u0565\u0580\u056C\u0578\u0582\u056E\u0578\u0582\u0569\u0575\u0578\u0582\u0576\u0568 \u0561\u057E\u0561\u0580\u057F\u057E\u0561\u056E \u0567" : i18n.language === 'en' ? "AI analysis complete" : "AI-\u0430\u043D\u0430\u043B\u0438\u0437 \u0437\u0430\u0432\u0435\u0440\u0448\u0451\u043D"
   };
 
   return (
     <div className="space-y-3">
       <Label className="flex items-center gap-2">
-        <Upload className="h-4 w-4" />
+        {needsAIAnalysis ? <Brain className="h-4 w-4" /> : <Upload className="h-4 w-4" />}
         {labels.uploadLabel}
       </Label>
 
@@ -296,7 +432,7 @@ export function DocumentFileUpload({ onFileAnalyzed, isDisabled }: DocumentFileU
           className="hidden"
           accept=".pdf,.jpg,.jpeg,.png,.webp,.tiff,.tif,.txt,.md,.docx"
           onChange={handleFileSelect}
-          disabled={isDisabled || isProcessing}
+          disabled={isDisabled || isProcessing || isAnalyzing}
           multiple
         />
         <label
@@ -331,7 +467,7 @@ export function DocumentFileUpload({ onFileAnalyzed, isDisabled }: DocumentFileU
               variant="ghost"
               size="sm"
               onClick={handleClearAll}
-              disabled={isProcessing}
+              disabled={isProcessing || isAnalyzing}
               className="text-xs h-7"
             >
               <X className="h-3 w-3 mr-1" />
@@ -378,15 +514,15 @@ export function DocumentFileUpload({ onFileAnalyzed, isDisabled }: DocumentFileU
                     variant="ghost"
                     size="icon"
                     onClick={() => handleRemoveFile(fileState.id)}
-                    disabled={fileState.status === "processing"}
+                    disabled={fileState.status === "processing" || isAnalyzing}
                     className="flex-shrink-0 h-7 w-7"
                   >
                     <X className="h-3 w-3" />
                   </Button>
                 </div>
 
-                {/* Preview extracted text */}
-                {fileState.status === "success" && fileState.extractedText && (
+                {/* Preview extracted text - only show if not using AI analysis */}
+                {!needsAIAnalysis && fileState.status === "success" && fileState.extractedText && (
                   <div className="mt-2 pt-2 border-t">
                     <p className="text-xs text-muted-foreground bg-background/50 rounded p-2 max-h-16 overflow-auto whitespace-pre-wrap">
                       {fileState.extractedText.slice(0, 200)}
@@ -397,6 +533,40 @@ export function DocumentFileUpload({ onFileAnalyzed, isDisabled }: DocumentFileU
               </div>
             ))}
           </div>
+
+          {/* AI Analysis Status/Button */}
+          {needsAIAnalysis && successCount > 0 && (
+            <div className="border rounded-lg p-3 bg-primary/5">
+              {isAnalyzing ? (
+                <div className="flex items-center gap-2 text-sm text-primary">
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                  {labels.aiAnalyzing}
+                </div>
+              ) : analysisResult ? (
+                <div className="space-y-2">
+                  <div className="flex items-center gap-2 text-sm text-green-600">
+                    <CheckCircle className="h-4 w-4" />
+                    {labels.aiComplete}
+                  </div>
+                  <p className="text-xs text-muted-foreground bg-background/50 rounded p-2 max-h-24 overflow-auto whitespace-pre-wrap">
+                    {analysisResult.slice(0, 500)}
+                    {analysisResult.length > 500 && "..."}
+                  </p>
+                </div>
+              ) : (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={handleRunAnalysis}
+                  disabled={isProcessing}
+                  className="w-full"
+                >
+                  <Brain className="h-4 w-4 mr-2" />
+                  {labels.runAnalysis}
+                </Button>
+              )}
+            </div>
+          )}
         </div>
       )}
     </div>
