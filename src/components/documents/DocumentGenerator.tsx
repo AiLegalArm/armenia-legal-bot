@@ -699,6 +699,8 @@ export function DocumentGenerator({ caseData, preselectedType, onClose }: Docume
                   <DocumentFileUpload
                     onFileAnalyzed={setFileExtractedText}
                     isDisabled={isGenerating}
+                    documentType={selectedTemplate?.subcategory || preselectedType || undefined}
+                    caseData={caseData}
                   />
                   
                   {caseData && (
@@ -721,7 +723,7 @@ export function DocumentGenerator({ caseData, preselectedType, onClose }: Docume
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="hy">\u0540\u0561\u0575\u0565\u0580\u0565\u0576 (Армянский)</SelectItem>
+                      <SelectItem value="hy">{"\u0540\u0561\u0575\u0565\u0580\u0565\u0576"} (Armenian)</SelectItem>
                       <SelectItem value="ru">Русский</SelectItem>
                       <SelectItem value="en">English</SelectItem>
                     </SelectContent>
