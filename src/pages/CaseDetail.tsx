@@ -466,13 +466,13 @@ const CaseDetail = () => {
             </div>
           </div>
           {canEdit && (
-            <div className="flex flex-wrap gap-2">
+            <div className="grid grid-cols-3 gap-2 w-full sm:flex sm:w-auto">
               {/* Quick Complaint Generation Dropdown */}
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
-                  <Button variant="default" size="sm" className="flex-1 sm:flex-none min-w-0">
-                    <Gavel className="h-4 w-4 sm:mr-2 shrink-0" />
-                    <span className="text-xs sm:text-sm truncate">
+                  <Button variant="default" size="sm" className="w-full sm:w-auto justify-center">
+                    <Gavel className="h-4 w-4 mr-1 sm:mr-2 shrink-0" />
+                    <span className="text-xs sm:text-sm">
                       {i18n.language === 'hy' ? '\u0532\u0578\u0572\u0578\u0584' : i18n.language === 'en' ? 'Complaint' : '\u0416\u0430\u043B\u043E\u0431\u0430'}
                     </span>
                   </Button>
@@ -483,14 +483,14 @@ const CaseDetail = () => {
                     setDocumentGeneratorOpen(true);
                   }}>
                     <FileSignature className="mr-2 h-4 w-4" />
-                    {i18n.language === 'hy' ? '\u054E\u0565\u0580\u0561\u0584\u0576\u0576\u056B\u0579 \u0562\u0578\u0572\u0578\u0584' : i18n.language === 'en' ? 'Appeal' : '\u0410\u043F\u0435\u043B\u043B\u044F\u0446\u0438\u043E\u043D\u043D\u0430\u044F \u0436\u0430\u043B\u043E\u0431\u0430'}
+                    {i18n.language === 'hy' ? '\u054E\u0565\u0580\u0561\u0584\u0576\u0576\u056B\u0579 \u0562\u0578\u0572\u0578\u0584' : i18n.language === 'en' ? 'Appeal' : '\u0410\u043F\u0435\u043B\u043B\u044F\u0446\u0438\u043E\u043D\u043D\u0561\u044F \u0436\u0430\u043B\u043E\u0431\u0430'}
                   </DropdownMenuItem>
                   <DropdownMenuItem onClick={() => {
                     setPreselectedDocumentType('cassation');
                     setDocumentGeneratorOpen(true);
                   }}>
                     <FileSignature className="mr-2 h-4 w-4" />
-                    {i18n.language === 'hy' ? '\u054E\u0573\u057C\u0561\u0562\u0565\u056F \u0562\u0578\u0572\u0578\u0584' : i18n.language === 'en' ? 'Cassation Appeal' : '\u041A\u0430\u0441\u0441\u0430\u0446\u0438\u043E\u043D\u043D\u0430\u044F \u0436\u0430\u043B\u043E\u0431\u0430'}
+                    {i18n.language === 'hy' ? '\u054E\u0573\u057C\u0561\u0562\u0565\u056F \u0562\u0578\u0572\u0578\u0584' : i18n.language === 'en' ? 'Cassation Appeal' : '\u041A\u0430\u0441\u0441\u0430\u0446\u0438\u043E\u043D\u043D\u0561\u044F \u0436\u0430\u043B\u043E\u0431\u0430'}
                   </DropdownMenuItem>
                   <DropdownMenuSeparator />
                   <DropdownMenuItem onClick={() => {
@@ -498,20 +498,20 @@ const CaseDetail = () => {
                     setDocumentGeneratorOpen(true);
                   }}>
                     <FileText className="mr-2 h-4 w-4" />
-                    {i18n.language === 'hy' ? '\u0531\u0575\u056C \u0583\u0561\u057D\u057F\u0561\u0569\u0578\u0582\u0572\u0569' : i18n.language === 'en' ? 'Other Document' : '\u0414\u0440\u0443\u0433\u043E\u0439 \u0434\u043E\u043A\u0443\u043C\u0435\u043D\u0442'}
+                    {i18n.language === 'hy' ? '\u0531\u0575\u056C \u0583\u0561\u057D\u057F\u0561\u0569\u0578\u0582\u0572\u0569' : i18n.language === 'en' ? 'Other Document' : '\u0414\u0440\u0443\u0433\u043E\u0439 \u0434\u043E\u043A\u0443\u043C\u0565\u043D\u0442'}
                   </DropdownMenuItem>
                 </DropdownMenuContent>
               </DropdownMenu>
               
-              <Button variant="outline" size="sm" onClick={() => setEditFormOpen(true)} className="flex-1 sm:flex-none min-w-0">
-                <Edit className="h-4 w-4 sm:mr-2 shrink-0" />
-                <span className="text-xs sm:text-sm truncate">
+              <Button variant="outline" size="sm" onClick={() => setEditFormOpen(true)} className="w-full sm:w-auto justify-center">
+                <Edit className="h-4 w-4 mr-1 sm:mr-2 shrink-0" />
+                <span className="text-xs sm:text-sm">
                   {i18n.language === 'hy' ? '\u053D\u0574\u0562.' : t('edit_case')}
                 </span>
               </Button>
-              <Button variant="destructive" size="sm" onClick={() => setDeleteDialogOpen(true)} className="flex-1 sm:flex-none min-w-0">
-                <Trash2 className="h-4 w-4 sm:mr-2 shrink-0" />
-                <span className="text-xs sm:text-sm truncate">
+              <Button variant="destructive" size="sm" onClick={() => setDeleteDialogOpen(true)} className="w-full sm:w-auto justify-center">
+                <Trash2 className="h-4 w-4 mr-1 sm:mr-2 shrink-0" />
+                <span className="text-xs sm:text-sm">
                   {i18n.language === 'hy' ? '\u054B\u0576\u057B\u0565\u056C' : t('delete_case')}
                 </span>
               </Button>
@@ -951,8 +951,8 @@ const CaseDetail = () => {
               </CardContent>
             </Card>
 
-            {/* Team Leader Comments */}
-            <CaseComments caseId={caseData.id} />
+            {/* Team Leader Comments - only visible to admins and team leaders */}
+            {isAdmin && <CaseComments caseId={caseData.id} />}
           </div>
         </div>
 
