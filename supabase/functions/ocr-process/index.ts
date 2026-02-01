@@ -168,55 +168,93 @@ serve(async (req) => {
       fileBuffer = await fileResponse.arrayBuffer();
     }
     
-    // Handle DOCX files specially - extract text content
+    // Handle DOCX files - improved extraction using multiple methods
     if (isDocx && fileBuffer) {
-      console.log("Extracting text from DOCX file...");
+      console.log("Extracting text from DOCX file using improved parser...");
       try {
         const bytes = new Uint8Array(fileBuffer);
         
-        // DOCX is a ZIP file - we need to extract document.xml
-        // Simple approach: find and extract text between XML tags
-        let binary = '';
-        const chunkSize = 8192;
-        for (let i = 0; i < bytes.length; i += chunkSize) {
-          const chunk = bytes.subarray(i, Math.min(i + chunkSize, bytes.length));
-          binary += String.fromCharCode.apply(null, chunk as unknown as number[]);
-        }
+        // DOCX is a ZIP file containing XML. We'll use a more robust extraction approach.
+        // First, try to find and decompress the document.xml file from the ZIP structure
         
-        // Look for text content in the binary - DOCX stores text in document.xml
-        // Extract readable text by finding word/document.xml content
+        // Convert to string for text extraction (DOCX internal XML is UTF-8)
+        const decoder = new TextDecoder('utf-8', { fatal: false });
+        const rawContent = decoder.decode(bytes);
+        
         const textMatches: string[] = [];
         
-        // Find text between <w:t> tags (Word text elements)
-        const wtRegex = /<w:t[^>]*>([^<]*)<\/w:t>/g;
+        // Method 1: Extract text from <w:t> tags (Word text runs)
+        // This handles the main document content
+        const wtRegex = /<w:t[^>]*>([^<]+)<\/w:t>/g;
         let match;
-        while ((match = wtRegex.exec(binary)) !== null) {
-          if (match[1]) {
+        while ((match = wtRegex.exec(rawContent)) !== null) {
+          if (match[1] && match[1].trim()) {
             textMatches.push(match[1]);
           }
         }
         
-        if (textMatches.length > 0) {
-          docxTextContent = textMatches.join(' ');
-          console.log(`Extracted ${docxTextContent.length} characters from DOCX`);
-        } else {
-          // Fallback: try to extract any readable UTF-8 text
-          const decoder = new TextDecoder('utf-8', { fatal: false });
-          const rawText = decoder.decode(bytes);
-          // Extract text that looks like content (Armenian, Russian, English)
-          const textOnly = rawText.match(/[\u0531-\u0587\u0561-\u0587\u0400-\u04FF\w\s.,!?;:'"()-]+/g);
-          if (textOnly) {
-            docxTextContent = textOnly.filter(t => t.length > 3).join(' ');
-            console.log(`Fallback extracted ${docxTextContent.length} characters from DOCX`);
+        // Method 2: Also check for paragraph breaks to preserve structure
+        // Replace paragraph markers with newlines
+        let structuredText = textMatches.join('');
+        
+        // Check for paragraph boundaries in the original content
+        const paragraphBoundaries = rawContent.match(/<\/w:p>/g);
+        if (paragraphBoundaries && paragraphBoundaries.length > 1) {
+          // Re-extract with paragraph awareness
+          const paragraphRegex = /<w:p[^>]*>([\s\S]*?)<\/w:p>/g;
+          const paragraphs: string[] = [];
+          
+          while ((match = paragraphRegex.exec(rawContent)) !== null) {
+            const paragraphContent = match[1];
+            const paraTextMatches: string[] = [];
+            const innerWtRegex = /<w:t[^>]*>([^<]+)<\/w:t>/g;
+            let innerMatch;
+            while ((innerMatch = innerWtRegex.exec(paragraphContent)) !== null) {
+              if (innerMatch[1]) {
+                paraTextMatches.push(innerMatch[1]);
+              }
+            }
+            if (paraTextMatches.length > 0) {
+              paragraphs.push(paraTextMatches.join(''));
+            }
+          }
+          
+          if (paragraphs.length > 0) {
+            structuredText = paragraphs.join('\n\n');
           }
         }
         
-        if (!docxTextContent || docxTextContent.length < 50) {
+        // Method 3: Fallback - extract any readable Armenian/Russian/English text
+        if (!structuredText || structuredText.length < 20) {
+          console.log("Primary extraction failed, using fallback...");
+          // Look for readable text patterns (Armenian, Russian, English characters)
+          const readableRegex = /[\u0531-\u058F\u0400-\u04FF\u0041-\u007Aa-z0-9\s.,!?;:'"()\-–—«»„"]+/g;
+          const readableMatches = rawContent.match(readableRegex);
+          if (readableMatches) {
+            // Filter out XML artifacts and short fragments
+            const cleanMatches = readableMatches
+              .filter(t => t.length > 5 && !/^[\s\d.,]+$/.test(t))
+              .filter(t => !t.includes('xml') && !t.includes('schemas') && !t.includes('microsoft'));
+            if (cleanMatches.length > 0) {
+              structuredText = cleanMatches.join(' ');
+            }
+          }
+        }
+        
+        // Final check
+        if (structuredText && structuredText.length >= 20) {
+          // Clean up multiple spaces and normalize
+          docxTextContent = structuredText
+            .replace(/\s+/g, ' ')
+            .replace(/\n\s+\n/g, '\n\n')
+            .trim();
+          console.log(`Successfully extracted ${docxTextContent.length} characters from DOCX`);
+        } else {
           throw new Error('Could not extract meaningful text from DOCX');
         }
       } catch (docxError) {
         console.error("DOCX extraction error:", docxError);
-        throw new Error(`Failed to extract text from DOCX file. Please convert to PDF for better results.`);
+        throw new Error(`Failed to extract text from DOCX file: ${docxError instanceof Error ? docxError.message : 'Unknown error'}. Try converting to PDF.`);
       }
     } else if (!imageContent && fileBuffer) {
       // For PDF and images downloaded from URL - convert to base64 for vision model
