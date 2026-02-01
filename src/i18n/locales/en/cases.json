@@ -225,5 +225,6 @@
   "extracting_fields": "Extracting facts and legal question...",
   "fields_extracted": "Facts and legal question extracted successfully",
   "extraction_partial": "Could not extract all fields: {{error}}",
-  "extraction_failed": "Failed to extract case fields"
+  "extraction_failed": "Failed to extract case fields",
+  "extraction_no_data": "No data to auto-extract. Add a description or run OCR/transcription first."
 }

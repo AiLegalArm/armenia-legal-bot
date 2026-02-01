@@ -6,6 +6,7 @@ import { Loader2, ScanText, CheckCircle, AlertCircle, Sparkles } from 'lucide-re
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import { useQueryClient } from '@tanstack/react-query';
+import { getFunctionsInvokeErrorMessage, isNoDataForExtractionMessage } from '@/lib/functionsInvokeError';
 
 interface BulkOcrButtonProps {
   caseId: string;
@@ -140,7 +141,10 @@ export function BulkOcrButton({ caseId, files, existingOcrFileIds }: BulkOcrButt
         body: { caseId }
       });
 
-      if (error) throw error;
+      if (error) {
+        const msg = getFunctionsInvokeErrorMessage(error);
+        throw new Error(msg);
+      }
 
       if (data.success) {
         // Invalidate case query to refresh the form
@@ -150,11 +154,19 @@ export function BulkOcrButton({ caseId, files, existingOcrFileIds }: BulkOcrButt
         toast.success(t('cases:fields_extracted', 'Facts and legal question extracted successfully'));
       } else {
         console.error('Extract fields failed:', data.error);
-        toast.warning(t('cases:extraction_partial', 'Could not extract all fields: {{error}}', { error: data.error }));
+        const msg = typeof data.error === 'string' ? data.error : '';
+        const pretty = isNoDataForExtractionMessage(msg)
+          ? t('cases:extraction_no_data')
+          : msg;
+        toast.warning(t('cases:extraction_partial', 'Could not extract all fields: {{error}}', { error: pretty || t('cases:extraction_failed') }));
       }
     } catch (error) {
       console.error('Extract case fields error:', error);
-      toast.error(t('cases:extraction_failed', 'Failed to extract case fields'));
+      const msg = error instanceof Error ? error.message : getFunctionsInvokeErrorMessage(error);
+      const pretty = isNoDataForExtractionMessage(msg)
+        ? t('cases:extraction_no_data')
+        : msg;
+      toast.error(pretty || t('cases:extraction_failed', 'Failed to extract case fields'));
     }
   };
 
