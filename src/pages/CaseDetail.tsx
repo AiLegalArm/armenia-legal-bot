@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import type { Database } from '@/integrations/supabase/types';
@@ -48,7 +48,8 @@ import {
   X,
   AlertTriangle,
   FileSignature,
-  Bell
+  Bell,
+  Check
 } from 'lucide-react';
 import {
   AlertDialog,
@@ -118,8 +119,41 @@ const CaseDetail = () => {
   const [editLegalQuestion, setEditLegalQuestion] = useState('');
   const [isSavingFields, setIsSavingFields] = useState(false);
   
+  // State for saving AI analysis
+  const [savingAnalysisRole, setSavingAnalysisRole] = useState<AIRole | null>(null);
+  const [savedAnalysisRoles, setSavedAnalysisRoles] = useState<Set<AIRole>>(new Set());
+  
   const { toast } = useToast();
   const queryClient = useQueryClient();
+
+  // Save analysis to database
+  const handleSaveAnalysis = useCallback(async (role: AIRole) => {
+    if (!caseData || !results[role]) return;
+    
+    setSavingAnalysisRole(role);
+    try {
+      const { error } = await supabase.from('ai_analysis').insert({
+        case_id: caseData.id,
+        role,
+        response_text: results[role]!.analysis,
+        sources_used: results[role]!.sources as unknown as Database['public']['Tables']['ai_analysis']['Insert']['sources_used'],
+        created_by: user?.id,
+      });
+      
+      if (error) throw error;
+      
+      setSavedAnalysisRoles(prev => new Set(prev).add(role));
+      toast({ title: t('ai:feedback_submit_success') });
+    } catch (error) {
+      console.error('Save analysis error:', error);
+      toast({
+        title: t('errors:operation_failed'),
+        variant: 'destructive',
+      });
+    } finally {
+      setSavingAnalysisRole(null);
+    }
+  }, [caseData, results, user?.id, toast, t]);
 
   const handleExtractFields = async () => {
     if (!caseData) return;
@@ -878,16 +912,35 @@ const CaseDetail = () => {
                             
                             return (
                               <div key={role} className="border rounded-lg p-4">
-                                <div className="flex items-center justify-between mb-3">
+                                <div className="flex items-center justify-between mb-3 flex-wrap gap-2">
                                   <h3 className="font-semibold text-lg capitalize">{role}</h3>
-                                  <Button 
-                                    variant="outline" 
-                                    size="sm"
-                                    onClick={() => handleExportSingleAnalysis(role)}
-                                  >
-                                    <Download className="mr-2 h-3 w-3" />
-                                    {t('common:export', 'Export')} PDF
-                                  </Button>
+                                  <div className="flex gap-2">
+                                    <Button 
+                                      variant={savedAnalysisRoles.has(role) ? "secondary" : "default"}
+                                      size="sm"
+                                      onClick={() => handleSaveAnalysis(role)}
+                                      disabled={savingAnalysisRole === role || savedAnalysisRoles.has(role)}
+                                    >
+                                      {savingAnalysisRole === role ? (
+                                        <Loader2 className="mr-2 h-3 w-3 animate-spin" />
+                                      ) : savedAnalysisRoles.has(role) ? (
+                                        <Check className="mr-2 h-3 w-3" />
+                                      ) : (
+                                        <Save className="mr-2 h-3 w-3" />
+                                      )}
+                                      {savedAnalysisRoles.has(role) 
+                                        ? t('common:saved', 'Saved') 
+                                        : t('ai:save_analysis')}
+                                    </Button>
+                                    <Button 
+                                      variant="outline" 
+                                      size="sm"
+                                      onClick={() => handleExportSingleAnalysis(role)}
+                                    >
+                                      <Download className="mr-2 h-3 w-3" />
+                                      PDF
+                                    </Button>
+                                  </div>
                                 </div>
                                 <div className="text-sm whitespace-pre-wrap mb-3">{result.analysis}</div>
                                 {result.sources && result.sources.length > 0 && (
