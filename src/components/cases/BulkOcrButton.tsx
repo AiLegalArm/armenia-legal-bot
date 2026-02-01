@@ -191,7 +191,8 @@ export function BulkOcrButton({ caseId, files, existingOcrFileIds }: BulkOcrButt
           ) : (
             <>
               <ScanText className="mr-2 h-4 w-4" />
-              {t('cases:process_all_ocr', 'Process all files (OCR)')}
+              <Sparkles className="mr-1 h-3 w-3" />
+              {t('cases:process_ocr_extract', 'OCR + Auto-extract')}
             </>
           )}
         </Button>
