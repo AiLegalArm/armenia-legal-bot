@@ -1129,6 +1129,8 @@ export type Database = {
           title: string
         }[]
       }
+      soft_delete_case: { Args: { p_case_id: string }; Returns: undefined }
+      soft_delete_case_file: { Args: { p_file_id: string }; Returns: undefined }
       store_encrypted_pii: {
         Args: { p_field_name: string; p_user_id: string; p_value: string }
         Returns: boolean

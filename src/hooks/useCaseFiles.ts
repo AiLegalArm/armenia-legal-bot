@@ -114,11 +114,9 @@ export function useCaseFiles(caseId: string | undefined) {
 
   const deleteFile = useMutation({
     mutationFn: async (fileId: string) => {
-      // Soft delete - update deleted_at
-      const { error } = await supabase
-        .from('case_files')
-        .update({ deleted_at: new Date().toISOString() })
-        .eq('id', fileId);
+      // Soft delete via backend RPC (avoids RLS edge-cases on direct UPDATE)
+      // `rpc` names are type-checked against generated DB types; cast to avoid build break.
+      const { error } = await (supabase as any).rpc('soft_delete_case_file', { p_file_id: fileId });
       if (error) throw error;
     },
     onSuccess: () => {
