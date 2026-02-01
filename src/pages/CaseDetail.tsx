@@ -466,13 +466,17 @@ const CaseDetail = () => {
             </div>
           </div>
           {canEdit && (
-            <div className="grid grid-cols-3 gap-2 w-full sm:flex sm:w-auto">
+            <div className="grid w-full grid-cols-3 gap-2 sm:w-auto">
               {/* Quick Complaint Generation Dropdown */}
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
-                  <Button variant="default" size="sm" className="w-full sm:w-auto justify-center">
+                  <Button
+                    variant="default"
+                    size="sm"
+                    className="w-full justify-center min-w-0 px-2"
+                  >
                     <Gavel className="h-4 w-4 mr-1 sm:mr-2 shrink-0" />
-                    <span className="text-xs sm:text-sm">
+                    <span className="text-xs sm:text-sm truncate">
                       {i18n.language === 'hy' ? '\u0532\u0578\u0572\u0578\u0584' : i18n.language === 'en' ? 'Complaint' : '\u0416\u0430\u043B\u043E\u0431\u0430'}
                     </span>
                   </Button>
@@ -503,15 +507,25 @@ const CaseDetail = () => {
                 </DropdownMenuContent>
               </DropdownMenu>
               
-              <Button variant="outline" size="sm" onClick={() => setEditFormOpen(true)} className="w-full sm:w-auto justify-center">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setEditFormOpen(true)}
+                className="w-full justify-center min-w-0 px-2"
+              >
                 <Edit className="h-4 w-4 mr-1 sm:mr-2 shrink-0" />
-                <span className="text-xs sm:text-sm">
+                <span className="text-xs sm:text-sm truncate">
                   {i18n.language === 'hy' ? '\u053D\u0574\u0562.' : t('edit_case')}
                 </span>
               </Button>
-              <Button variant="destructive" size="sm" onClick={() => setDeleteDialogOpen(true)} className="w-full sm:w-auto justify-center">
+              <Button
+                variant="destructive"
+                size="sm"
+                onClick={() => setDeleteDialogOpen(true)}
+                className="w-full justify-center min-w-0 px-2"
+              >
                 <Trash2 className="h-4 w-4 mr-1 sm:mr-2 shrink-0" />
-                <span className="text-xs sm:text-sm">
+                <span className="text-xs sm:text-sm truncate">
                   {i18n.language === 'hy' ? '\u054B\u0576\u057B\u0565\u056C' : t('delete_case')}
                 </span>
               </Button>
