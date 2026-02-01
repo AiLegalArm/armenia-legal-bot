@@ -261,8 +261,11 @@ export async function exportAnalysisToPDF(data: AnalysisExportData): Promise<voi
       addHeader(doc, data.caseNumber, exportDate, lang, hasArmenianFont);
       yPosition = contentTopMargin;
       doc.setFontSize(10);
-      selectFont(doc, line, hasArmenianFont);
       doc.setTextColor(0);
+      // Re-apply Armenian font after page break
+      if (hasArmenianFont) {
+        setArmenianFont(doc);
+      }
     }
     doc.text(line, margin, yPosition);
     yPosition += 5;
@@ -292,9 +295,11 @@ export async function exportAnalysisToPDF(data: AnalysisExportData): Promise<voi
         yPosition = contentTopMargin;
         doc.setFontSize(9);
         doc.setTextColor(0);
+        if (hasArmenianFont) {
+          setArmenianFont(doc);
+        }
       }
       const sourceText = `${index + 1}. ${source.title} (${source.category}) - ${source.source_name}`;
-      selectFont(doc, sourceText, hasArmenianFont);
       doc.text(sourceText, margin, yPosition);
       yPosition += 5;
     });
@@ -389,8 +394,10 @@ export async function exportMultipleAnalysesToPDF(
         addHeader(doc, caseNumber, exportDate, language, hasArmenianFont);
         yPosition = contentTopMargin;
         doc.setFontSize(10);
-        selectFont(doc, line, hasArmenianFont);
         doc.setTextColor(0);
+        if (hasArmenianFont) {
+          setArmenianFont(doc);
+        }
       }
       doc.text(line, margin, yPosition);
       yPosition += 5;
@@ -420,9 +427,11 @@ export async function exportMultipleAnalysesToPDF(
           yPosition = contentTopMargin;
           doc.setFontSize(9);
           doc.setTextColor(0);
+          if (hasArmenianFont) {
+            setArmenianFont(doc);
+          }
         }
         const sourceText = `${index + 1}. ${source.title} (${source.category}) - ${source.source_name}`;
-        selectFont(doc, sourceText, hasArmenianFont);
         doc.text(sourceText, margin, yPosition);
         yPosition += 5;
       });
@@ -475,6 +484,10 @@ export async function exportCaseDetailToPDF(data: CaseDetailExportData): Promise
       yPosition = contentTopMargin;
       doc.setFontSize(10);
       doc.setTextColor(0);
+      // Re-apply Armenian font after page break
+      if (hasArmenianFont) {
+        setArmenianFont(doc);
+      }
       return true;
     }
     return false;
