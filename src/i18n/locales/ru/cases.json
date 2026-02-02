@@ -275,5 +275,6 @@
   "file_notes_saved": "Заметки сохранены",
   "selected_files": "{{count}} выбрано",
   "select_all": "Выбрать все",
-  "clear_selection": "Сбросить"
+  "clear_selection": "Сбросить",
+  "doc_not_supported": "Файлы .doc не поддерживаются — конвертируйте в DOCX"
 }

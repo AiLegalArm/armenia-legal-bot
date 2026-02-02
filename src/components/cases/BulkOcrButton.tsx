@@ -28,24 +28,32 @@ export function BulkOcrButton({ caseId, files, existingOcrFileIds, forceProcess 
   const [results, setResults] = useState<{ success: number; failed: number }>({ success: 0, failed: 0 });
   const queryClient = useQueryClient();
 
-  // Filter files that need OCR (PDF, images, DOC, DOCX) and don't have OCR yet (unless forceProcess)
+  // Filter files that need OCR (PDF, images, DOCX - NOT legacy .doc) and don't have OCR yet (unless forceProcess)
   const filesToProcess = files.filter(f => {
     // Skip OCR check if forceProcess is true (user selected files manually)
     if (!forceProcess && existingOcrFileIds.has(f.id)) return false;
     const type = f.file_type?.toLowerCase() || '';
     const name = f.original_filename.toLowerCase();
+    
+    // Exclude legacy .doc format (not supported)
+    if (name.endsWith('.doc') && !name.endsWith('.docx')) return false;
+    
     return (
       type.includes('pdf') ||
       type.includes('image') ||
-      type.includes('msword') ||
-      type.includes('wordprocessingml') ||
+      type.includes('wordprocessingml') || // .docx
       name.endsWith('.pdf') ||
       name.endsWith('.jpg') ||
       name.endsWith('.jpeg') ||
       name.endsWith('.png') ||
-      name.endsWith('.doc') ||
       name.endsWith('.docx')
     );
+  });
+  
+  // Check for unsupported .doc files
+  const unsupportedDocFiles = files.filter(f => {
+    const name = f.original_filename.toLowerCase();
+    return name.endsWith('.doc') && !name.endsWith('.docx');
   });
 
   const handleProcessAll = async () => {
@@ -206,10 +214,16 @@ export function BulkOcrButton({ caseId, files, existingOcrFileIds, forceProcess 
             {t('cases:files_pending_ocr', '{{count}} files pending', { count: pendingCount })}
           </span>
         )}
-        {pendingCount === 0 && files.length > 0 && (
+        {pendingCount === 0 && files.length > 0 && unsupportedDocFiles.length === 0 && (
           <span className="text-xs text-green-600 flex items-center gap-1">
             <CheckCircle className="h-3 w-3" />
             {t('cases:all_files_processed', 'All files processed')}
+          </span>
+        )}
+        {unsupportedDocFiles.length > 0 && (
+          <span className="text-xs text-amber-600 flex items-center gap-1">
+            <AlertCircle className="h-3 w-3" />
+            {t('cases:doc_not_supported', '.doc files not supported - convert to DOCX')}
           </span>
         )}
       </div>

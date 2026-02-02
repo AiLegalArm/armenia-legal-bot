@@ -234,5 +234,6 @@
   "file_notes_placeholder": "What needs to be done with this file...",
   "file_notes_saved": "Notes saved",
   "selected_files": "{{count}} selected",
-  "select_all": "Select all"
+  "select_all": "Select all",
+  "doc_not_supported": ".doc files not supported - convert to DOCX"
 }
