@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next';
 import { useQuery } from '@tanstack/react-query';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { Checkbox } from '@/components/ui/checkbox';
 import { 
   Upload, 
   FileText, 
@@ -69,6 +70,27 @@ export function CaseFileUpload({ caseId }: CaseFileUploadProps) {
   const [pendingDeleteFileId, setPendingDeleteFileId] = useState<string | null>(null);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [downloadingId, setDownloadingId] = useState<string | null>(null);
+  const [selectedFileIds, setSelectedFileIds] = useState<Set<string>>(new Set());
+
+  const toggleFileSelection = (fileId: string) => {
+    setSelectedFileIds(prev => {
+      const newSet = new Set(prev);
+      if (newSet.has(fileId)) {
+        newSet.delete(fileId);
+      } else {
+        newSet.add(fileId);
+      }
+      return newSet;
+    });
+  };
+
+  const toggleSelectAll = () => {
+    if (selectedFileIds.size === files.length) {
+      setSelectedFileIds(new Set());
+    } else {
+      setSelectedFileIds(new Set(files.map(f => f.id)));
+    }
+  };
 
   // Fetch OCR results to know which files have been processed
   const { data: ocrResults } = useQuery({
@@ -151,18 +173,28 @@ export function CaseFileUpload({ caseId }: CaseFileUploadProps) {
         </span>
       </div>
 
-      {/* Bulk OCR Button */}
+      {/* Bulk OCR Button - now uses selected files if any */}
       {files.length > 0 && (
-        <BulkOcrButton
-          caseId={caseId}
-          files={files.map(f => ({
-            id: f.id,
-            original_filename: f.original_filename,
-            storage_path: f.storage_path,
-            file_type: f.file_type,
-          }))}
-          existingOcrFileIds={existingOcrFileIds}
-        />
+        <div className="flex flex-wrap items-center gap-4">
+          <BulkOcrButton
+            caseId={caseId}
+            files={(selectedFileIds.size > 0 
+              ? files.filter(f => selectedFileIds.has(f.id)) 
+              : files
+            ).map(f => ({
+              id: f.id,
+              original_filename: f.original_filename,
+              storage_path: f.storage_path,
+              file_type: f.file_type,
+            }))}
+            existingOcrFileIds={existingOcrFileIds}
+          />
+          {selectedFileIds.size > 0 && (
+            <span className="text-xs text-primary">
+              {t('cases:selected_files', '{{count}} selected', { count: selectedFileIds.size })}
+            </span>
+          )}
+        </div>
       )}
 
       {/* File List */}
@@ -179,12 +211,32 @@ export function CaseFileUpload({ caseId }: CaseFileUploadProps) {
         </div>
       ) : (
         <div className="space-y-2">
+          {/* Select All */}
+          {files.length > 1 && (
+            <div className="flex items-center gap-2 pb-2 border-b">
+              <Checkbox
+                id="select-all"
+                checked={selectedFileIds.size === files.length}
+                onCheckedChange={toggleSelectAll}
+              />
+              <label htmlFor="select-all" className="text-xs text-muted-foreground cursor-pointer">
+                {t('cases:select_all', 'Select all')}
+              </label>
+            </div>
+          )}
           {files.map((file) => (
             <div
               key={file.id}
-              className="flex items-center justify-between rounded-lg border p-3"
+              className={`flex items-center justify-between rounded-lg border p-3 transition-colors ${
+                selectedFileIds.has(file.id) ? 'bg-primary/5 border-primary/30' : ''
+              }`}
             >
               <div className="flex items-center gap-3 min-w-0 flex-1">
+                <Checkbox
+                  checked={selectedFileIds.has(file.id)}
+                  onCheckedChange={() => toggleFileSelection(file.id)}
+                  className="shrink-0"
+                />
                 {getFileIcon(file.file_type)}
                 <div className="min-w-0 flex-1">
                   <div className="flex items-center gap-2">
