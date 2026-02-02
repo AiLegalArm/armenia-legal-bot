@@ -244,12 +244,16 @@ serve(async (req) => {
           practiceContext = topPractice.map((r, i) => {
             const articles = r.applied_articles ? JSON.stringify(r.applied_articles) : "\u0546/\u0531";
             const violations = r.key_violations?.join(", ") || "\u0546/\u0531";
+            // Include full decision text for comprehensive analysis
+            const fullText = r.content_text || '';
             return `[\u054A\u0580\u0561\u056F\u057F\u056B\u056F\u0561 ${i + 1}] ${r.title}
 \u0534\u0561\u057F\u0561\u0580\u0561\u0576: ${r.court_type} | \u053F\u0561\u057F\u0565\u0563\u0578\u0580\u056B\u0561: ${r.practice_category} | \u0535\u056C\u0584: ${r.outcome}
 \u053F\u056B\u0580\u0561\u057C\u057E\u0561\u056E \u0570\u0578\u0564\u057E\u0561\u056E\u0576\u0565\u0580: ${articles}
 \u0540\u056B\u0574\u0576\u0561\u056F\u0561\u0576 \u056D\u0561\u056D\u057F\u0578\u0582\u0574\u0576\u0565\u0580: ${violations}
 \u053B\u0580\u0561\u057E\u0561\u056F\u0561\u0576 \u0570\u056B\u0574\u0576\u0561\u057E\u0578\u0580\u0578\u0582\u0574: ${r.legal_reasoning_summary || "\u0546/\u0531"}
-\u0544\u0561\u057D\u0576\u0561\u0563\u056B\u0580: ${r.content_text.substring(0, 1500)}`;
+
+**\u0548\u0550\u0548\u0547\u0544\u0531\u0546 \u053C\u053B\u0531\u0550\u053A\u0531\u053F\u0531\u0546 \u054F\u0535\u053F\u054D\u054F:**
+${fullText}`;
           }).join("\n\n---\n\n");
         }
       }
