@@ -68,6 +68,7 @@ export interface LegalPracticeDocument {
   key_violations: string[];
   legal_reasoning_summary: string;
   content_snippet: string;
+  content_text?: string; // Full decision text
   relevance_rank: number;
 }
 
@@ -115,6 +116,9 @@ export function formatKBResultsForAI(documents: LegalPracticeDocument[]): string
       discontinued: '\u053F\u0561\u0580\u0573\u057E\u0565\u056C'
     };
 
+    // Use full content_text if available, otherwise content_snippet
+    const fullText = doc.content_text || doc.content_snippet || '';
+    
     formatted += `
 ### \u0531\u0576\u0561\u056C\u0578\u0563 ${index + 1}: ${doc.title}
 - **\u053F\u0561\u057F\u0565\u0563\u0578\u0580\u056B\u0561:** ${categoryLabels[doc.practice_category] || doc.practice_category}
@@ -123,6 +127,9 @@ export function formatKBResultsForAI(documents: LegalPracticeDocument[]): string
 - **\u053F\u056B\u0580\u0561\u057C\u057E\u0561\u056E \u0570\u0578\u0564\u057E\u0561\u056E\u0576\u0565\u0580:** ${formatAppliedArticles(doc.applied_articles)}
 ${doc.key_violations && doc.key_violations.length > 0 ? `- **\u0540\u056B\u0574\u0576\u0561\u056F\u0561\u0576 \u056D\u0561\u056D\u057F\u0578\u0582\u0574\u0576\u0565\u0580:** ${doc.key_violations.join(', ')}` : ''}
 ${doc.legal_reasoning_summary ? `- **\u053B\u0580\u0561\u057E\u0561\u056F\u0561\u0576 \u0570\u056B\u0574\u0576\u0561\u057E\u0578\u0580\u0578\u0582\u0574:** ${doc.legal_reasoning_summary}` : ''}
+
+**\u0548\u0550\u0548\u0547\u0544\u0531\u0546 \u053C\u053B\u0531\u0550\u053A\u0531\u053F\u0531\u0546 \u054F\u0535\u053F\u054D\u054F\u0538:**
+${fullText}
 
 `;
   });
