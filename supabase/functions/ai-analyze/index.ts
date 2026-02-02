@@ -559,6 +559,18 @@ serve(async (req) => {
               else if (fileType.includes("pdf")) {
                 caseFilesContext += `\n### PDF \u0553\u0561\u057d\u057f\u0561\u0569\u0578\u0582\u0572\u0569 (\u0579\u056B \u0574\u0577\u0561\u056F\u057e\u0561\u056E): ${fileName}\n(\u0531\u0575\u057d PDF \u0586\u0561\u0575\u056c\u0568 \u0564\u0565\u057c OCR \u0579\u056B \u0561\u0576\u0581\u0565\u056c, \u056d\u0576\u0564\u0580\u0578\u0582\u0574 \u0565\u0576\u0584 \u0576\u0561\u056d \u0563\u0578\u0580\u056e\u0561\u0580\u056f\u0565\u056c OCR \u0570\u0561\u0574\u0561\u056a\u0578\u0572\u0578\u057e)\n\n`;
               }
+              // For TXT files, read directly as text
+              else if (fileType.includes("text/plain") || fileName.endsWith(".txt")) {
+                const { data: fileData, error: downloadError } = await supabase.storage
+                  .from("case-files")
+                  .download(file.storage_path);
+                
+                if (!downloadError && fileData) {
+                  const text = await fileData.text();
+                  const truncatedText = text.length > 8000 ? text.substring(0, 8000) + "..." : text;
+                  caseFilesContext += `\n### TXT \u0553\u0561\u057d\u057f\u0561\u0569\u0578\u0582\u0572\u0569: ${fileName}\n${truncatedText}\n\n`;
+                }
+              }
             } catch (fileReadError) {
               console.error(`Error reading file ${file.original_filename}:`, fileReadError);
             }

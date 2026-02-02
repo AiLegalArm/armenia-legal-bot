@@ -100,6 +100,7 @@ serve(async (req) => {
     const isPdf = fileExt === 'pdf';
     const isDocx = fileExt === 'docx';
     const isDoc = fileExt === 'doc';
+    const isTxt = fileExt === 'txt';
     const isImage = ['jpg', 'jpeg', 'png', 'tiff', 'tif', 'webp'].includes(fileExt);
     
     // Reject legacy .doc files
@@ -115,6 +116,7 @@ serve(async (req) => {
     let imageContent: { type: string; image_url?: { url: string }; text?: string } | null = null;
     let docxTextContent: string | null = null;
     let docxImages: string[] = []; // Base64 images extracted from DOCX
+    let txtContent: string | null = null; // Direct text content for TXT files
     let fileBuffer: ArrayBuffer | null = null;
     
     // Check if this is a base64 data URL (sent directly from client)
@@ -143,6 +145,24 @@ serve(async (req) => {
           bytes[i] = binaryString.charCodeAt(i);
         }
         fileBuffer = bytes.buffer;
+      } else if (isTxt) {
+        // For TXT, decode the base64 to text directly
+        const base64Match = fileUrl.match(/^data:[^;]+;base64,(.+)$/);
+        if (base64Match) {
+          const base64Data = base64Match[1];
+          try {
+            txtContent = decodeURIComponent(escape(atob(base64Data)));
+          } catch {
+            txtContent = atob(base64Data);
+          }
+        } else {
+          // Try to extract text directly from data URL
+          const textMatch = fileUrl.match(/^data:text\/plain[^,]*,(.+)$/);
+          if (textMatch) {
+            txtContent = decodeURIComponent(textMatch[1]);
+          }
+        }
+        console.log(`Extracted TXT content directly, length: ${txtContent?.length || 0} chars`);
       }
     } else if (fileUrl.includes('/storage/v1/object/')) {
       // Supabase storage URL
@@ -169,6 +189,12 @@ serve(async (req) => {
       fileBuffer = await fileResponse.arrayBuffer();
     }
     
+    // Handle TXT files - read directly as text without AI processing
+    if (isTxt && fileBuffer && !txtContent) {
+      const decoder = new TextDecoder('utf-8');
+      txtContent = decoder.decode(fileBuffer);
+      console.log(`Read TXT file from storage, length: ${txtContent.length} chars`);
+    }
     // Handle DOCX files - extract both text AND embedded images
     if (isDocx && fileBuffer) {
       console.log("Extracting text and images from DOCX file...");
@@ -340,6 +366,79 @@ serve(async (req) => {
 
     // Build request based on file type
     let messages;
+    
+    // Handle TXT files directly without AI processing
+    if (txtContent) {
+      console.log(`TXT file processed directly, saving ${txtContent.length} chars`);
+      
+      // For TXT files, we have the text directly - save without AI call
+      const result = {
+        extracted_text: txtContent,
+        languages_detected: ["hy", "ru", "en"],
+        confidence_score: 1.0,
+        confidence_reason: "Direct text file - no OCR required",
+        text_types_detected: ["plain_text"],
+        handwritten_sections: [],
+        warnings: [],
+        word_count: txtContent.split(/\s+/).length
+      };
+      
+      const needsReview = false; // TXT files are always readable
+      
+      // Log API usage
+      await supabase.rpc("log_api_usage", {
+        _service_type: "ocr",
+        _model_name: "direct_text",
+        _tokens_used: 0,
+        _estimated_cost: 0,
+        _metadata: { file_name: fileName, file_type: "txt", chars_count: txtContent.length }
+      });
+      
+      // Save OCR result if fileId provided
+      if (fileId) {
+        // Check if result already exists
+        const { data: existingOcr } = await supabase
+          .from("ocr_results")
+          .select("id")
+          .eq("file_id", fileId)
+          .maybeSingle();
+          
+        if (existingOcr) {
+          await supabase
+            .from("ocr_results")
+            .update({
+              extracted_text: txtContent,
+              confidence: result.confidence_score,
+              language: result.languages_detected?.join(", ") || null,
+              needs_review: needsReview
+            })
+            .eq("id", existingOcr.id);
+        } else {
+          await supabase
+            .from("ocr_results")
+            .insert({
+              file_id: fileId,
+              extracted_text: txtContent,
+              confidence: result.confidence_score,
+              language: result.languages_detected?.join(", ") || null,
+              needs_review: needsReview
+            });
+        }
+      }
+      
+      return new Response(JSON.stringify({
+        success: true,
+        text: txtContent,
+        confidence: result.confidence_score,
+        needsReview,
+        languages: result.languages_detected,
+        warnings: result.warnings,
+        wordCount: result.word_count,
+        model: "direct_text"
+      }), {
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
     
     if (docxTextContent || docxImages.length > 0) {
       // For DOCX: send extracted text and/or images for analysis
