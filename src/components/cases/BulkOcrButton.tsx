@@ -28,7 +28,7 @@ export function BulkOcrButton({ caseId, files, existingOcrFileIds, forceProcess 
   const [results, setResults] = useState<{ success: number; failed: number }>({ success: 0, failed: 0 });
   const queryClient = useQueryClient();
 
-  // Filter files that need OCR (PDF, images, DOCX) and don't have OCR yet (unless forceProcess)
+  // Filter files that need OCR (PDF, images, DOC, DOCX) and don't have OCR yet (unless forceProcess)
   const filesToProcess = files.filter(f => {
     // Skip OCR check if forceProcess is true (user selected files manually)
     if (!forceProcess && existingOcrFileIds.has(f.id)) return false;
@@ -37,10 +37,13 @@ export function BulkOcrButton({ caseId, files, existingOcrFileIds, forceProcess 
     return (
       type.includes('pdf') ||
       type.includes('image') ||
+      type.includes('msword') ||
+      type.includes('wordprocessingml') ||
       name.endsWith('.pdf') ||
       name.endsWith('.jpg') ||
       name.endsWith('.jpeg') ||
       name.endsWith('.png') ||
+      name.endsWith('.doc') ||
       name.endsWith('.docx')
     );
   });
