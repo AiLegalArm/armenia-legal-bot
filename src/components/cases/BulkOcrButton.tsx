@@ -42,11 +42,13 @@ export function BulkOcrButton({ caseId, files, existingOcrFileIds, forceProcess 
       type.includes('pdf') ||
       type.includes('image') ||
       type.includes('wordprocessingml') || // .docx
+      type.includes('text/plain') || // .txt
       name.endsWith('.pdf') ||
       name.endsWith('.jpg') ||
       name.endsWith('.jpeg') ||
       name.endsWith('.png') ||
-      name.endsWith('.docx')
+      name.endsWith('.docx') ||
+      name.endsWith('.txt')
     );
   });
   

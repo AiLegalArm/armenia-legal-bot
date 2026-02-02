@@ -164,12 +164,12 @@ export function CaseFileUpload({ caseId }: CaseFileUploadProps) {
               multiple
               className="hidden"
               onChange={handleFileSelect}
-              accept=".pdf,.doc,.docx,.jpg,.jpeg,.png,.mp3,.wav,.m4a"
+              accept=".pdf,.doc,.docx,.jpg,.jpeg,.png,.mp3,.wav,.m4a,.txt"
             />
           </label>
         </Button>
         <span className="text-xs text-muted-foreground">
-          PDF, DOC, DOCX, JPG, PNG, MP3, WAV, M4A
+          PDF, DOC, DOCX, JPG, PNG, MP3, WAV, M4A, TXT
         </span>
       </div>
 
