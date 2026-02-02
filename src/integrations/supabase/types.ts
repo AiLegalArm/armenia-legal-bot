@@ -222,6 +222,7 @@ export type Database = {
           filename: string
           hash_sha256: string | null
           id: string
+          notes: string | null
           original_filename: string
           storage_path: string
           uploaded_by: string | null
@@ -236,6 +237,7 @@ export type Database = {
           filename: string
           hash_sha256?: string | null
           id?: string
+          notes?: string | null
           original_filename: string
           storage_path: string
           uploaded_by?: string | null
@@ -250,6 +252,7 @@ export type Database = {
           filename?: string
           hash_sha256?: string | null
           id?: string
+          notes?: string | null
           original_filename?: string
           storage_path?: string
           uploaded_by?: string | null
