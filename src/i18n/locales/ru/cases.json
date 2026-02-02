@@ -272,5 +272,7 @@
   "generate_complaint_desc": "Создать апелляционную или кассационную жалобу на основе материалов дела и AI-анализов",
   "file_notes": "Заметки",
   "file_notes_placeholder": "Что нужно сделать с этим файлом...",
-  "file_notes_saved": "Заметки сохранены"
+  "file_notes_saved": "Заметки сохранены",
+  "selected_files": "{{count}} выбрано",
+  "select_all": "Выбрать все"
 }

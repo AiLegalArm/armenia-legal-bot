@@ -232,5 +232,7 @@
   "generate_complaint_desc": "Create an appeal or cassation complaint based on case materials and AI analyses",
   "file_notes": "Notes",
   "file_notes_placeholder": "What needs to be done with this file...",
-  "file_notes_saved": "Notes saved"
+  "file_notes_saved": "Notes saved",
+  "selected_files": "{{count}} selected",
+  "select_all": "Select all"
 }
