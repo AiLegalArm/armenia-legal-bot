@@ -8,11 +8,13 @@ import { Label } from "@/components/ui/label";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
+import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { 
   Loader2, FileText, Gavel, Scale, Building2, Copy, Download, 
-  Check, ArrowLeft, ArrowRight, AlertCircle
+  Check, ArrowLeft, ArrowRight, AlertCircle, Edit, Eye, Save
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { useAuth } from "@/hooks/useAuth";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 
@@ -48,6 +50,9 @@ interface GeneratorState {
   analysesText: string;
   additionalInfo: string;
   generatedContent: string;
+  editedContent: string;
+  isEditing: boolean;
+  isSaving: boolean;
   progress: number;
 }
 
@@ -63,6 +68,7 @@ export function CaseComplaintGenerator({
 }: CaseComplaintGeneratorProps) {
   const { t, i18n } = useTranslation(['cases', 'common']);
   const lang = i18n.language;
+  const { user } = useAuth();
 
   const [state, setState] = useState<GeneratorState>({
     step: 1,
@@ -74,6 +80,9 @@ export function CaseComplaintGenerator({
     analysesText: "",
     additionalInfo: "",
     generatedContent: "",
+    editedContent: "",
+    isEditing: false,
+    isSaving: false,
     progress: 0,
   });
 
@@ -222,6 +231,9 @@ export function CaseComplaintGenerator({
         analysesText: "",
         additionalInfo: "",
         generatedContent: "",
+        editedContent: "",
+        isEditing: false,
+        isSaving: false,
         progress: 0,
       });
       loadCaseFiles();
@@ -292,6 +304,7 @@ export function CaseComplaintGenerator({
         ...prev, 
         isGenerating: false, 
         generatedContent: content,
+        editedContent: content,
         progress: 100 
       }));
 
@@ -329,15 +342,17 @@ export function CaseComplaintGenerator({
 
   const handleCopy = async () => {
     try {
-      await navigator.clipboard.writeText(state.generatedContent);
-      toast.success(getText("\u054A\u0561\u057F\u0573\u0565\u0576\u057E\u0565\u056C \u0567", "\u0421\u043A\u043E\u043F\u0438\u0440\u043E\u0432\u0430\u043D\u043E", "Copied"));
+      const contentToCopy = state.isEditing ? state.editedContent : state.generatedContent;
+      await navigator.clipboard.writeText(contentToCopy);
+      toast.success(getText("Պdelays\u0565\u0576\u057E\u0565\u056C \u0567", "\u0421\u043A\u043E\u043F\u0438\u0440\u043E\u0432\u0430\u043D\u043E", "Copied"));
     } catch {
       toast.error(getText("\u054D\u056D\u0561\u056C", "\u041E\u0448\u0438\u0431\u043A\u0430", "Error"));
     }
   };
 
   const handleDownload = () => {
-    const blob = new Blob([state.generatedContent], { type: "text/plain;charset=utf-8" });
+    const contentToDownload = state.editedContent || state.generatedContent;
+    const blob = new Blob([contentToDownload], { type: "text/plain;charset=utf-8" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
@@ -347,6 +362,71 @@ export function CaseComplaintGenerator({
     a.download = `${typeLabel}_${caseData.case_number || "complaint"}.txt`;
     a.click();
     URL.revokeObjectURL(url);
+  };
+
+  // Save complaint to database
+  const handleSaveComplaint = async () => {
+    if (!user?.id) {
+      toast.error(getText("\u0540\u0561\u0580\u056F\u0561\u057E\u0578\u0580 \u0567 \u0574\u0578\u0582\u057F\u0584 \u0563\u0578\u0580\u056E\u0565\u056C", "\u041D\u0435\u043E\u0431\u0445\u043E\u0434\u0438\u043C\u0430 \u0430\u0432\u0442\u043E\u0440\u0438\u0437\u0430\u0446\u0438\u044F", "Authorization required"));
+      return;
+    }
+
+    setState(prev => ({ ...prev, isSaving: true }));
+
+    try {
+      const contentToSave = state.editedContent || state.generatedContent;
+      const typeLabel = state.complaintType === "appeal" 
+        ? getText("\u054E\u0565\u0580\u0561\u0584\u0576\u0576\u056B\u0579 \u0562\u0578\u0572\u0578\u0584", "\u0410\u043F\u0435\u043B\u043B\u044F\u0446\u0438\u043E\u043D\u043D\u0430\u044F \u0436\u0430\u043B\u043E\u0431\u0430", "Appeal Complaint")
+        : getText("\u054E\u0573\u057C\u0561\u0562\u0565\u056F \u0562\u0578\u0572\u0578\u0584", "\u041A\u0430\u0441\u0441\u0430\u0446\u0438\u043E\u043D\u043D\u0430\u044F \u0436\u0430\u043B\u043E\u0431\u0430", "Cassation Complaint");
+
+      const { error } = await supabase
+        .from("generated_documents")
+        .insert({
+          user_id: user.id,
+          case_id: caseId,
+          title: `${typeLabel} - ${caseData.case_number || caseData.title}`,
+          content_text: contentToSave,
+          status: "draft",
+          metadata: {
+            complaint_type: state.complaintType,
+            case_type: caseData.case_type,
+            generated_at: new Date().toISOString(),
+          }
+        });
+
+      if (error) throw error;
+
+      toast.success(getText(
+        "\u0532\u0578\u0572\u0578\u0584\u0568 \u057A\u0561\u0570\u057A\u0561\u0576\u057E\u0565\u056C \u0567",
+        "\u0416\u0430\u043B\u043E\u0431\u0430 \u0441\u043E\u0445\u0440\u0430\u043D\u0435\u043D\u0430",
+        "Complaint saved"
+      ));
+
+      // Update generated content with edited version
+      setState(prev => ({ 
+        ...prev, 
+        isSaving: false,
+        generatedContent: contentToSave,
+        isEditing: false
+      }));
+    } catch (error) {
+      console.error("Error saving complaint:", error);
+      setState(prev => ({ ...prev, isSaving: false }));
+      toast.error(getText(
+        "\u054D\u056D\u0561\u056C \u057A\u0561\u0570\u057A\u0561\u0576\u0574\u0561\u0576 \u0570\u0565\u057F",
+        "\u041E\u0448\u0438\u0431\u043A\u0430 \u0441\u043E\u0445\u0440\u0430\u043D\u0435\u043D\u0438\u044F",
+        "Error saving"
+      ));
+    }
+  };
+
+  const toggleEditMode = () => {
+    setState(prev => ({ 
+      ...prev, 
+      isEditing: !prev.isEditing,
+      // Reset edited content to generated if switching to edit mode
+      editedContent: prev.isEditing ? prev.editedContent : prev.generatedContent
+    }));
   };
 
   const isDataLoading = state.isLoadingFiles || state.isLoadingAnalyses;
@@ -558,11 +638,28 @@ export function CaseComplaintGenerator({
                   </div>
                 ) : state.generatedContent ? (
                   <>
-                    <div className="flex items-center justify-between">
+                    <div className="flex items-center justify-between mb-4">
                       <h3 className="font-semibold">
                         {getText("\u0531\u0580\u0564\u0575\u0578\u0582\u0576\u0584", "\u0420\u0435\u0437\u0443\u043B\u044C\u0442\u0430\u0442", "Result")}
                       </h3>
                       <div className="flex gap-2">
+                        <Button 
+                          variant={state.isEditing ? "default" : "outline"} 
+                          size="sm" 
+                          onClick={toggleEditMode}
+                        >
+                          {state.isEditing ? (
+                            <>
+                              <Eye className="h-4 w-4 mr-2" />
+                              {getText("\u0534\u056B\u057F\u0565\u056C", "\u041F\u0440\u043E\u0441\u043C\u043E\u0442\u0440", "Preview")}
+                            </>
+                          ) : (
+                            <>
+                              <Edit className="h-4 w-4 mr-2" />
+                              {getText("\u053D\u0574\u0562\u0561\u0563\u0580\u0565\u056C", "\u0420\u0435\u0434\u0430\u043A\u0442\u0438\u0440\u043E\u0432\u0430\u0442\u044C", "Edit")}
+                            </>
+                          )}
+                        </Button>
                         <Button variant="outline" size="sm" onClick={handleCopy}>
                           <Copy className="h-4 w-4 mr-2" />
                           {getText("\u054A\u0561\u057F\u0573\u0565\u0576\u0565\u056C", "\u041A\u043E\u043F\u0438\u0440\u043E\u0432\u0430\u0442\u044C", "Copy")}
@@ -573,10 +670,39 @@ export function CaseComplaintGenerator({
                         </Button>
                       </div>
                     </div>
-                    <div className="border rounded-lg p-4 bg-muted/30 max-h-[400px] overflow-auto">
-                      <pre className="whitespace-pre-wrap text-sm font-mono">
-                        {state.generatedContent}
-                      </pre>
+
+                    {state.isEditing ? (
+                      <Textarea
+                        value={state.editedContent}
+                        onChange={(e) => setState(prev => ({ ...prev, editedContent: e.target.value }))}
+                        className="min-h-[400px] font-mono text-sm"
+                        placeholder={getText(
+                          "\u053D\u0574\u0562\u0561\u0563\u0580\u0565\u0584 \u0562\u0578\u0572\u0578\u0584\u056B \u057F\u0565\u0584\u057D\u057F\u0568...",
+                          "\u0420\u0435\u0434\u0430\u043A\u0442\u0438\u0440\u0443\u0439\u0442\u0435 \u0442\u0435\u043A\u0441\u0442 \u0436\u0430\u043B\u043E\u0431\u044B...",
+                          "Edit complaint text..."
+                        )}
+                      />
+                    ) : (
+                      <div className="border rounded-lg p-4 bg-muted/30 max-h-[400px] overflow-auto">
+                        <pre className="whitespace-pre-wrap text-sm font-mono">
+                          {state.editedContent || state.generatedContent}
+                        </pre>
+                      </div>
+                    )}
+
+                    {/* Save button - shown when content exists */}
+                    <div className="flex justify-end mt-4">
+                      <Button 
+                        onClick={handleSaveComplaint}
+                        disabled={state.isSaving}
+                      >
+                        {state.isSaving ? (
+                          <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                        ) : (
+                          <Save className="h-4 w-4 mr-2" />
+                        )}
+                        {getText("\u054A\u0561\u0570\u057A\u0561\u0576\u0565\u056C", "\u0421\u043E\u0445\u0440\u0430\u043D\u0438\u0442\u044C", "Save")}
+                      </Button>
                     </div>
                   </>
                 ) : null}
