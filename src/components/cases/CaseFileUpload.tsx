@@ -1,4 +1,4 @@
-import { useCallback, useState, useEffect } from 'react';
+import { useCallback, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useQuery } from '@tanstack/react-query';
 import { Button } from '@/components/ui/button';
@@ -16,6 +16,7 @@ import { format } from 'date-fns';
 import { useCaseFiles } from '@/hooks/useCaseFiles';
 import { supabase } from '@/integrations/supabase/client';
 import { BulkOcrButton } from './BulkOcrButton';
+import { FileNotes } from './FileNotes';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -183,13 +184,13 @@ export function CaseFileUpload({ caseId }: CaseFileUploadProps) {
               key={file.id}
               className="flex items-center justify-between rounded-lg border p-3"
             >
-              <div className="flex items-center gap-3">
+              <div className="flex items-center gap-3 min-w-0 flex-1">
                 {getFileIcon(file.file_type)}
-                <div>
+                <div className="min-w-0 flex-1">
                   <div className="flex items-center gap-2">
-                    <p className="text-sm font-medium">{file.original_filename}</p>
+                    <p className="text-sm font-medium truncate">{file.original_filename}</p>
                     {existingOcrFileIds.has(file.id) && (
-                      <span className="text-green-600" title={t('cases:ocr_completed', 'OCR completed')}>
+                      <span className="text-green-600 shrink-0" title={t('cases:ocr_completed', 'OCR completed')}>
                         <CheckCircle className="h-3 w-3" />
                       </span>
                     )}
@@ -197,9 +198,19 @@ export function CaseFileUpload({ caseId }: CaseFileUploadProps) {
                   <p className="text-xs text-muted-foreground">
                     {formatFileSize(file.file_size)} • v{file.version} • {format(new Date(file.created_at), 'dd.MM.yyyy')}
                   </p>
+                  {file.notes && (
+                    <p className="text-xs text-amber-600 dark:text-amber-400 mt-1 line-clamp-1">
+                      📝 {file.notes}
+                    </p>
+                  )}
                 </div>
               </div>
-              <div className="flex items-center gap-1">
+              <div className="flex items-center gap-1 shrink-0">
+                <FileNotes
+                  fileId={file.id}
+                  caseId={caseId}
+                  currentNotes={file.notes}
+                />
                 <Button
                   variant="ghost"
                   size="icon"
