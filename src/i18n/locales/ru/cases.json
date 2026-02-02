@@ -274,5 +274,6 @@
   "file_notes_placeholder": "Что нужно сделать с этим файлом...",
   "file_notes_saved": "Заметки сохранены",
   "selected_files": "{{count}} выбрано",
-  "select_all": "Выбрать все"
+  "select_all": "Выбрать все",
+  "clear_selection": "Сбросить"
 }

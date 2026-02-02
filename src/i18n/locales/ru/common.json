@@ -173,5 +173,6 @@
   "generation_failed": "Ошибка генерации документа",
   "skip_to_input": "Перейти к вводу",
   "new_complaint": "Новая жалоба",
-  "complaint": "Жалоба"
+  "complaint": "Жалоба",
+  "clear_selection": "Сбросить"
 }

@@ -188,11 +188,16 @@ export function CaseFileUpload({ caseId }: CaseFileUploadProps) {
               file_type: f.file_type,
             }))}
             existingOcrFileIds={existingOcrFileIds}
+            forceProcess={selectedFileIds.size > 0}
           />
           {selectedFileIds.size > 0 && (
-            <span className="text-xs text-primary">
-              {t('cases:selected_files', '{{count}} selected', { count: selectedFileIds.size })}
-            </span>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => setSelectedFileIds(new Set())}
+            >
+              {t('common:clear_selection', 'Clear')}
+            </Button>
           )}
         </div>
       )}

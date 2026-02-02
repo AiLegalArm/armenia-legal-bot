@@ -17,9 +17,10 @@ interface BulkOcrButtonProps {
     file_type: string | null;
   }>;
   existingOcrFileIds: Set<string>;
+  forceProcess?: boolean; // When true, process all files even if already OCR'd
 }
 
-export function BulkOcrButton({ caseId, files, existingOcrFileIds }: BulkOcrButtonProps) {
+export function BulkOcrButton({ caseId, files, existingOcrFileIds, forceProcess = false }: BulkOcrButtonProps) {
   const { t, i18n } = useTranslation(['cases', 'ocr', 'common']);
   const [isProcessing, setIsProcessing] = useState(false);
   const [progress, setProgress] = useState(0);
@@ -27,9 +28,10 @@ export function BulkOcrButton({ caseId, files, existingOcrFileIds }: BulkOcrButt
   const [results, setResults] = useState<{ success: number; failed: number }>({ success: 0, failed: 0 });
   const queryClient = useQueryClient();
 
-  // Filter files that need OCR (PDF, images, DOCX) and don't have OCR yet
+  // Filter files that need OCR (PDF, images, DOCX) and don't have OCR yet (unless forceProcess)
   const filesToProcess = files.filter(f => {
-    if (existingOcrFileIds.has(f.id)) return false;
+    // Skip OCR check if forceProcess is true (user selected files manually)
+    if (!forceProcess && existingOcrFileIds.has(f.id)) return false;
     const type = f.file_type?.toLowerCase() || '';
     const name = f.original_filename.toLowerCase();
     return (
