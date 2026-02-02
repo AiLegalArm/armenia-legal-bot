@@ -304,11 +304,11 @@ const Dashboard = () => {
             <TabsList>
               <TabsTrigger value="team" className="gap-2">
                 <Users2 className="h-4 w-4" />
-                Իմ թիմը
+                {'\u053B\u0574 \u0569\u056B\u0574\u0568'}
               </TabsTrigger>
               <TabsTrigger value="cases" className="gap-2">
                 <FolderOpen className="h-4 w-4" />
-                Գործեր
+                {'\u0533\u0578\u0580\u056E\u0565\u0580'}
               </TabsTrigger>
             </TabsList>
 

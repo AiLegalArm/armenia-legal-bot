@@ -63,9 +63,9 @@ export const UserFeedback = () => {
 
   const getRatingInfo = (rating: number | null): { variant: 'default' | 'secondary' | 'destructive', text: string } => {
     if (!rating) return { variant: 'secondary', text: '-' };
-    if (rating >= 4) return { variant: 'default', text: 'Լավ' };
-    if (rating >= 3) return { variant: 'secondary', text: 'Բավարար' };
-    return { variant: 'destructive', text: 'Վատ' };
+    if (rating >= 4) return { variant: 'default', text: '\u053C\u0561\u057E' }; // Լdelays
+    if (rating >= 3) return { variant: 'secondary', text: '\u0532\u0561\u057E\u0561\u0580\u0561\u0580' }; // Բdelays
+    return { variant: 'destructive', text: '\u054E\u0561\u057F' }; // Վdelays
   };
 
   return (
@@ -75,7 +75,8 @@ export const UserFeedback = () => {
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">
-              Միջին գնահատական
+              {/* Միdelays գdelays */}
+              {'\u0544\u056B\u057B\u056B\u0576 \u0563\u0576\u0561\u0570\u0561\u057F\u0561\u056F\u0561\u0576'}
             </CardTitle>
             <TrendingUp className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
@@ -84,7 +85,8 @@ export const UserFeedback = () => {
               {avgStats?.overallAverage.toFixed(1) || '0.0'}
             </div>
             <p className="text-xs text-muted-foreground">
-              Վերջին {period} օրվա ընթացքում
+              {/* Վdelays {period} օdelays delays */}
+              {`\u054E\u0565\u0580\u057B\u056B\u0576 ${period} \u0585\u0580\u057E\u0561 \u0568\u0576\u0569\u0561\u0581\u0584\u0578\u0582\u0574`}
             </p>
           </CardContent>
         </Card>
@@ -92,7 +94,8 @@ export const UserFeedback = () => {
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">
-              Ընդհանուր կարծիքներ
+              {/* Delays կdelays */}
+              {'\u0538\u0576\u0564\u0570\u0561\u0576\u0578\u0582\u0580 \u056F\u0561\u0580\u056E\u056B\u0584\u0576\u0565\u0580'}
             </CardTitle>
             <MessageSquare className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
@@ -101,7 +104,7 @@ export const UserFeedback = () => {
               {avgStats?.totalFeedback || 0}
             </div>
             <p className="text-xs text-muted-foreground">
-              Վերջին {period} օրվա ընթացքում
+              {`\u054E\u0565\u0580\u057B\u056B\u0576 ${period} \u0585\u0580\u057E\u0561 \u0568\u0576\u0569\u0561\u0581\u0584\u0578\u0582\u0574`}
             </p>
           </CardContent>
         </Card>
@@ -109,7 +112,8 @@ export const UserFeedback = () => {
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">
-              Ժամանակաշրջան
+              {/* Delays */}
+              {'\u053A\u0561\u0574\u0561\u0576\u0561\u056F\u0561\u0577\u0580\u057B\u0561\u0576'}
             </CardTitle>
             <Filter className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
@@ -122,9 +126,9 @@ export const UserFeedback = () => {
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="7">7 օր</SelectItem>
-                <SelectItem value="14">14 օր</SelectItem>
-                <SelectItem value="30">30 օր</SelectItem>
+                <SelectItem value="7">7 {'\u0585\u0580'}</SelectItem>
+                <SelectItem value="14">14 {'\u0585\u0580'}</SelectItem>
+                <SelectItem value="30">30 {'\u0585\u0580'}</SelectItem>
               </SelectContent>
             </Select>
           </CardContent>
@@ -137,15 +141,16 @@ export const UserFeedback = () => {
           <div className="flex items-center justify-between">
             <CardTitle className="flex items-center gap-2">
               <MessageSquare className="h-5 w-5" />
-              Օգտատերերի կարծիքներ
+              {/* Delays կdelays */}
+              {'\u0555\u0563\u057F\u0561\u057F\u0565\u0580\u0565\u0580\u056B \u056F\u0561\u0580\u056E\u056B\u0584\u0576\u0565\u0580'}
             </CardTitle>
             <Select onValueChange={handleFilterChange} defaultValue="all">
               <SelectTrigger className="w-[200px]">
-                <SelectValue placeholder="Ֆիլտրել գնահատականով" />
+                <SelectValue placeholder={'\u0556\u056B\u056C\u057F\u0580\u0565\u056C \u0563\u0576\u0561\u0570\u0561\u057F\u0561\u056F\u0561\u0576\u0578\u057E'} />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="all">Բոլոր գնահատականները</SelectItem>
-                <SelectItem value="low">Ցածր գնահատական ({'<'}3)</SelectItem>
+                <SelectItem value="all">{'\u0532\u0578\u056C\u0578\u0580 \u0563\u0576\u0561\u0570\u0561\u057F\u0561\u056F\u0561\u0576\u0576\u0565\u0580\u0568'}</SelectItem>
+                <SelectItem value="low">{'\u0551\u0561\u056E\u0580 \u0563\u0576\u0561\u0570\u0561\u057F\u0561\u056F\u0561\u0576'} ({'<'}3)</SelectItem>
               </SelectContent>
             </Select>
           </div>
@@ -159,7 +164,8 @@ export const UserFeedback = () => {
             <div className="flex flex-col items-center justify-center py-16">
               <MessageSquare className="h-12 w-12 text-muted-foreground/50" />
               <p className="mt-4 text-lg font-medium text-muted-foreground">
-                Կարծիքներ չեն գտնվել
+                {/* Delays չdelays գdelays */}
+                {'\u053F\u0561\u0580\u056E\u056B\u0584\u0576\u0565\u0580 \u0579\u0565\u0576 \u0563\u057F\u0576\u057E\u0565\u056C'}
               </p>
             </div>
           ) : (
@@ -167,11 +173,11 @@ export const UserFeedback = () => {
               <Table>
                 <TableHeader>
                   <TableRow>
-                    <TableHead>Գործի համար</TableHead>
-                    <TableHead>Օգտատեր</TableHead>
-                    <TableHead>Գնահատական</TableHead>
-                    <TableHead>Մեկնաբանություն</TableHead>
-                    <TableHead>Ամսաթիվ</TableHead>
+                    <TableHead>{'\u0533\u0578\u0580\u056E\u056B \u0570\u0561\u0574\u0561\u0580'}</TableHead>
+                    <TableHead>{'\u0555\u0563\u057F\u0561\u057F\u0565\u0580'}</TableHead>
+                    <TableHead>{'\u0533\u0576\u0561\u0570\u0561\u057F\u0561\u056F\u0561\u0576'}</TableHead>
+                    <TableHead>{'\u0544\u0565\u056F\u0576\u0561\u0562\u0561\u0576\u0578\u0582\u0569\u0575\u0578\u0582\u0576'}</TableHead>
+                    <TableHead>{'\u0531\u0574\u057D\u0561\u0569\u056B\u057E'}</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -207,8 +213,8 @@ export const UserFeedback = () => {
               {pagination && pagination.totalPages > 1 && (
                 <div className="flex items-center justify-between mt-4">
                   <div className="text-sm text-muted-foreground">
-                    Ցուցադրվում է {((pagination.page - 1) * pagination.pageSize) + 1}-
-                    {Math.min(pagination.page * pagination.pageSize, pagination.total)} / {pagination.total}
+                    {/* Delays է */}
+                    {`\u0551\u0578\u0582\u0581\u0561\u0564\u0580\u057E\u0578\u0582\u0574 \u0567 ${((pagination.page - 1) * pagination.pageSize) + 1}-${Math.min(pagination.page * pagination.pageSize, pagination.total)} / ${pagination.total}`}
                   </div>
                   <div className="flex items-center gap-2">
                     <Button
@@ -218,10 +224,10 @@ export const UserFeedback = () => {
                       disabled={pagination.page === 1}
                     >
                       <ChevronLeft className="h-4 w-4" />
-                      Նախորդ
+                      {'\u0546\u0561\u056D\u0578\u0580\u0564'}
                     </Button>
                     <div className="text-sm">
-                      Էջ {pagination.page} / {pagination.totalPages}
+                      {`\u0537\u057B ${pagination.page} / ${pagination.totalPages}`}
                     </div>
                     <Button
                       variant="outline"
@@ -229,7 +235,7 @@ export const UserFeedback = () => {
                       onClick={() => handlePageChange(pagination.page + 1)}
                       disabled={pagination.page === pagination.totalPages}
                     >
-                      Հաջորդ
+                      {'\u0540\u0561\u057B\u0578\u0580\u0564'}
                       <ChevronRight className="h-4 w-4" />
                     </Button>
                   </div>

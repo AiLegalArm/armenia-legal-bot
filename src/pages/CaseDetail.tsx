@@ -829,7 +829,7 @@ const CaseDetail = () => {
                           onClick={() => navigate(`/cases/${caseData.id}/transcriptions`)}
                         >
                           <Music className="mr-2 h-4 w-4" />
-                          {t('audio_transcription', 'Աուդիո տրանսկրիպցիա')}
+                          {t('audio_transcription', '\u0531\u0578\u0582\u0564\u056B\u0578 \u057F\u0580\u0561\u0576\u057D\u056F\u0580\u056B\u057A\u0581\u056B\u0561')}
                         </Button>
                       </div>
                     </div>
