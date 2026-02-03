@@ -19,7 +19,8 @@ const CATEGORIES: ComplaintCategory[] = [
   "administrative", 
   "anticorruption", 
   "constitutional", 
-  "echr"
+  "echr",
+  "ombudsman"
 ];
 
 export function StepCategorySelect({
