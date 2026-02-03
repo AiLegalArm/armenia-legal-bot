@@ -250,7 +250,7 @@ const Dashboard = () => {
             </Button>
             <Button variant="outline" size="sm" onClick={() => setComplaintWizardOpen(true)} className="flex-col sm:flex-row h-auto py-2 sm:py-2 sm:h-9">
               <FileWarning className="h-4 w-4 sm:mr-2" />
-              <span className="text-xs sm:text-sm mt-1 sm:mt-0">{t('common:complaint', 'Complaint')}</span>
+              <span className="text-xs sm:text-sm mt-1 sm:mt-0">{t('common:complaint')}</span>
             </Button>
             <Button 
               variant="outline" 

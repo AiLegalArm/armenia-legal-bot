@@ -117,6 +117,7 @@
   "generation_failed": "Document generation failed",
   "skip_to_input": "Skip to input",
   "new_complaint": "New Complaint",
-  "complaint": "Complaint",
+  "complaint": "Complaints",
+  "complaint_generator_title": "AI Complaints & Claims Generator",
   "clear_selection": "Clear"
 }
