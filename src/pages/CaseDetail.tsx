@@ -565,47 +565,7 @@ const CaseDetail = () => {
             </div>
           </div>
           {canEdit && (
-            <div className="grid w-full grid-cols-3 gap-2 sm:w-auto">
-              {/* Quick Complaint Generation Dropdown */}
-              <DropdownMenu>
-                <DropdownMenuTrigger asChild>
-                  <Button
-                    variant="default"
-                    size="sm"
-                    className="w-full justify-center min-w-0 px-2"
-                  >
-                    <Gavel className="h-4 w-4 mr-1 sm:mr-2 shrink-0" />
-                    <span className="text-xs sm:text-sm truncate">
-                      {i18n.language === 'hy' ? '\u0532\u0578\u0572\u0578\u0584' : i18n.language === 'en' ? 'Complaint' : '\u0416\u0430\u043B\u043E\u0431\u0430'}
-                    </span>
-                  </Button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent align="end">
-                  <DropdownMenuItem onClick={() => {
-                    setPreselectedDocumentType('appeal');
-                    setDocumentGeneratorOpen(true);
-                  }}>
-                    <FileSignature className="mr-2 h-4 w-4" />
-                    {i18n.language === 'hy' ? '\u054E\u0565\u0580\u0561\u0584\u0576\u0576\u056B\u0579 \u0562\u0578\u0572\u0578\u0584' : i18n.language === 'en' ? 'Appeal' : '\u0410\u043F\u0435\u043B\u043B\u044F\u0446\u0438\u043E\u043D\u043D\u0430\u044F \u0436\u0430\u043B\u043E\u0431\u0430'}
-                  </DropdownMenuItem>
-                  <DropdownMenuItem onClick={() => {
-                    setPreselectedDocumentType('cassation');
-                    setDocumentGeneratorOpen(true);
-                  }}>
-                    <FileSignature className="mr-2 h-4 w-4" />
-                    {i18n.language === 'hy' ? '\u054E\u0573\u057C\u0561\u0562\u0565\u056F \u0562\u0578\u0572\u0578\u0584' : i18n.language === 'en' ? 'Cassation Appeal' : '\u041A\u0430\u0441\u0441\u0430\u0446\u0438\u043E\u043D\u043D\u0430\u044F \u0436\u0430\u043B\u043E\u0431\u0430'}
-                  </DropdownMenuItem>
-                  <DropdownMenuSeparator />
-                  <DropdownMenuItem onClick={() => {
-                    setPreselectedDocumentType(null);
-                    setDocumentGeneratorOpen(true);
-                  }}>
-                    <FileText className="mr-2 h-4 w-4" />
-                    {i18n.language === 'hy' ? '\u0531\u0575\u056C \u0583\u0561\u057D\u057F\u0561\u0569\u0578\u0582\u0572\u0569' : i18n.language === 'en' ? 'Other Document' : '\u0414\u0440\u0443\u0433\u043E\u0439 \u0434\u043E\u043A\u0443\u043C\u0435\u043D\u0442'}
-                  </DropdownMenuItem>
-                </DropdownMenuContent>
-              </DropdownMenu>
-              
+            <div className="grid w-full grid-cols-2 gap-2 sm:w-auto">
               <Button
                 variant="outline"
                 size="sm"
