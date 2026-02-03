@@ -695,9 +695,9 @@ export function ComplaintWizard({ open, onOpenChange }: ComplaintWizardProps) {
           <DialogTitle className="flex items-center gap-2">
             <Sparkles className="h-5 w-5 text-primary" />
             {getText(
-              "AI \u0532\u0578\u0572\u0578\u0584\u056B \u0533\u0565\u0576\u0565\u0580\u0561\u057F\u0578\u0580",
-              "AI \u0413\u0435\u043D\u0435\u0440\u0430\u0442\u043E\u0440 \u0436\u0430\u043B\u043E\u0431",
-              "AI Complaint Generator"
+              "AI \u0532\u0578\u0572\u0578\u0584\u0576\u0565\u0580\u056B \u0587 \u0570\u0561\u0575\u0581\u0565\u0580\u056B \u0563\u0565\u0576\u0565\u0580\u0561\u057F\u0578\u0580",
+              "AI \u0433\u0435\u043D\u0435\u0440\u0430\u0442\u043E\u0440 \u0436\u0430\u043B\u043E\u0431 \u0438 \u0438\u0441\u043A\u043E\u0432",
+              "AI Complaints & Claims Generator"
             )}
           </DialogTitle>
         </DialogHeader>

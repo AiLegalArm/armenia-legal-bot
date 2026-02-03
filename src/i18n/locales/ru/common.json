@@ -173,6 +173,7 @@
   "generation_failed": "Ошибка генерации документа",
   "skip_to_input": "Перейти к вводу",
   "new_complaint": "Новая жалоба",
-  "complaint": "Жалоба",
+  "complaint": "Жалобы",
+  "complaint_generator_title": "AI генератор жалоб и исков",
   "clear_selection": "Сбросить"
 }
