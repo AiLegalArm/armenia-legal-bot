@@ -664,23 +664,6 @@ export function ComplaintWizard({ open, onOpenChange }: ComplaintWizardProps) {
           className="min-h-[100px]"
         />
       </div>
-
-      {/* Generate button - fixed to always be visible at bottom */}
-      <div className="sticky bottom-0 pt-4 pb-2 bg-background border-t mt-4">
-        <Button 
-          onClick={handleGenerate} 
-          className="w-full" 
-          size="lg"
-          disabled={state.isProcessing || (state.files.length === 0 && !state.additionalInfo)}
-        >
-          <Sparkles className="mr-2 h-4 w-4" />
-          {getText(
-            "\u0533\u0565\u0576\u0565\u0580\u0561\u0581\u0576\u0565\u056C \u0562\u0578\u0572\u0578\u0584\u0568",
-            "\u0421\u0433\u0565\u043D\u0435\u0440\u0438\u0440\u043E\u0432\u0430\u0442\u044C \u0436\u0430\u043B\u043E\u0431\u0443",
-            "Generate Complaint"
-          )}
-        </Button>
-      </div>
     </div>
   );
 
@@ -771,11 +754,26 @@ export function ComplaintWizard({ open, onOpenChange }: ComplaintWizardProps) {
 
         {/* Footer */}
         {state.step > 1 && state.step < 4 && (
-          <div className="flex justify-start pt-4 border-t">
-            <Button variant="ghost" onClick={goBack}>
+          <div className="flex flex-col gap-2 sm:flex-row sm:items-center pt-4 border-t">
+            <Button variant="ghost" onClick={goBack} className="w-full sm:w-auto">
               <ArrowLeft className="h-4 w-4 mr-2" />
               {getText("\u0540\u0565\u057F", "\u041D\u0430\u0437\u0430\u0434", "Back")}
             </Button>
+
+            {state.step === 3 && (
+              <Button
+                onClick={handleGenerate}
+                className="w-full sm:w-auto sm:ml-auto"
+                disabled={state.isProcessing || (state.files.length === 0 && !state.additionalInfo)}
+              >
+                <Sparkles className="mr-2 h-4 w-4" />
+                {getText(
+                  "\u0533\u0565\u0576\u0565\u0580\u0561\u0581\u0576\u0565\u056C \u0562\u0578\u0572\u0578\u0584\u0568",
+                  "\u0421\u0433\u0565\u043D\u0435\u0440\u0438\u0440\u043E\u0432\u0430\u0442\u044C \u0436\u0430\u043B\u043E\u0431\u0443",
+                  "Generate Complaint"
+                )}
+              </Button>
+            )}
           </div>
         )}
       </DialogContent>
