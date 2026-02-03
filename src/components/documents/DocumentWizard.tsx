@@ -21,8 +21,8 @@ import { supabase } from "@/integrations/supabase/client";
 // =============================================================================
 
 type CaseType = "criminal" | "civil" | "administrative";
-type LegalPerspective = "defense" | "prosecution";
-type LegalRole = "lawyer" | "prosecutor";
+type LegalPerspective = "defense" | "prosecution" | "court";
+type LegalRole = "lawyer" | "prosecutor" | "judge";
 
 interface WizardState {
   step: number;
@@ -69,6 +69,7 @@ const DOCUMENT_TYPES: Record<CaseType, DocumentTypeOption[]> = {
 const PERSPECTIVE_TO_ROLE: Record<LegalPerspective, LegalRole> = {
   defense: "lawyer",
   prosecution: "prosecutor",
+  court: "judge",
 };
 
 // =============================================================================
@@ -345,6 +346,11 @@ export function DocumentWizard({ onComplete, onCancel, caseData }: DocumentWizar
             perspective: "prosecution" as LegalPerspective, 
             icon: <Search className="h-5 w-5" />,
             descKey: "prosecution_perspective_desc"
+          },
+          { 
+            perspective: "court" as LegalPerspective, 
+            icon: <Scale className="h-5 w-5" />,
+            descKey: "court_perspective_desc"
           },
         ].map(({ perspective, icon, descKey }) => (
           <button
