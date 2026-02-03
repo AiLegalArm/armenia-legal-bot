@@ -8,7 +8,8 @@ export type ComplaintCategory =
   | "administrative" 
   | "anticorruption" 
   | "constitutional" 
-  | "echr";
+  | "echr"
+  | "ombudsman";
 
 export interface ComplaintType {
   id: string;
@@ -43,7 +44,8 @@ export type CourtType =
   | "cassation" 
   | "constitutional" 
   | "echr" 
-  | "anticorruption";
+  | "anticorruption"
+  | "ombudsman";
 
 export interface GenerateComplaintParams {
   courtType: CourtType;

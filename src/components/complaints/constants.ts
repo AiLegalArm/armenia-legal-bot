@@ -1,5 +1,5 @@
 import { 
-  Gavel, Scale, Building2, Globe, FileText, ShieldAlert 
+  Gavel, Scale, Building2, Globe, FileText, ShieldAlert, UserCheck 
 } from "lucide-react";
 import type { ComplaintCategory, ComplaintType } from "./types";
 
@@ -150,6 +150,26 @@ export const COMPLAINT_TYPES: ComplaintType[] = [
     labelEn: "Rule 39 Request",
     category: "echr",
     templateId: "echr_rule_39"
+  },
+  
+  // ═══════════════════════════════════════════════════════════════════════════
+  // OMBUDSMAN - Защитник прав человека
+  // ═══════════════════════════════════════════════════════════════════════════
+  {
+    id: "ombudsman_complaint",
+    labelHy: "\u0532\u0578\u0572\u0578\u0584 \u0544\u0561\u0580\u0564\u0578\u0582 \u056B\u0580\u0561\u057E\u0578\u0582\u0576\u0584\u0576\u0565\u0580\u056B \u057A\u0561\u0577\u057F\u057A\u0561\u0576\u056B\u0576",
+    labelRu: "Жалоба Защитнику прав человека",
+    labelEn: "Complaint to Human Rights Defender",
+    category: "ombudsman",
+    templateId: "ombudsman_complaint"
+  },
+  {
+    id: "ombudsman_systemic",
+    labelHy: "\u0534\u056B\u0574\u0578\u0582\u0574 \u0570\u0561\u0574\u0561\u056F\u0561\u0580\u0563\u0561\u0575\u056B\u0576 \u056D\u0576\u0564\u0580\u056B \u057E\u0565\u0580\u0561\u0562\u0565\u0580\u0575\u0561\u056C",
+    labelRu: "Заявление о системной проблеме",
+    labelEn: "Systemic Issue Application",
+    category: "ombudsman",
+    templateId: "ombudsman_systemic"
   }
 ];
 
@@ -163,7 +183,8 @@ export const CATEGORY_ICONS = {
   administrative: Building2,
   anticorruption: ShieldAlert,
   constitutional: FileText,
-  echr: Globe
+  echr: Globe,
+  ombudsman: UserCheck
 } as const;
 
 export const CATEGORY_COLORS: Record<ComplaintCategory, string> = {
@@ -172,7 +193,8 @@ export const CATEGORY_COLORS: Record<ComplaintCategory, string> = {
   administrative: "text-amber-500",
   anticorruption: "text-orange-600",
   constitutional: "text-purple-500",
-  echr: "text-green-500"
+  echr: "text-green-500",
+  ombudsman: "text-teal-500"
 };
 
 // =============================================================================
@@ -209,6 +231,11 @@ export const CATEGORY_LABELS: Record<ComplaintCategory, Record<string, string>> 
     hy: "\u0535\u054D\u054A\u0540", 
     ru: "ЕСПЧ", 
     en: "ECHR" 
+  },
+  ombudsman: { 
+    hy: "\u0544\u0561\u0580\u0564\u0578\u0582 \u056B\u0580\u0561\u057E\u0578\u0582\u0576\u0584\u0576\u0565\u0580\u056B \u057A\u0561\u0577\u057F\u057A\u0561\u0576", 
+    ru: "Омбудсмен", 
+    en: "Ombudsman" 
   }
 };
 
@@ -230,7 +257,8 @@ export function getComplaintTypesByCategory(category: ComplaintCategory): Compla
   return COMPLAINT_TYPES.filter(t => t.category === category);
 }
 
-export function determineCourtType(complaintId: string): "appellate" | "cassation" | "constitutional" | "echr" | "anticorruption" {
+export function determineCourtType(complaintId: string): "appellate" | "cassation" | "constitutional" | "echr" | "anticorruption" | "ombudsman" {
+  if (complaintId.includes('ombudsman')) return 'ombudsman';
   if (complaintId.includes('anticorruption')) return 'anticorruption';
   if (complaintId.includes('cassation')) return 'cassation';
   if (complaintId.includes('constitutional')) return 'constitutional';
