@@ -20,9 +20,9 @@ import { supabase } from "@/integrations/supabase/client";
 // TYPES
 // =============================================================================
 
-type CaseType = "criminal" | "civil" | "administrative" | "echr";
-type LegalPerspective = "defense" | "prosecution" | "court";
-type LegalRole = "lawyer" | "prosecutor" | "judge";
+type CaseType = "criminal" | "civil" | "administrative";
+type LegalPerspective = "defense" | "prosecution";
+type LegalRole = "lawyer" | "prosecutor";
 
 interface WizardState {
   step: number;
@@ -47,10 +47,9 @@ interface DocumentTypeOption {
 // DOCUMENT TYPE MAPPINGS
 // =============================================================================
 
-// Только общие юридические документы (без жалоб и исков - они в ComplaintWizard)
+// Только базовые процедурные документы (без исков, жалоб, апелляций - они в ComplaintWizard)
 const DOCUMENT_TYPES: Record<CaseType, DocumentTypeOption[]> = {
   criminal: [
-    { id: "habeas_corpus", labelKey: "habeas_corpus", icon: <Shield className="h-4 w-4" /> },
     { id: "crime_report", labelKey: "crime_report", icon: <FileText className="h-4 w-4" /> },
     { id: "defense_motion", labelKey: "defense_motion", icon: <FileText className="h-4 w-4" /> },
   ],
@@ -64,16 +63,12 @@ const DOCUMENT_TYPES: Record<CaseType, DocumentTypeOption[]> = {
     { id: "complaint_against_act", labelKey: "complaint_against_act", icon: <FileText className="h-4 w-4" /> },
     { id: "complaint_against_inaction", labelKey: "complaint_against_inaction", icon: <FileText className="h-4 w-4" /> },
   ],
-  echr: [
-    // ECHR документы теперь в AI генераторе жалоб и исков
-  ],
 };
 
 // Map perspective to role for AI
 const PERSPECTIVE_TO_ROLE: Record<LegalPerspective, LegalRole> = {
   defense: "lawyer",
-  prosecution: "prosecutor", 
-  court: "judge",
+  prosecution: "prosecutor",
 };
 
 // =============================================================================
@@ -283,12 +278,11 @@ export function DocumentWizard({ onComplete, onCancel, caseData }: DocumentWizar
   const renderStep1 = () => (
     <div className="space-y-4">
       <h3 className="text-lg font-semibold">{t("common:select_case_type")}</h3>
-      <div className="grid grid-cols-2 gap-3">
+      <div className="grid grid-cols-3 gap-3">
         {[
           { type: "criminal" as CaseType, icon: <Gavel className="h-5 w-5" />, color: "text-red-500" },
           { type: "civil" as CaseType, icon: <Scale className="h-5 w-5" />, color: "text-blue-500" },
           { type: "administrative" as CaseType, icon: <Building2 className="h-5 w-5" />, color: "text-amber-500" },
-          { type: "echr" as CaseType, icon: <Globe className="h-5 w-5" />, color: "text-purple-500" },
         ].map(({ type, icon, color }) => (
           <button
             key={type}
