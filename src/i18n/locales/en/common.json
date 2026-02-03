@@ -119,5 +119,11 @@
   "new_complaint": "New Complaint",
   "complaint": "Complaints",
   "complaint_generator_title": "AI Complaints & Claims Generator",
-  "clear_selection": "Clear"
+  "clear_selection": "Clear",
+  "my_documents": "My Docs",
+  "export_success": "Export successful",
+  "pdf_exported_success": "PDF file created successfully",
+  "changes_saved_successfully": "Changes saved successfully",
+  "document_deleted": "Document deleted",
+  "document_deleted_success": "Document deleted successfully"
 }

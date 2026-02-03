@@ -276,5 +276,13 @@
   "selected_files": "{{count}} выбрано",
   "select_all": "Выбрать все",
   "clear_selection": "Сбросить",
-  "doc_not_supported": "Файлы .doc не поддерживаются — конвертируйте в DOCX"
+  "doc_not_supported": "Файлы .doc не поддерживаются — конвертируйте в DOCX",
+  "export_success": "Экспорт успешен",
+  "pdf_exported_success": "PDF файл успешно создан",
+  "export_error": "Ошибка экспорта",
+  "loading_error": "Ошибка загрузки",
+  "changes_saved_successfully": "Изменения сохранены",
+  "document_deleted": "Документ удалён",
+  "document_deleted_success": "Документ успешно удалён",
+  "delete_error": "Ошибка удаления"
 }

@@ -24,6 +24,7 @@ const KnowledgeBase = lazy(() => import("./pages/KnowledgeBase"));
 const KBDocumentDetail = lazy(() => import("./pages/KBDocumentDetail"));
 const AdminLogin = lazy(() => import("./pages/AdminLogin"));
 const AdminPanel = lazy(() => import("./pages/AdminPanel"));
+const MyDocuments = lazy(() => import("./pages/MyDocuments"));
 
 const queryClient = new QueryClient();
 
@@ -138,6 +139,16 @@ const App = () => (
               <ProtectedRoute requiredRole="admin">
                 <Suspense fallback={<PageLoader />}>
                   <AdminPanel />
+                </Suspense>
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/my-documents"
+            element={
+              <ProtectedRoute>
+                <Suspense fallback={<PageLoader />}>
+                  <MyDocuments />
                 </Suspense>
               </ProtectedRoute>
             }
