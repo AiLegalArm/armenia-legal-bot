@@ -55,7 +55,7 @@ interface WizardState {
 // =============================================================================
 
 const COMPLAINT_TYPES: ComplaintType[] = [
-  // Criminal
+  // Criminal - Жалобы и иски
   {
     id: "criminal_appeal",
     labelHy: "\u054E\u0565\u0580\u0561\u0584\u0576\u0576\u056B\u0579 \u0562\u0578\u0572\u0578\u0584 (\u0584\u0580\u0565\u0561\u056F\u0561\u0576)",
@@ -72,7 +72,32 @@ const COMPLAINT_TYPES: ComplaintType[] = [
     category: "criminal",
     templateId: "criminal_appeal_cassation"
   },
-  // Civil
+  {
+    id: "investigator_complaint",
+    labelHy: "\u0532\u0578\u0572\u0578\u0584 \u0584\u0576\u0576\u056B\u0579\u056B \u0563\u0578\u0580\u056E\u0578\u0572\u0578\u0582\u0569\u0575\u0561\u0576 \u0564\u0565\u0574",
+    labelRu: "\u0416\u0430\u043B\u043E\u0431\u0430 \u043D\u0430 \u0434\u0435\u0439\u0441\u0442\u0432\u0438\u044F \u0441\u043B\u0435\u0434\u043E\u0432\u0430\u0442\u0435\u043B\u044F",
+    labelEn: "Complaint against investigator",
+    category: "criminal",
+    templateId: "investigator_complaint"
+  },
+  {
+    id: "preventive_measure_complaint",
+    labelHy: "\u0532\u0578\u0572\u0578\u0584 \u056D\u0561\u0583\u0561\u0576\u0574\u0561\u0576 \u0574\u056B\u057B\u0578\u0581\u056B \u0564\u0565\u0574",
+    labelRu: "\u0416\u0430\u043B\u043E\u0431\u0430 \u043D\u0430 \u043C\u0435\u0440\u0443 \u043F\u0440\u0435\u0441\u0435\u0447\u0435\u043D\u0438\u044F",
+    labelEn: "Complaint against preventive measure",
+    category: "criminal",
+    templateId: "preventive_measure_complaint"
+  },
+  
+  // Civil - Жалобы и иски
+  {
+    id: "civil_claim",
+    labelHy: "\u0540\u0561\u0575\u0581\u0561\u0564\u056B\u0574\u0578\u0582\u0574 (\u0584\u0561\u0572\u0561\u0584\u0561\u0581\u056B\u0561\u056F\u0561\u0576)",
+    labelRu: "\u0418\u0441\u043A\u043E\u0432\u043E\u0435 \u0437\u0430\u044F\u0432\u043B\u0435\u043D\u0438\u0435 (\u0433\u0440\u0430\u0436\u0434\u0430\u043D\u0441\u043A\u043E\u0435)",
+    labelEn: "Civil Claim",
+    category: "civil",
+    templateId: "civil_claim"
+  },
   {
     id: "civil_appeal",
     labelHy: "\u054E\u0565\u0580\u0561\u0584\u0576\u0576\u056B\u0579 \u0562\u0578\u0572\u0578\u0584 (\u0584\u0561\u0572\u0561\u0584\u0561\u0581\u056B\u0561\u056F\u0561\u0576)",
@@ -89,7 +114,16 @@ const COMPLAINT_TYPES: ComplaintType[] = [
     category: "civil",
     templateId: "civil_cassation"
   },
-  // Administrative
+  
+  // Administrative - Жалобы и иски
+  {
+    id: "administrative_claim",
+    labelHy: "\u054E\u0561\u0580\u0579\u0561\u056F\u0561\u0576 \u0570\u0561\u0575\u0581",
+    labelRu: "\u0410\u0434\u043C\u0438\u043D\u0438\u0441\u0442\u0440\u0430\u0442\u0438\u0432\u043D\u044B\u0439 \u0438\u0441\u043A",
+    labelEn: "Administrative Claim",
+    category: "administrative",
+    templateId: "administrative_claim"
+  },
   {
     id: "admin_appeal",
     labelHy: "\u054E\u0565\u0580\u0561\u0584\u0576\u0576\u056B\u0579 \u0562\u0578\u0572\u0578\u0584 (\u057E\u0561\u0580\u0579\u0561\u056F\u0561\u0576)",
@@ -106,11 +140,12 @@ const COMPLAINT_TYPES: ComplaintType[] = [
     category: "administrative",
     templateId: "administrative_cassation"
   },
+  
   // Anti-Corruption Court
   {
     id: "anticorruption_appeal",
     labelHy: "\u054E\u0565\u0580\u0561\u0584\u0576\u0576\u056B\u0579 \u0562\u0578\u0572\u0578\u0584 (\u0570\u0561\u056F\u0561\u056F\u0578\u057C\u0578\u0582\u057A\u0581\u056B\u0578\u0576)",
-    labelRu: "\u0410\u043f\u0435\u043b\u043b\u044f\u0446\u0438\u043e\u043d\u043d\u0430\u044f \u0436\u0430\u043b\u043e\u0431\u0430 (\u0430\u043d\u0442\u0438\u043a\u043e\u0440\u0440\u0443\u043f\u0446\u0438\u043e\u043d\u043d\u0430\u044f)",
+    labelRu: "\u0410\u043F\u0435\u043B\u043B\u044F\u0446\u0438\u043E\u043D\u043D\u0430\u044F \u0436\u0430\u043B\u043E\u0431\u0430 (\u0430\u043D\u0442\u0438\u043A\u043E\u0440\u0440\u0443\u043F\u0446\u0438\u043E\u043D\u043D\u0430\u044F)",
     labelEn: "Anti-Corruption Appeal",
     category: "anticorruption",
     templateId: "anticorruption_appeal"
@@ -118,11 +153,12 @@ const COMPLAINT_TYPES: ComplaintType[] = [
   {
     id: "anticorruption_cassation",
     labelHy: "\u054E\u0573\u057C\u0561\u0562\u0565\u056F \u0562\u0578\u0572\u0578\u0584 (\u0570\u0561\u056F\u0561\u056F\u0578\u057C\u0578\u0582\u057A\u0581\u056B\u0578\u0576)",
-    labelRu: "\u041a\u0430\u0441\u0441\u0430\u0446\u0438\u043e\u043d\u043d\u0430\u044f \u0436\u0430\u043b\u043e\u0431\u0430 (\u0430\u043d\u0442\u0438\u043a\u043e\u0440\u0440\u0443\u043f\u0446\u0438\u043e\u043d\u043d\u0430\u044f)",
+    labelRu: "\u041A\u0430\u0441\u0441\u0430\u0446\u0438\u043E\u043D\u043D\u0430\u044F \u0436\u0430\u043B\u043E\u0431\u0430 (\u0430\u043D\u0442\u0438\u043A\u043E\u0440\u0440\u0443\u043F\u0446\u0438\u043E\u043D\u043D\u0430\u044F)",
     labelEn: "Anti-Corruption Cassation",
     category: "anticorruption",
     templateId: "anticorruption_cassation"
   },
+  
   // Constitutional Court
   {
     id: "constitutional_complaint",
@@ -132,6 +168,7 @@ const COMPLAINT_TYPES: ComplaintType[] = [
     category: "constitutional",
     templateId: "constitutional"
   },
+  
   // ECHR
   {
     id: "echr_application",
