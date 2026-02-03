@@ -30,7 +30,8 @@ import {
   Mic,
   MessageCircle,
   FileWarning,
-  ExternalLink
+  ExternalLink,
+  FolderArchive
 } from 'lucide-react';
 import { DocumentGeneratorDialog } from '@/components/documents/DocumentGeneratorDialog';
 import { ComplaintWizard } from '@/components/complaints/ComplaintWizard';
@@ -247,6 +248,10 @@ const Dashboard = () => {
             <Button variant="outline" size="sm" onClick={() => setDocGeneratorOpen(true)} className="flex-col sm:flex-row h-auto py-2 sm:py-2 sm:h-9">
               <FileText className="h-4 w-4 sm:mr-2" />
               <span className="text-xs sm:text-sm mt-1 sm:mt-0">{t('common:documents', 'Documents')}</span>
+            </Button>
+            <Button variant="outline" size="sm" onClick={() => navigate('/my-documents')} className="flex-col sm:flex-row h-auto py-2 sm:py-2 sm:h-9">
+              <FolderArchive className="h-4 w-4 sm:mr-2" />
+              <span className="text-xs sm:text-sm mt-1 sm:mt-0">{t('common:my_documents')}</span>
             </Button>
             <Button variant="outline" size="sm" onClick={() => setComplaintWizardOpen(true)} className="flex-col sm:flex-row h-auto py-2 sm:py-2 sm:h-9">
               <FileWarning className="h-4 w-4 sm:mr-2" />

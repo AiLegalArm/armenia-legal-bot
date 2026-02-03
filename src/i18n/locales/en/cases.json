@@ -235,5 +235,13 @@
   "file_notes_saved": "Notes saved",
   "selected_files": "{{count}} selected",
   "select_all": "Select all",
-  "doc_not_supported": ".doc files not supported - convert to DOCX"
+  "doc_not_supported": ".doc files not supported - convert to DOCX",
+  "export_success": "Export successful",
+  "pdf_exported_success": "PDF file created successfully",
+  "export_error": "Export error",
+  "loading_error": "Loading error",
+  "changes_saved_successfully": "Changes saved successfully",
+  "document_deleted": "Document deleted",
+  "document_deleted_success": "Document deleted successfully",
+  "delete_error": "Delete error"
 }
