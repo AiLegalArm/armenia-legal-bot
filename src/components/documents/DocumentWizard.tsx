@@ -47,34 +47,25 @@ interface DocumentTypeOption {
 // DOCUMENT TYPE MAPPINGS
 // =============================================================================
 
+// Только общие юридические документы (без жалоб и исков - они в ComplaintWizard)
 const DOCUMENT_TYPES: Record<CaseType, DocumentTypeOption[]> = {
   criminal: [
-    { id: "criminal_appeal", labelKey: "criminal_appeal", icon: <FileText className="h-4 w-4" /> },
-    { id: "criminal_cassation", labelKey: "criminal_cassation", icon: <FileText className="h-4 w-4" /> },
     { id: "habeas_corpus", labelKey: "habeas_corpus", icon: <Shield className="h-4 w-4" /> },
     { id: "crime_report", labelKey: "crime_report", icon: <FileText className="h-4 w-4" /> },
     { id: "defense_motion", labelKey: "defense_motion", icon: <FileText className="h-4 w-4" /> },
-    { id: "investigator_complaint", labelKey: "investigator_complaint", icon: <FileText className="h-4 w-4" /> },
-    { id: "preventive_measure_complaint", labelKey: "preventive_measure_complaint", icon: <FileText className="h-4 w-4" /> },
   ],
   civil: [
-    { id: "civil_claim", labelKey: "civil_claim", icon: <FileText className="h-4 w-4" /> },
-    { id: "civil_appeal", labelKey: "civil_appeal", icon: <FileText className="h-4 w-4" /> },
-    { id: "civil_cassation", labelKey: "civil_cassation", icon: <FileText className="h-4 w-4" /> },
     { id: "civil_response", labelKey: "civil_response", icon: <FileText className="h-4 w-4" /> },
     { id: "protective_measures", labelKey: "protective_measures", icon: <Shield className="h-4 w-4" /> },
     { id: "deadline_restoration", labelKey: "deadline_restoration", icon: <FileText className="h-4 w-4" /> },
     { id: "expert_examination", labelKey: "expert_examination", icon: <Search className="h-4 w-4" /> },
   ],
   administrative: [
-    { id: "administrative_claim", labelKey: "administrative_claim", icon: <FileText className="h-4 w-4" /> },
-    { id: "administrative_appeal", labelKey: "administrative_appeal_cassation", icon: <FileText className="h-4 w-4" /> },
     { id: "complaint_against_act", labelKey: "complaint_against_act", icon: <FileText className="h-4 w-4" /> },
     { id: "complaint_against_inaction", labelKey: "complaint_against_inaction", icon: <FileText className="h-4 w-4" /> },
   ],
   echr: [
-    { id: "echr_application", labelKey: "echr_application", icon: <Globe className="h-4 w-4" /> },
-    { id: "echr_rule39", labelKey: "echr_rule39", icon: <Shield className="h-4 w-4" /> },
+    // ECHR документы теперь в AI генераторе жалоб и исков
   ],
 };
 
@@ -360,11 +351,6 @@ export function DocumentWizard({ onComplete, onCancel, caseData }: DocumentWizar
             perspective: "prosecution" as LegalPerspective, 
             icon: <Search className="h-5 w-5" />,
             descKey: "prosecution_perspective_desc"
-          },
-          { 
-            perspective: "court" as LegalPerspective, 
-            icon: <Users className="h-5 w-5" />,
-            descKey: "court_perspective_desc"
           },
         ].map(({ perspective, icon, descKey }) => (
           <button
