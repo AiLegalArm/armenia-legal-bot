@@ -136,5 +136,87 @@ SPECIAL CONSIDERATIONS:
 4. Property confiscation and asset recovery
 5. International cooperation (UNCAC, GRECO)
 
-Structure: heading with Anti-Corruption Court designation, parties, challenged decision, factual summary with corruption-specific elements, legal grounds under CC RA Chapter 30, violations, requests, attachments.`
+Structure: heading with Anti-Corruption Court designation, parties, challenged decision, factual summary with corruption-specific elements, legal grounds under CC RA Chapter 30, violations, requests, attachments.`,
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // OMBUDSMAN - Human Rights Defender
+  // ═══════════════════════════════════════════════════════════════════════════
+  ombudsman: `
+HUMAN RIGHTS DEFENDER (OMBUDSMAN) COMPLAINT INSTRUCTIONS:
+
+You are drafting a complaint to the HUMAN RIGHTS DEFENDER OF THE REPUBLIC OF ARMENIA (\u0540\u0561\u0575\u0561\u057D\u057F\u0561\u0576\u056B \u0540\u0561\u0576\u0580\u0561\u057A\u0565\u057F\u0578\u0582\u0569\u0575\u0561\u0576 \u0544\u0561\u0580\u0564\u0578\u0582 \u056B\u0580\u0561\u057E\u0578\u0582\u0576\u0584\u0576\u0565\u0580\u056B \u057A\u0561\u0577\u057F\u057A\u0561\u0576).
+
+LEGAL BASIS:
+- Constitution of RA, Article 191
+- Law on Human Rights Defender (\u0544\u0561\u0580\u0564\u0578\u0582 \u056B\u0580\u0561\u057E\u0578\u0582\u0576\u0584\u0576\u0565\u0580\u056B \u057A\u0561\u0577\u057F\u057A\u0561\u0576\u056B \u0574\u0561\u057D\u056B\u0576 \u0585\u0580\u0565\u0576\u0584)
+
+JURISDICTION:
+The Human Rights Defender considers complaints regarding:
+1. Violations of human rights and fundamental freedoms by state/local authorities
+2. Actions/inaction of officials that violate constitutional rights
+3. Systemic human rights issues requiring legislative review
+4. Conditions in detention facilities, psychiatric institutions, military units
+5. Rights of vulnerable groups (children, disabled, elderly, refugees)
+
+ADMISSIBILITY REQUIREMENTS:
+1. Complaint concerns violation by state/local authority or official
+2. Complainant is a victim or authorized representative
+3. The matter is not pending in court (unless systemic issue)
+4. Submitted within one year of the violation or discovery
+
+MANDATORY STRUCTURE:
+1. \u054D\u057F\u0561\u0581\u0578\u0572 / Recipient:
+   \u0540\u0561\u0575\u0561\u057D\u057F\u0561\u0576\u056B \u0540\u0561\u0576\u0580\u0561\u057A\u0565\u057F\u0578\u0582\u0569\u0575\u0561\u0576 \u0544\u0561\u0580\u0564\u0578\u0582 \u056B\u0580\u0561\u057E\u0578\u0582\u0576\u0584\u0576\u0565\u0580\u056B \u057A\u0561\u0577\u057F\u057A\u0561\u0576
+   \u0535\u0580\u0587\u0561\u0576, \u054A\u0578\u0582\u0577\u056F\u056B\u0576\u056B 50\u0561, 0010
+
+2. \u0534\u056B\u0574\u0578\u0572\u056B \u057F\u057E\u0575\u0561\u056C\u0576\u0565\u0580 / Applicant details:
+   - Full name, address, contact information
+   - Relationship to victim (if representative)
+
+3. \u053D\u0561\u056D\u057F\u0561\u057E\u0578\u0580 \u056B\u0580\u0561\u057E\u0561\u056D\u0561\u056D\u057F \u0574\u0561\u0580\u0574\u056B\u0576 / Respondent authority:
+   - Name of state body or official whose actions are complained about
+   - Position and department
+
+4. \u0553\u0561\u057D\u057F\u0561\u0569\u0572\u0569\u0565\u0580\u056B \u0576\u056F\u0561\u0580\u0561\u0563\u0580\u0578\u0582\u0569\u0575\u0578\u0582\u0576 / Factual background:
+   - Chronological description of events
+   - Specific actions/inaction that violated rights
+   - Dates and circumstances
+
+5. \u053D\u0561\u056D\u057F\u057E\u0561\u056E \u056B\u0580\u0561\u057E\u0578\u0582\u0576\u0584\u0576\u0565\u0580 / Violated rights:
+   - Specific constitutional articles violated (RA Constitution)
+   - International human rights norms (ECHR, ICCPR, CAT, CEDAW, CRC)
+   - Domestic laws violated
+
+6. \u053F\u056B\u0580\u0561\u057C\u057E\u0578\u0572 \u0574\u056B\u057B\u0578\u0581\u0576\u0565\u0580 / Previous remedies:
+   - What steps were taken to resolve the issue
+   - Responses received from authorities
+   - Why ordinary remedies are inadequate
+
+7. \u053D\u0576\u0564\u0580\u0561\u0576\u0584 / Requests:
+   - Investigation of the violation
+   - Recommendations to the authority
+   - Systemic recommendations (if applicable)
+   - Monitoring of implementation
+
+8. \u053F\u0581\u057E\u0561\u056E \u0583\u0561\u057D\u057F\u0561\u0569\u0572\u0569\u0565\u0580 / Attachments:
+   - Copies of relevant documents
+   - Correspondence with authorities
+   - Evidence of the violation
+
+POWERS OF THE OMBUDSMAN:
+- Request information and documents from any state body
+- Access any detention facility, institution without prior notice
+- Attend court hearings
+- Submit amicus curiae briefs
+- Propose legislative amendments
+- Publish special reports to Parliament
+
+CITATION REQUIREMENTS:
+1. Constitution of RA (specific articles on fundamental rights)
+2. Law on Human Rights Defender (procedure, powers, obligations)
+3. Relevant international conventions ratified by Armenia
+4. Recommendations of UN treaty bodies and Special Rapporteurs
+5. Previous Ombudsman annual reports on similar issues
+
+Write in formal legal language suitable for submission to the national human rights institution.`
 };

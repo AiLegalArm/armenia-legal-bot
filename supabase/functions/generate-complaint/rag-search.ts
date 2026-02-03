@@ -48,7 +48,9 @@ export function buildSearchQuery(
 ): string[] {
   const searchTerms: string[] = [];
   
-  if (courtType === 'anticorruption') {
+  if (courtType === 'ombudsman') {
+    searchTerms.push('\u0574\u0561\u0580\u0564\u0578\u0582 \u056B\u0580\u0561\u057E\u0578\u0582\u0576\u0584\u0576\u0565\u0580', '\u057A\u0561\u0577\u057F\u057A\u0561\u0576', '\u0585\u0574\u0562\u0578\u0582\u0564\u057D\u0574\u0565\u0576');
+  } else if (courtType === 'anticorruption') {
     searchTerms.push('\u0570\u0561\u056F\u0561\u056F\u0578\u057C\u0578\u0582\u057A\u0581\u056B\u0561', '\u056F\u0561\u0577\u0561\u057C\u0584', '\u0584\u0580\u0565\u0561\u056F\u0561\u0576 \u0585\u0580\u0565\u0576\u057D\u0563\u056B\u0580\u0584');
   } else if (courtType === 'cassation') {
     searchTerms.push('\u057E\u0573\u057C\u0561\u0562\u0565\u056F', '\u0562\u0578\u0572\u0578\u0584', category);
