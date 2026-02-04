@@ -184,10 +184,10 @@ export const PromptFilesEditor = () => {
         <CardHeader className="pb-3">
           <CardTitle className="flex items-center gap-2 text-base">
             <FileCode className="h-5 w-5" />
-            \u054A\u0580\u0578\u0574\u057A\u057F\u0565\u0580\u056B \u0586\u0561\u0575\u056C\u0565\u0580
+            {"\u054A\u0580\u0578\u0574\u057A\u057F\u0565\u0580\u056B \u0586\u0561\u0575\u056C\u0565\u0580"}
           </CardTitle>
           <CardDescription className="text-xs">
-            \u054D\u0565\u0572\u0574\u0565\u0584 \u0586\u0561\u0575\u056C\u056B \u057E\u0580\u0561 \u0562\u0578\u057E\u0561\u0576\u0564\u0561\u056F\u0578\u0582\u0569\u0575\u0578\u0582\u0576\u0568 \u0564\u056B\u057F\u0565\u056C\u0578\u0582 \u0570\u0561\u0574\u0561\u0580
+            {"\u054D\u0565\u0572\u0574\u0565\u0584 \u0586\u0561\u0575\u056C\u056B \u057E\u0580\u0561 \u0562\u0578\u057E\u0561\u0576\u0564\u0561\u056F\u0578\u0582\u0569\u0575\u0578\u0582\u0576\u0568 \u0564\u056B\u057F\u0565\u056C\u0578\u0582 \u0570\u0561\u0574\u0561\u0580"}
           </CardDescription>
         </CardHeader>
         <CardContent className="pt-0">
@@ -268,7 +268,7 @@ export const PromptFilesEditor = () => {
         <CardHeader className="pb-3">
           <CardTitle className="flex items-center gap-2 text-base">
             <Eye className="h-5 w-5" />
-            {selectedFile ? selectedFile.name : '\u0556\u0561\u0575\u056C\u056B \u0562\u0578\u057E\u0561\u0576\u0564\u0561\u056F\u0578\u0582\u0569\u0575\u0578\u0582\u0576'}
+            {selectedFile ? selectedFile.name : "\u0556\u0561\u0575\u056C\u056B \u0562\u0578\u057E\u0561\u0576\u0564\u0561\u056F\u0578\u0582\u0569\u0575\u0578\u0582\u0576"}
           </CardTitle>
           {selectedFile && (
             <CardDescription className="text-xs font-mono truncate">
@@ -281,7 +281,7 @@ export const PromptFilesEditor = () => {
             value={previewContent}
             onChange={(e) => setPreviewContent(e.target.value)}
             className="min-h-[400px] font-mono text-xs bg-muted/30"
-            placeholder="\u0538\u0576\u057F\u0580\u0565\u0584 \u0586\u0561\u0575\u056C \u0562\u0578\u057E\u0561\u0576\u0564\u0561\u056F\u0578\u0582\u0569\u0575\u0578\u0582\u0576\u0568 \u0564\u056B\u057F\u0565\u056C\u0578\u0582 \u0570\u0561\u0574\u0561\u0580..."
+            placeholder={"\u0538\u0576\u057F\u0580\u0565\u0584 \u0586\u0561\u0575\u056C \u0562\u0578\u057E\u0561\u0576\u0564\u0561\u056F\u0578\u0582\u0569\u0575\u0578\u0582\u0576\u0568 \u0564\u056B\u057F\u0565\u056C\u0578\u0582 \u0570\u0561\u0574\u0561\u0580..."}
           />
           {selectedFile && (
             <div className="flex gap-2 mt-3">
@@ -292,19 +292,19 @@ export const PromptFilesEditor = () => {
                 className="text-xs"
               >
                 <Copy className="h-3 w-3 mr-1" />
-                \u054A\u0561\u057F\u0573\u0565\u0576\u0565\u056C \u0573\u0561\u0576\u0561\u057A\u0561\u0580\u0570\u0568
+                {"\u054A\u0561\u057F\u0573\u0565\u0576\u0565\u056C \u0573\u0561\u0576\u0561\u057A\u0561\u0580\u0570\u0568"}
               </Button>
               <Button 
                 variant="outline" 
                 size="sm"
                 onClick={() => {
                   navigator.clipboard.writeText(previewContent);
-                  toast.success('\u0532\u0578\u057E\u0561\u0576\u0564\u0561\u056F\u0578\u0582\u0569\u0575\u0578\u0582\u0576\u0568 \u057A\u0561\u057F\u0573\u0565\u0576\u057E\u0565\u0581');
+                  toast.success("\u0532\u0578\u057E\u0561\u0576\u0564\u0561\u056F\u0578\u0582\u0569\u0575\u0578\u0582\u0576\u0568 \u057A\u0561\u057F\u0573\u0565\u0576\u057E\u0565\u0581");
                 }}
                 className="text-xs"
               >
                 <Copy className="h-3 w-3 mr-1" />
-                \u054A\u0561\u057F\u0573\u0565\u0576\u0565\u056C \u0562\u0578\u057E\u0561\u0576\u0564\u0561\u056F\u0578\u0582\u0569\u0575\u0578\u0582\u0576\u0568
+                {"\u054A\u0561\u057F\u0573\u0565\u0576\u0565\u056C \u0562\u0578\u057E\u0561\u0576\u0564\u0561\u056F\u0578\u0582\u0569\u0575\u0578\u0582\u0576\u0568"}
               </Button>
             </div>
           )}
@@ -316,19 +316,19 @@ export const PromptFilesEditor = () => {
         <CardHeader className="pb-3">
           <CardTitle className="flex items-center gap-2 text-base">
             <Languages className="h-5 w-5" />
-            Unicode \u0583\u0578\u056D\u0561\u0580\u056F\u056B\u0579
+            {"Unicode \u0583\u0578\u056D\u0561\u0580\u056F\u056B\u0579"}
           </CardTitle>
           <CardDescription className="text-xs">
-            \u0540\u0561\u0575\u0565\u0580\u0565\u0576 \u2192 \uXXXX \u0561\u057E\u057F\u0578\u0574\u0561\u057F
+            {"\u0540\u0561\u0575\u0565\u0580\u0565\u0576 \u2192 \\uXXXX \u0561\u057E\u057F\u0578\u0574\u0561\u057F"}
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-3 pt-0">
           <div className="space-y-1.5">
             <Label className="text-xs">
-              \u0544\u0578\u0582\u057F\u0584\u0561\u0563\u0580\u0565\u0584 \u057F\u0565\u0584\u057D\u057F\u0568 (\u0570\u0561\u0575\u0565\u0580\u0565\u0576)
+              {"\u0544\u0578\u0582\u057F\u0584\u0561\u0563\u0580\u0565\u0584 \u057F\u0565\u0584\u057D\u057F\u0568 (\u0570\u0561\u0575\u0565\u0580\u0565\u0576)"}
             </Label>
             <Textarea
-              placeholder="\u054F\u0565\u0572\u0561\u0564\u0580\u0565\u0584 \u0570\u0561\u0575\u0565\u0580\u0565\u0576 \u057F\u0565\u0584\u057D\u057F..."
+              placeholder={"\u054F\u0565\u0572\u0561\u0564\u0580\u0565\u0584 \u0570\u0561\u0575\u0565\u0580\u0565\u0576 \u057F\u0565\u0584\u057D\u057F..."}
               value={inputText}
               onChange={(e) => setInputText(e.target.value)}
               onPaste={handlePaste}
@@ -339,7 +339,7 @@ export const PromptFilesEditor = () => {
           <div className="flex gap-2">
             <Button onClick={handleConvert} size="sm" className="flex-1 text-xs">
               <RefreshCw className="h-3 w-3 mr-1" />
-              \u0553\u0578\u056D\u0561\u0580\u056F\u0565\u056C
+              {"\u0553\u0578\u056D\u0561\u0580\u056F\u0565\u056C"}
             </Button>
             <Button 
               variant="outline" 
@@ -347,13 +347,13 @@ export const PromptFilesEditor = () => {
               onClick={() => { setInputText(''); setOutputText(''); }}
               className="text-xs"
             >
-              \u0544\u0561\u0584\u0580\u0565\u056C
+              {"\u0544\u0561\u0584\u0580\u0565\u056C"}
             </Button>
           </div>
 
           <div className="space-y-1.5">
             <div className="flex items-center justify-between">
-              <Label className="text-xs">\u0531\u0580\u0564\u0575\u0578\u0582\u0576\u0584 (Unicode)</Label>
+              <Label className="text-xs">{"\u0531\u0580\u0564\u0575\u0578\u0582\u0576\u0584 (Unicode)"}</Label>
               <Button 
                 variant="ghost" 
                 size="sm"
@@ -362,9 +362,9 @@ export const PromptFilesEditor = () => {
                 className="h-6 text-xs"
               >
                 {copied ? (
-                  <><Check className="h-3 w-3 mr-1" /> \u054A\u0561\u057F\u0573\u0565\u0576\u057E\u0565\u0581</>
+                  <><Check className="h-3 w-3 mr-1" /> {"\u054A\u0561\u057F\u0573\u0565\u0576\u057E\u0565\u0581"}</>
                 ) : (
-                  <><Copy className="h-3 w-3 mr-1" /> \u054A\u0561\u057F\u0573\u0565\u0576\u0565\u056C</>
+                  <><Copy className="h-3 w-3 mr-1" /> {"\u054A\u0561\u057F\u0573\u0565\u0576\u0565\u056C"}</>
                 )}
               </Button>
             </div>
@@ -372,7 +372,7 @@ export const PromptFilesEditor = () => {
               value={outputText}
               readOnly
               className="min-h-[120px] font-mono text-xs bg-muted"
-              placeholder="\u0531\u0580\u0564\u0575\u0578\u0582\u0576\u0584\u0568 \u056F\u0563\u0561 \u0561\u0575\u057D\u057F\u0565\u0572..."
+              placeholder={"\u0531\u0580\u0564\u0575\u0578\u0582\u0576\u0584\u0568 \u056F\u0563\u0561 \u0561\u0575\u057D\u057F\u0565\u0572..."}
             />
           </div>
 
@@ -384,14 +384,14 @@ export const PromptFilesEditor = () => {
               size="sm"
             >
               <ArrowRight className="h-3 w-3 mr-1" />
-              \u054F\u0565\u0572\u0561\u0564\u0580\u0565\u056C {selectedFile.name}-\u0578\u0582\u0574
+              {"\u054F\u0565\u0572\u0561\u0564\u0580\u0565\u056C"} {selectedFile.name}{"-\u0578\u0582\u0574"}
             </Button>
           )}
 
           {/* Quick tip */}
           <div className="rounded-lg border p-2 bg-muted/30">
             <p className="text-[10px] text-muted-foreground">
-              <strong>Tip:</strong> \u054F\u0565\u0584\u057D\u057F\u0568 \u057F\u0565\u0572\u0561\u0564\u0580\u0565\u056C\u056B\u057D \u0561\u057E\u057F\u0578\u0574\u0561\u057F \u056F\u0583\u0578\u056D\u0561\u0580\u056F\u057E\u056B\u0589
+              <strong>Tip:</strong> {"\u054F\u0565\u0584\u057D\u057F\u0568 \u057F\u0565\u0572\u0561\u0564\u0580\u0565\u056C\u056B\u057D \u0561\u057E\u057F\u0578\u0574\u0561\u057F \u056F\u0583\u0578\u056D\u0561\u0580\u056F\u057E\u056B\u0589"}
             </p>
           </div>
         </CardContent>
