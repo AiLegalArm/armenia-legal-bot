@@ -196,15 +196,15 @@ export function VolumeManager({
               {/* File Selection */}
               <div className="space-y-2">
                 <Label htmlFor="file">{t("ai:link_file")}</Label>
-                <Select 
-                  value={formData.file_id} 
-                  onValueChange={(value) => setFormData(prev => ({ ...prev, file_id: value }))}
+              <Select 
+                  value={formData.file_id || "__none__"} 
+                  onValueChange={(value) => setFormData(prev => ({ ...prev, file_id: value === "__none__" ? "" : value }))}
                 >
                   <SelectTrigger>
                     <SelectValue placeholder={t("ai:select_file_optional")} />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="">{t("ai:no_file")}</SelectItem>
+                    <SelectItem value="__none__">{t("ai:no_file")}</SelectItem>
                     {caseFiles.map((file) => (
                       <SelectItem key={file.id} value={file.id}>
                         {file.original_filename}
@@ -375,14 +375,14 @@ export function VolumeManager({
             <div className="space-y-2">
               <Label htmlFor="edit-file">{t("ai:link_file")}</Label>
               <Select 
-                value={formData.file_id} 
-                onValueChange={(value) => setFormData(prev => ({ ...prev, file_id: value }))}
+                value={formData.file_id || "__none__"} 
+                onValueChange={(value) => setFormData(prev => ({ ...prev, file_id: value === "__none__" ? "" : value }))}
               >
                 <SelectTrigger>
                   <SelectValue placeholder={t("ai:select_file_optional")} />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="">{t("ai:no_file")}</SelectItem>
+                  <SelectItem value="__none__">{t("ai:no_file")}</SelectItem>
                   {caseFiles.map((file) => (
                     <SelectItem key={file.id} value={file.id}>
                       {file.original_filename}
