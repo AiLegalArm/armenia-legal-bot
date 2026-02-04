@@ -10,7 +10,7 @@ import { Switch } from '@/components/ui/switch';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Loader2, Send, Bell, ExternalLink, Copy, Check } from 'lucide-react';
 
-const BOT_USERNAME = '@LexAssistantBot';
+const BOT_USERNAME = '@AiLegalArmenia';
 
 interface TelegramSettingsProps {
   onClose?: () => void;
