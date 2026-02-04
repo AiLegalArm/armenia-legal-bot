@@ -18,6 +18,7 @@ import { FeedbackStars } from '@/components/FeedbackStars';
 import { DocumentGeneratorDialog } from '@/components/documents/DocumentGeneratorDialog';
 import { CaseComplaintGenerator } from '@/components/cases/CaseComplaintGenerator';
 import { CaseReminders, CourtDateReminderSuggestion, NotificationBell } from '@/components/reminders';
+import { MultiAgentPanel } from '@/components/agents/MultiAgentPanel';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import { Alert, AlertDescription } from '@/components/ui/alert';
@@ -50,7 +51,8 @@ import {
   AlertTriangle,
   FileSignature,
   Bell,
-  Check
+  Check,
+  Bot
 } from 'lucide-react';
 import {
   AlertDialog,
@@ -608,7 +610,7 @@ const CaseDetail = () => {
           {/* Main Content */}
           <div className="lg:col-span-2">
             <Tabs defaultValue="details" className="w-full">
-              <TabsList className="w-full justify-start">
+              <TabsList className="w-full justify-start overflow-x-auto">
                 <TabsTrigger value="details">{t('common:details', 'Details')}</TabsTrigger>
                 <TabsTrigger value="files">{t('files')}</TabsTrigger>
                 <TabsTrigger value="reminders">
@@ -618,6 +620,10 @@ const CaseDetail = () => {
                 <TabsTrigger value="analysis">
                   <Brain className="mr-2 h-4 w-4" />
                   {t('ai:analyze')}
+                </TabsTrigger>
+                <TabsTrigger value="agents">
+                  <Bot className="mr-2 h-4 w-4" />
+                  {t('ai:multi_agent_analysis', 'Multi-Agent')}
                 </TabsTrigger>
               </TabsList>
 
@@ -1003,6 +1009,10 @@ const CaseDetail = () => {
                     </CardContent>
                   </Card>
                 </div>
+              </TabsContent>
+
+              <TabsContent value="agents" className="mt-4">
+                <MultiAgentPanel caseId={caseData.id} caseFacts={caseData.facts || undefined} />
               </TabsContent>
             </Tabs>
           </div>
