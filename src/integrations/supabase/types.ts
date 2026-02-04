@@ -55,6 +55,92 @@ export type Database = {
           },
         ]
       }
+      ai_prompt_versions: {
+        Row: {
+          change_reason: string | null
+          changed_at: string
+          changed_by: string | null
+          id: string
+          prompt_id: string
+          prompt_text: string
+          version_number: number
+        }
+        Insert: {
+          change_reason?: string | null
+          changed_at?: string
+          changed_by?: string | null
+          id?: string
+          prompt_id: string
+          prompt_text: string
+          version_number: number
+        }
+        Update: {
+          change_reason?: string | null
+          changed_at?: string
+          changed_by?: string | null
+          id?: string
+          prompt_id?: string
+          prompt_text?: string
+          version_number?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ai_prompt_versions_prompt_id_fkey"
+            columns: ["prompt_id"]
+            isOneToOne: false
+            referencedRelation: "ai_prompts"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      ai_prompts: {
+        Row: {
+          created_at: string
+          created_by: string | null
+          current_version: number
+          description: string | null
+          function_name: string
+          id: string
+          is_active: boolean
+          module_type: string
+          name_en: string | null
+          name_hy: string
+          name_ru: string
+          prompt_text: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          created_by?: string | null
+          current_version?: number
+          description?: string | null
+          function_name: string
+          id?: string
+          is_active?: boolean
+          module_type: string
+          name_en?: string | null
+          name_hy: string
+          name_ru: string
+          prompt_text: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          created_by?: string | null
+          current_version?: number
+          description?: string | null
+          function_name?: string
+          id?: string
+          is_active?: boolean
+          module_type?: string
+          name_en?: string | null
+          name_hy?: string
+          name_ru?: string
+          prompt_text?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
       api_usage: {
         Row: {
           created_at: string
