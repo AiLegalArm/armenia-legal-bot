@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -19,6 +19,7 @@ import {
   ArrowRight
 } from 'lucide-react';
 import { toast } from 'sonner';
+import { PROMPT_FILE_CONTENTS } from './promptFilesContent';
 
 // All prompt files in the project with Armenian names
 const PROMPT_FILES = [
@@ -88,6 +89,14 @@ const hasArmenianChars = (text: string): boolean => {
   return /[\u0531-\u058F]/.test(text);
 };
 
+// Decode literal "\\uXXXX" sequences into real characters for easier reading/editing.
+const decodeUnicodeEscapes = (text: string): string => {
+  return text.replace(/\\u([0-9a-fA-F]{4})/g, (_m, hex) => {
+    const code = Number.parseInt(hex, 16);
+    return Number.isFinite(code) ? String.fromCharCode(code) : _m;
+  });
+};
+
 // Workflow steps for the user
 const WORKFLOW_STEPS = [
   { step: 1, text: "\u0538\u0576\u057F\u0580\u0565\u0584 \u0586\u0561\u0575\u056C\u0568 \u0571\u0561\u056D\u056B \u0581\u0561\u0576\u056F\u056B\u0581" },
@@ -105,6 +114,10 @@ export const PromptFilesEditor = () => {
   const [expandedCategories, setExpandedCategories] = useState<string[]>(['\u0553\u0561\u057D\u057F\u0561\u0569\u0572\u0569\u0565\u0580\u056B \u0563\u0565\u0576\u0565\u0580\u0561\u0581\u056B\u0561']);
   const [selectedFile, setSelectedFile] = useState<{path: string; name: string} | null>(null);
   const [previewContent, setPreviewContent] = useState('');
+  const [previewDirty, setPreviewDirty] = useState(false);
+  const [previewMode, setPreviewMode] = useState<'text' | 'code'>('text');
+
+  const selectedRawContent = selectedFile ? PROMPT_FILE_CONTENTS[selectedFile.path] : undefined;
 
   const getText = (hy: string, ru: string, en: string) => {
     if (i18n.language === 'hy') return hy;
@@ -161,21 +174,46 @@ export const PromptFilesEditor = () => {
 
   const viewFile = (file: {path: string; name: string}) => {
     setSelectedFile(file);
-    // Show instructions for the user
-    const instructions = `// \u0556\u0561\u0575\u056C\u055D ${file.path}
-// 
-// \u054A\u0561\u057F\u0573\u0565\u0576\u0565\u0584 \u0561\u0575\u057D\u057F\u0565\u0572 \u0586\u0561\u0575\u056C\u056B \u0562\u0578\u057E\u0561\u0576\u0564\u0561\u056F\u0578\u0582\u0569\u0575\u0578\u0582\u0576\u0568 \u0571\u0565\u0580 IDE-\u056B\u0581
-// \u0587 \u057F\u0565\u0572\u0561\u0564\u0580\u0565\u0584 \u0561\u0575\u057D\u057F\u0565\u0572 \u056D\u0574\u0562\u0561\u0563\u0580\u0565\u056C\u0578\u0582 \u0570\u0561\u0574\u0561\u0580\u0589
-//
-// \u0540\u0565\u057F\u0578 \u056F\u0561\u0580\u0578\u0572 \u0565\u0584\u055D
-// 1. \u053D\u0574\u0562\u0561\u0563\u0580\u0565\u0584 \u0570\u0561\u0575\u0565\u0580\u0565\u0576 \u057F\u0565\u0584\u057D\u057F\u0568 \u0561\u057B \u056F\u0578\u0572\u0574\u0578\u0582\u0574
-// 2. \u054D\u0565\u0572\u0574\u0565\u0584 "\u0553\u0578\u056D\u0561\u0580\u056F\u0565\u056C \u0561\u0574\u0562\u0578\u0572\u057B\u0568"
-// 3. \u054A\u0561\u057F\u0573\u0565\u0576\u0565\u0584 \u0561\u0580\u0564\u0575\u0578\u0582\u0576\u0584\u0568
-// 4. \u054F\u0565\u0572\u0561\u0564\u0580\u0565\u0584 \u0586\u0561\u0575\u056C\u0578\u0582\u0574
+    setPreviewDirty(false);
 
-`;
-    setPreviewContent(instructions);
+    const raw = PROMPT_FILE_CONTENTS[file.path];
+    if (!raw) {
+      const fallback = `// \u0549\u056F\u0561 \u0562\u0578\u057E\u0561\u0576\u0564\u0561\u056F\u0578\u0582\u0569\u0575\u0578\u0582\u0576 (\u0561\u0575\u057D \u0586\u0561\u0575\u056C\u0568 \u0579\u056B \u0562\u0561\u057E\u0561\u0580\u0561\u0580\u0578\u0582\u0574 \u056F\u0561\u0574 \u0573\u0561\u0576\u0561\u057A\u0561\u0580\u0570\u0568 \u057D\u056D\u0561\u056C \u0567)\n// ${file.path}\n`;
+      setPreviewContent(fallback);
+      return;
+    }
+
+    setPreviewContent(previewMode === 'text' ? decodeUnicodeEscapes(raw) : raw);
   };
+
+  const reloadSelectedFile = useCallback(() => {
+    if (!selectedFile) return;
+    const raw = PROMPT_FILE_CONTENTS[selectedFile.path];
+    if (!raw) return;
+    setPreviewDirty(false);
+    setPreviewContent(previewMode === 'text' ? decodeUnicodeEscapes(raw) : raw);
+    toast.success("\u0546\u0565\u0580\u0562\u0565\u057C\u0576\u057E\u0565\u0581 \u0586\u0561\u0575\u056C\u056B \u0576\u0578\u0580 \u057F\u0561\u0580\u0562\u0565\u0580\u0561\u056F\u0568");
+  }, [previewMode, selectedFile]);
+
+  // Auto-refresh: if the underlying file changes (HMR) and the user hasn't edited manually.
+  useEffect(() => {
+    if (!selectedFile) return;
+    if (previewDirty) return;
+    if (!selectedRawContent) return;
+    setPreviewContent(previewMode === 'text' ? decodeUnicodeEscapes(selectedRawContent) : selectedRawContent);
+  }, [previewDirty, previewMode, selectedFile?.path, selectedRawContent]);
+
+  const togglePreviewMode = useCallback(() => {
+    setPreviewMode((prev) => {
+      const next = prev === 'text' ? 'code' : 'text';
+      setPreviewDirty(true);
+      setPreviewContent((current) => {
+        if (!current) return current;
+        return next === 'text' ? decodeUnicodeEscapes(current) : armenianToUnicode(current);
+      });
+      return next;
+    });
+  }, []);
 
   const convertEntireContent = useCallback(() => {
     if (!previewContent) return;
@@ -309,12 +347,37 @@ export const PromptFilesEditor = () => {
 
           <Textarea
             value={previewContent}
-            onChange={(e) => setPreviewContent(e.target.value)}
+            onChange={(e) => {
+              setPreviewDirty(true);
+              setPreviewContent(e.target.value);
+            }}
             className="min-h-[300px] font-mono text-xs bg-muted/30"
             placeholder={"\u054A\u0561\u057F\u0573\u0565\u0576\u0565\u0584 \u057A\u0580\u0578\u0574\u057A\u057F\u056B \u0562\u0578\u057E\u0561\u0576\u0564\u0561\u056F\u0578\u0582\u0569\u0575\u0578\u0582\u0576\u0568 \u0561\u0575\u057D\u057F\u0565\u0572..."}
           />
           
           <div className="flex flex-wrap gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={togglePreviewMode}
+              disabled={!previewContent}
+              className="text-xs"
+            >
+              {previewMode === 'text'
+                ? "\\uXXXX"
+                : "\u0531\u0576\u0569\u0565\u0580\u0561\u056E\u0561\u0576\u0581"}
+            </Button>
+            {selectedFile && (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={reloadSelectedFile}
+                className="text-xs"
+              >
+                <RefreshCw className="h-3 w-3 mr-1" />
+                {"\u0539\u0561\u0580\u0574\u0561\u0581\u0576\u0565\u056C"}
+              </Button>
+            )}
             <Button 
               variant="default" 
               size="sm"
