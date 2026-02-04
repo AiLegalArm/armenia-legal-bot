@@ -17,6 +17,7 @@ import { UserManagement } from '@/components/admin/UserManagement';
 import { TeamManagement } from '@/components/admin/TeamManagement';
 import { UserFeedback } from '@/components/admin/UserFeedback';
 import { LegalPracticeKB } from '@/components/admin/LegalPracticeKB';
+import { PromptManager } from '@/components/admin/PromptManager';
 import { Button } from '@/components/ui/button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -34,7 +35,8 @@ import {
   FileUp,
   FileStack,
   Globe,
-  FileJson
+  FileJson,
+  FileCode2
 } from 'lucide-react';
 import { LanguageSwitcher } from '@/components/LanguageSwitcher';
 import { ThemeToggle } from '@/components/ThemeToggle';
@@ -192,6 +194,10 @@ const AdminPanel = () => {
               <BarChart3 className="h-4 w-4 shrink-0" />
               <span className="hidden sm:inline">{'\u054E\u056B\u0573\u0561\u056F\u0561\u0563\u0580\u0578\u0582\u0569\u0575\u0578\u0582\u0576'}</span>
             </TabsTrigger>
+            <TabsTrigger value="prompts" className="gap-1.5 px-2 py-1.5 text-xs sm:px-3 sm:text-sm">
+              <FileCode2 className="h-4 w-4 shrink-0" />
+              <span className="hidden sm:inline">Prompts</span>
+            </TabsTrigger>
           </TabsList>
 
           {/* Knowledge Base Tab */}
@@ -315,6 +321,11 @@ const AdminPanel = () => {
           {/* Analytics Tab */}
           <TabsContent value="analytics">
             <UsageMonitor budgetLimit={10.0} compact={false} />
+          </TabsContent>
+
+          {/* Prompts Tab */}
+          <TabsContent value="prompts">
+            <PromptManager />
           </TabsContent>
         </Tabs>
       </main>
