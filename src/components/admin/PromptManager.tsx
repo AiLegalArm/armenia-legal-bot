@@ -57,14 +57,14 @@ import { format } from 'date-fns';
 
 // AI Functions list
 const AI_FUNCTIONS = [
-  { id: 'ai-analyze', name: 'AI Analyze', nameHy: 'AI Վdelays' },
-  { id: 'generate-document', name: 'Generate Document', nameHy: 'Փdelays delays' },
-  { id: 'generate-complaint', name: 'Generate Complaint', nameHy: 'Բdelays delays' },
-  { id: 'legal-chat', name: 'Legal Chat', nameHy: 'Իdelays Չdelays' },
-  { id: 'ocr-process', name: 'OCR Process', nameHy: 'OCR Մdelays' },
-  { id: 'audio-transcribe', name: 'Audio Transcribe', nameHy: 'Աdelays Տdelays' },
-  { id: 'extract-case-fields', name: 'Extract Case Fields', nameHy: 'Դashy Հdelays' },
-  { id: 'legal-practice-import', name: 'Legal Practice Import', nameHy: 'Պdelays Delays' },
+  { id: 'ai-analyze', name: 'AI Analyze', nameHy: 'AI \u054E\u0565\u0580\u056C\u0578\u0582\u056E\u0578\u0582\u0569\u0575\u0578\u0582\u0576' },
+  { id: 'generate-document', name: 'Generate Document', nameHy: '\u0553\u0561\u057D\u057F\u0561\u0569\u0578\u0582\u0572\u0569\u056B \u057D\u057F\u0565\u0572\u056E\u0578\u0582\u0574' },
+  { id: 'generate-complaint', name: 'Generate Complaint', nameHy: '\u0532\u0578\u0572\u0578\u0584\u056B \u057D\u057F\u0565\u0572\u056E\u0578\u0582\u0574' },
+  { id: 'legal-chat', name: 'Legal Chat', nameHy: '\u053B\u0580\u0561\u057E\u0561\u0562\u0561\u0576\u0561\u056F\u0561\u0576 \u0579\u0561\u057F' },
+  { id: 'ocr-process', name: 'OCR Process', nameHy: 'OCR \u0544\u0577\u0561\u056F\u0578\u0582\u0574' },
+  { id: 'audio-transcribe', name: 'Audio Transcribe', nameHy: '\u0531\u0578\u0582\u0564\u056B\u0578 \u057F\u0580\u0561\u0576\u057D\u056F\u0580\u056B\u057A\u0581\u056B\u0561' },
+  { id: 'extract-case-fields', name: 'Extract Case Fields', nameHy: '\u0534\u0561\u0577\u057F\u0565\u0580\u056B \u0570\u0561\u0576\u0578\u0582\u0574' },
+  { id: 'legal-practice-import', name: 'Legal Practice Import', nameHy: '\u054A\u0580\u0561\u056F\u057F\u056B\u056F\u0561\u0575\u056B \u0576\u0565\u0580\u0574\u0578\u0582\u056E\u0578\u0582\u0574' },
 ];
 
 interface Prompt {
@@ -136,7 +136,7 @@ export const PromptManager = () => {
       setPrompts((data || []) as Prompt[]);
     } catch (error) {
       console.error('Error fetching prompts:', error);
-      toast.error('Չdelays delays prompts- delays');
+      toast.error('Ошибка загрузки промптов');
     } finally {
       setLoading(false);
     }
@@ -173,7 +173,7 @@ export const PromptManager = () => {
   // Handle form submission
   const handleSave = async () => {
     if (!formData.function_name || !formData.module_type || !formData.name_hy || !formData.prompt_text) {
-      toast.error('Լdelays delays delays delays');
+      toast.error('Заполните обязательные поля');
       return;
     }
 
@@ -195,7 +195,7 @@ export const PromptManager = () => {
           .eq('id', selectedPrompt.id);
         
         if (error) throw error;
-        toast.success('Պdelays delays delays');
+        toast.success('Промпт обновлён');
       } else {
         // Create new
         const { error } = await supabase
@@ -211,7 +211,7 @@ export const PromptManager = () => {
           });
         
         if (error) throw error;
-        toast.success('Պdelays delays delays');
+        toast.success('Промпт создан');
       }
       
       setEditDialogOpen(false);
@@ -219,7 +219,7 @@ export const PromptManager = () => {
     } catch (error: unknown) {
       console.error('Error saving prompt:', error);
       const message = error instanceof Error ? error.message : 'Unknown error';
-      toast.error(` Delays: ${message}`);
+      toast.error(`Ошибка: ${message}`);
     } finally {
       setSaving(false);
     }
@@ -236,12 +236,12 @@ export const PromptManager = () => {
         .eq('id', selectedPrompt.id);
       
       if (error) throw error;
-      toast.success('Պdelays delays delays');
+      toast.success('Промпт удалён');
       setDeleteDialogOpen(false);
       fetchPrompts();
     } catch (error) {
       console.error('Error deleting prompt:', error);
-      toast.error('Չdelays delays delays prompt-delays');
+      toast.error('Ошибка удаления промпта');
     }
   };
 
@@ -253,19 +253,19 @@ export const PromptManager = () => {
         .insert({
           function_name: prompt.function_name,
           module_type: `${prompt.module_type}_copy`,
-          name_hy: `${prompt.name_hy} (delays)`,
-          name_ru: `${prompt.name_ru} (delays)`,
+          name_hy: `${prompt.name_hy} (\u057A\u0561\u057F\u0573\u0565\u0576)`,
+          name_ru: `${prompt.name_ru} (копия)`,
           name_en: prompt.name_en ? `${prompt.name_en} (copy)` : null,
           description: prompt.description,
           prompt_text: prompt.prompt_text,
         });
       
       if (error) throw error;
-      toast.success('Պdelays delays delays');
+      toast.success('Промпт дублирован');
       fetchPrompts();
     } catch (error) {
       console.error('Error duplicating prompt:', error);
-      toast.error('Չdelays delays delays prompt-delays');
+      toast.error('Ошибка дублирования промпта');
     }
   };
 
@@ -283,7 +283,7 @@ export const PromptManager = () => {
       setVersions((data || []) as PromptVersion[]);
     } catch (error) {
       console.error('Error fetching versions:', error);
-      toast.error('Չdelays delays delays');
+      toast.error('Ошибка загрузки версий');
     } finally {
       setVersionsLoading(false);
     }
@@ -308,7 +308,7 @@ export const PromptManager = () => {
     a.download = `ai_prompts_${format(new Date(), 'yyyy-MM-dd')}.json`;
     a.click();
     URL.revokeObjectURL(url);
-    toast.success('Էdelays delays delays');
+    toast.success('Экспорт завершён');
   };
 
   // Import prompts from JSON
@@ -355,11 +355,11 @@ export const PromptManager = () => {
         }
       }
 
-      toast.success(`Imports delays: ${imported}, skipped: ${skipped}`);
+      toast.success(`Импортировано: ${imported}, пропущено: ${skipped}`);
       fetchPrompts();
     } catch (error) {
       console.error('Import error:', error);
-      toast.error('Սdelays delays import-delays');
+      toast.error('Ошибка импорта JSON');
     }
     
     // Reset input
@@ -419,7 +419,7 @@ export const PromptManager = () => {
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
             <FileCode className="h-5 w-5" />
-            Պdelays Մdelays (Prompt Manager)
+            {'\u054A\u0580\u0578\u0574\u057A\u057F\u0565\u0580\u056B \u056F\u0561\u057C\u0561\u057E\u0561\u0580\u0578\u0582\u0574'} (Prompt Manager)
           </CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
@@ -429,7 +429,7 @@ export const PromptManager = () => {
               <div className="relative flex-1 max-w-sm">
                 <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
                 <Input
-                  placeholder="Փdelays..."
+                  placeholder="Поиск..."
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
                   className="pl-9"
@@ -437,10 +437,10 @@ export const PromptManager = () => {
               </div>
               <Select value={filterFunction} onValueChange={setFilterFunction}>
                 <SelectTrigger className="w-[200px]">
-                  <SelectValue placeholder=" Delays delays" />
+                  <SelectValue placeholder="Все функции" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="all">Alls delays</SelectItem>
+                  <SelectItem value="all">Все функции</SelectItem>
                   {AI_FUNCTIONS.map(f => (
                     <SelectItem key={f.id} value={f.id}>{f.name}</SelectItem>
                   ))}
@@ -450,17 +450,17 @@ export const PromptManager = () => {
             <div className="flex gap-2">
               <Button onClick={() => openEditDialog()}>
                 <Plus className="mr-1.5 h-4 w-4" />
-                 Delays
+                Добавить
               </Button>
               <Button variant="outline" onClick={handleExport}>
                 <Download className="mr-1.5 h-4 w-4" />
-                Эdelays
+                Экспорт
               </Button>
               <label>
                 <Button variant="outline" asChild>
                   <span>
                     <Upload className="mr-1.5 h-4 w-4" />
-                    Иdelays
+                    Импорт
                   </span>
                 </Button>
                 <input
@@ -475,9 +475,9 @@ export const PromptManager = () => {
 
           {/* Stats */}
           <div className="flex gap-4 text-sm text-muted-foreground">
-            <span>Alls: {prompts.length}</span>
+            <span>Всего: {prompts.length}</span>
             <span>|</span>
-            <span>Filtered: {filteredPrompts.length}</span>
+            <span>Показано: {filteredPrompts.length}</span>
           </div>
 
           {/* Table */}
@@ -490,19 +490,19 @@ export const PromptManager = () => {
               <Table>
                 <TableHeader>
                   <TableRow>
-                    <TableHead className="w-[150px]">Delays</TableHead>
-                    <TableHead className="w-[150px]">Delays/Тdelays</TableHead>
-                    <TableHead>Delays (RU)</TableHead>
-                    <TableHead className="w-[100px]">Вdelays</TableHead>
-                    <TableHead className="w-[120px]">Обdelays</TableHead>
-                    <TableHead className="w-[180px] text-right">Delays</TableHead>
+                    <TableHead className="w-[150px]">Функция</TableHead>
+                    <TableHead className="w-[150px]">Модуль/Тип</TableHead>
+                    <TableHead>Название (RU)</TableHead>
+                    <TableHead className="w-[100px]">Версия</TableHead>
+                    <TableHead className="w-[120px]">Обновлено</TableHead>
+                    <TableHead className="w-[180px] text-right">Действия</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
                   {paginatedPrompts.length === 0 ? (
                     <TableRow>
                       <TableCell colSpan={6} className="h-24 text-center text-muted-foreground">
-                        Delays delays delays
+                        Промпты не найдены
                       </TableCell>
                     </TableRow>
                   ) : (
@@ -530,7 +530,7 @@ export const PromptManager = () => {
                               variant="ghost"
                               size="icon"
                               onClick={() => openPreviewDialog(prompt)}
-                              title="Пdelays"
+                              title="Предпросмотр"
                             >
                               <Eye className="h-4 w-4" />
                             </Button>
@@ -538,7 +538,7 @@ export const PromptManager = () => {
                               variant="ghost"
                               size="icon"
                               onClick={() => openEditDialog(prompt)}
-                              title="Рdelays"
+                              title="Редактировать"
                             >
                               <Edit className="h-4 w-4" />
                             </Button>
@@ -546,7 +546,7 @@ export const PromptManager = () => {
                               variant="ghost"
                               size="icon"
                               onClick={() => handleDuplicate(prompt)}
-                              title="Дdelays"
+                              title="Дублировать"
                             >
                               <Copy className="h-4 w-4" />
                             </Button>
@@ -554,7 +554,7 @@ export const PromptManager = () => {
                               variant="ghost"
                               size="icon"
                               onClick={() => openVersionsDialog(prompt)}
-                              title="Вdelays"
+                              title="История версий"
                             >
                               <History className="h-4 w-4" />
                             </Button>
@@ -562,7 +562,7 @@ export const PromptManager = () => {
                               variant="ghost"
                               size="icon"
                               onClick={() => openDeleteDialog(prompt)}
-                              title="Уdelays"
+                              title="Удалить"
                               className="text-destructive hover:text-destructive"
                             >
                               <Trash2 className="h-4 w-4" />
@@ -609,23 +609,23 @@ export const PromptManager = () => {
         <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>
-              {selectedPrompt ? 'Рdelays промпт' : 'Ноdelays промпт'}
+              {selectedPrompt ? 'Редактировать промпт' : 'Новый промпт'}
             </DialogTitle>
             <DialogDescription>
-              Зdelays delays delays delays delays
+              Заполните все обязательные поля
             </DialogDescription>
           </DialogHeader>
           
           <div className="grid gap-4 py-4">
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
-                <label className="text-sm font-medium">Фdelays *</label>
+                <label className="text-sm font-medium">Функция *</label>
                 <Select
                   value={formData.function_name}
                   onValueChange={(v) => setFormData({ ...formData, function_name: v })}
                 >
                   <SelectTrigger>
-                    <SelectValue placeholder="Вdelays delays" />
+                    <SelectValue placeholder="Выберите функцию" />
                   </SelectTrigger>
                   <SelectContent>
                     {AI_FUNCTIONS.map(f => (
@@ -635,7 +635,7 @@ export const PromptManager = () => {
                 </Select>
               </div>
               <div className="space-y-2">
-                <label className="text-sm font-medium">Мdelays/Тdelays *</label>
+                <label className="text-sm font-medium">Модуль/Тип *</label>
                 <Input
                   value={formData.module_type}
                   onChange={(e) => setFormData({ ...formData, module_type: e.target.value })}
@@ -646,25 +646,25 @@ export const PromptManager = () => {
 
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
-                <label className="text-sm font-medium">Нdelays (HY) *</label>
+                <label className="text-sm font-medium">Название (HY) *</label>
                 <Input
                   value={formData.name_hy}
                   onChange={(e) => setFormData({ ...formData, name_hy: e.target.value })}
-                  placeholder="Delays delays"
+                  placeholder={'\u0531\u0576\u057E\u0561\u0576\u0578\u0582\u0574\u0568 \u0570\u0561\u0575\u0565\u0580\u0565\u0576'}
                 />
               </div>
               <div className="space-y-2">
-                <label className="text-sm font-medium">Нdelays (RU) *</label>
+                <label className="text-sm font-medium">Название (RU) *</label>
                 <Input
                   value={formData.name_ru}
                   onChange={(e) => setFormData({ ...formData, name_ru: e.target.value })}
-                  placeholder="Нdelays delays delays"
+                  placeholder="Название на русском"
                 />
               </div>
             </div>
 
             <div className="space-y-2">
-              <label className="text-sm font-medium">Нdelays (EN)</label>
+              <label className="text-sm font-medium">Название (EN)</label>
               <Input
                 value={formData.name_en}
                 onChange={(e) => setFormData({ ...formData, name_en: e.target.value })}
@@ -673,21 +673,21 @@ export const PromptManager = () => {
             </div>
 
             <div className="space-y-2">
-              <label className="text-sm font-medium">Оdelays</label>
+              <label className="text-sm font-medium">Описание</label>
               <Textarea
                 value={formData.description}
                 onChange={(e) => setFormData({ ...formData, description: e.target.value })}
-                placeholder="Кdelays delays delays delays..."
+                placeholder="Краткое описание промпта..."
                 rows={2}
               />
             </div>
 
             <div className="space-y-2">
-              <label className="text-sm font-medium">Тdelays промпта *</label>
+              <label className="text-sm font-medium">Текст промпта *</label>
               <Textarea
                 value={formData.prompt_text}
                 onChange={(e) => setFormData({ ...formData, prompt_text: e.target.value })}
-                placeholder="Вdelays delays delays delays..."
+                placeholder="Введите полный текст промпта..."
                 rows={15}
                 className="font-mono text-sm"
               />
@@ -696,11 +696,11 @@ export const PromptManager = () => {
 
           <DialogFooter>
             <Button variant="outline" onClick={() => setEditDialogOpen(false)}>
-              Оdelays
+              Отмена
             </Button>
             <Button onClick={handleSave} disabled={saving}>
               {saving && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-              Сdelays
+              Сохранить
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -722,7 +722,7 @@ export const PromptManager = () => {
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setPreviewDialogOpen(false)}>
-              Зdelays
+              Закрыть
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -732,9 +732,9 @@ export const PromptManager = () => {
       <Dialog open={versionsDialogOpen} onOpenChange={setVersionsDialogOpen}>
         <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
-            <DialogTitle>Иdelays версий: {selectedPrompt?.name_ru}</DialogTitle>
+            <DialogTitle>История версий: {selectedPrompt?.name_ru}</DialogTitle>
             <DialogDescription>
-              Тdelays delays: v{selectedPrompt?.current_version}
+              Текущая версия: v{selectedPrompt?.current_version}
             </DialogDescription>
           </DialogHeader>
           
@@ -744,7 +744,7 @@ export const PromptManager = () => {
             </div>
           ) : versions.length === 0 ? (
             <div className="py-8 text-center text-muted-foreground">
-              Иdelays delays delays delays
+              История версий пуста
             </div>
           ) : (
             <div className="space-y-4">
@@ -752,7 +752,7 @@ export const PromptManager = () => {
                 <Card key={v.id}>
                   <CardHeader className="py-3">
                     <div className="flex items-center justify-between">
-                      <span className="font-medium">Вdelays {v.version_number}</span>
+                      <span className="font-medium">Версия {v.version_number}</span>
                       <span className="text-xs text-muted-foreground">
                         {format(new Date(v.changed_at), 'dd.MM.yyyy HH:mm')}
                       </span>
@@ -770,7 +770,7 @@ export const PromptManager = () => {
           
           <DialogFooter>
             <Button variant="outline" onClick={() => setVersionsDialogOpen(false)}>
-              Зdelays
+              Закрыть
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -780,16 +780,16 @@ export const PromptManager = () => {
       <AlertDialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Уdelays промпт?</AlertDialogTitle>
+            <AlertDialogTitle>Удалить промпт?</AlertDialogTitle>
             <AlertDialogDescription>
-              Эdelays delays delays delays delays. Вdelays delays delays delays delays: 
+              Это действие нельзя отменить. Вы действительно хотите удалить: 
               <strong> {selectedPrompt?.name_ru}</strong>
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel>Оdelays</AlertDialogCancel>
+            <AlertDialogCancel>Отмена</AlertDialogCancel>
             <AlertDialogAction onClick={handleDelete} className="bg-destructive text-destructive-foreground">
-              Уdelays
+              Удалить
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
