@@ -315,62 +315,131 @@ export const PromptManager = () => {
     toast.success('Экспорт завершён');
   };
 
-  // Parse TypeScript file to extract prompts array
+  const stripTsComments = (input: string): string => {
+    let out = '';
+    let inString = false;
+    let stringChar: '"' | "'" | '' = '';
+    let inTemplate = false;
+    let inLineComment = false;
+    let inBlockComment = false;
+
+    for (let i = 0; i < input.length; i++) {
+      const char = input[i];
+      const next = i + 1 < input.length ? input[i + 1] : '';
+      const prev = i > 0 ? input[i - 1] : '';
+
+      if (inLineComment) {
+        if (char === '\n') {
+          inLineComment = false;
+          out += char;
+        }
+        continue;
+      }
+
+      if (inBlockComment) {
+        if (char === '*' && next === '/') {
+          inBlockComment = false;
+          i++; // consume '/'
+        }
+        continue;
+      }
+
+      if (inTemplate) {
+        out += char;
+        if (char === '`' && prev !== '\\') inTemplate = false;
+        continue;
+      }
+
+      if (inString) {
+        out += char;
+        if (char === stringChar && prev !== '\\') {
+          inString = false;
+          stringChar = '';
+        }
+        continue;
+      }
+
+      // Not in string/template/comment
+      if (char === '/' && next === '/') {
+        inLineComment = true;
+        i++; // consume second '/'
+        continue;
+      }
+      if (char === '/' && next === '*') {
+        inBlockComment = true;
+        i++; // consume '*'
+        continue;
+      }
+      if (char === '`') {
+        inTemplate = true;
+        out += char;
+        continue;
+      }
+      if (char === '"' || char === "'") {
+        inString = true;
+        stringChar = char as '"' | "'";
+        out += char;
+        continue;
+      }
+
+      out += char;
+    }
+
+    return out;
+  };
+
+  // Parse TypeScript file to extract an exported array of prompt objects
   const parseTsFile = (content: string): any[] | null => {
     try {
-      // Remove comments first
-      let cleaned = content
-        .replace(/\/\/[^\n]*/g, '')
-        .replace(/\/\*[\s\S]*?\*\//g, '');
-      
-      // Find the start of the array (after "= [")
-      const arrayStartMatch = cleaned.match(/(?:export\s+)?(?:const|let|var)\s+\w+\s*(?::\s*\w+(?:<[^>]+>)?(?:\[\])?)?\s*=\s*\[/);
-      if (!arrayStartMatch) return null;
-      
-      const startIndex = cleaned.indexOf(arrayStartMatch[0]) + arrayStartMatch[0].length;
-      
-      // Find matching closing bracket
+      const cleaned = stripTsComments(content);
+
+      // 1) export default [ ... ]
+      const exportDefaultMatch = cleaned.match(/export\s+default\s*\[/m);
+      // 2) export const NAME: Type[] = [ ... ]  (also supports non-exported const)
+      const exportConstMatch = cleaned.match(/(?:export\s+)?(?:const|let|var)\s+\w+[\s\S]*?=\s*\[/m);
+
+      const match = exportDefaultMatch ?? exportConstMatch;
+      if (!match) return null;
+
+      const startIndex = cleaned.indexOf(match[0]) + match[0].length;
+
+      // Find matching closing bracket for the array
       let depth = 1;
       let endIndex = startIndex;
       let inString = false;
       let stringChar = '';
       let inTemplateLiteral = false;
-      
+
       for (let i = startIndex; i < cleaned.length && depth > 0; i++) {
         const char = cleaned[i];
         const prevChar = i > 0 ? cleaned[i - 1] : '';
-        
+
         if (inTemplateLiteral) {
-          if (char === '`' && prevChar !== '\\') {
-            inTemplateLiteral = false;
-          }
+          if (char === '`' && prevChar !== '\\') inTemplateLiteral = false;
           continue;
         }
-        
+
         if (inString) {
-          if (char === stringChar && prevChar !== '\\') {
-            inString = false;
-          }
+          if (char === stringChar && prevChar !== '\\') inString = false;
           continue;
         }
-        
+
         if (char === '`') {
           inTemplateLiteral = true;
           continue;
         }
-        
+
         if (char === '"' || char === "'") {
           inString = true;
           stringChar = char;
           continue;
         }
-        
+
         if (char === '[') depth++;
         if (char === ']') depth--;
-        
         endIndex = i;
       }
-      
+
       const arrayContent = cleaned.substring(startIndex, endIndex);
       return parseArrayContent(arrayContent);
     } catch (error) {
@@ -493,44 +562,38 @@ export const PromptManager = () => {
         throw new Error('Invalid format: expected an array');
       }
 
-      let imported = 0;
-      let skipped = 0;
+      const validItems = importData
+        .filter((item) => item && item.function_name && item.module_type && item.name_hy && item.prompt_text)
+        .map((item) => ({
+          function_name: item.function_name,
+          module_type: item.module_type,
+          name_hy: item.name_hy,
+          name_ru: item.name_ru || item.name_hy,
+          name_en: item.name_en || null,
+          description: item.description || null,
+          prompt_text: item.prompt_text,
+        }));
 
-      for (const item of importData) {
-        if (!item.function_name || !item.module_type || !item.name_hy || !item.prompt_text) {
-          skipped++;
-          continue;
-        }
-
-        const { error } = await supabase
-          .from('ai_prompts')
-          .upsert({
-            function_name: item.function_name,
-            module_type: item.module_type,
-            name_hy: item.name_hy,
-            name_ru: item.name_ru || item.name_hy,
-            name_en: item.name_en || null,
-            description: item.description || null,
-            prompt_text: item.prompt_text,
-          }, {
-            onConflict: 'function_name,module_type',
-          });
-
-        if (error) {
-          console.error('Import error:', error);
-          skipped++;
-        } else {
-          imported++;
-        }
+      const skipped = importData.length - validItems.length;
+      if (validItems.length === 0) {
+        throw new Error('No valid prompt records found in the imported file.');
       }
 
-      toast.success(`Импортировано: ${imported}, пропущено: ${skipped}`);
-      fetchPrompts();
-    } catch (error) {
+      const { error } = await supabase
+        .from('ai_prompts')
+        .upsert(validItems, { onConflict: 'function_name,module_type' });
+
+      if (error) throw error;
+
+      toast.success(`Импортировано/обновлено: ${validItems.length}, пропущено: ${skipped}`);
+      await fetchPrompts();
+    } catch (error: unknown) {
       console.error('Import error:', error);
-      toast.error(file.name.endsWith('.ts') 
-        ? 'Ошибка парсинга TS файла. Убедитесь что файл содержит экспортируемый массив.' 
-        : 'Ошибка импорта. Убедитесь что файл содержит валидный JSON массив.'
+      const msg = error instanceof Error ? error.message : 'Unknown error';
+      toast.error(
+        file.name.endsWith('.ts')
+          ? `Ошибка импорта TS: ${msg}`
+          : `Ошибка импорта JSON: ${msg}`
       );
     }
     
