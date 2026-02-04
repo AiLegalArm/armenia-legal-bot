@@ -186,34 +186,53 @@ export const PromptFilesEditor = () => {
     setPreviewContent(previewMode === 'text' ? decodeUnicodeEscapes(raw) : raw);
   };
 
+  // Reload from the actual file content (static import), always in TEXT mode (decoded)
   const reloadSelectedFile = useCallback(() => {
     if (!selectedFile) return;
     const raw = PROMPT_FILE_CONTENTS[selectedFile.path];
-    if (!raw) return;
+    if (!raw) {
+      toast.error("\u0556\u0561\u0575\u056C\u0568 \u0579\u056B \u0563\u057F\u0576\u057E\u0565\u056C");
+      return;
+    }
+    
+    // Always reload in decoded (text) mode for easier editing
+    const decoded = decodeUnicodeEscapes(raw);
+    setPreviewContent(decoded);
+    setPreviewMode('text');
     setPreviewDirty(false);
-    setPreviewContent(previewMode === 'text' ? decodeUnicodeEscapes(raw) : raw);
-    toast.success("\u0546\u0565\u0580\u0562\u0565\u057C\u0576\u057E\u0565\u0581 \u0586\u0561\u0575\u056C\u056B \u0576\u0578\u0580 \u057F\u0561\u0580\u0562\u0565\u0580\u0561\u056F\u0568");
-  }, [previewMode, selectedFile]);
+    toast.success("\u0546\u0565\u0580\u0562\u0565\u057C\u0576\u057E\u0565\u0581 \u0586\u0561\u0575\u056C\u056B\u0581 (\u057F\u0565\u0584\u057D\u057F\u0561\u0575\u056B\u0576 \u057C\u0565\u056A\u056B\u0574)");
+  }, [selectedFile]);
 
   // Auto-refresh: if the underlying file changes (HMR) and the user hasn't edited manually.
   useEffect(() => {
     if (!selectedFile) return;
     if (previewDirty) return;
     if (!selectedRawContent) return;
-    setPreviewContent(previewMode === 'text' ? decodeUnicodeEscapes(selectedRawContent) : selectedRawContent);
+    // Apply based on current mode
+    const content = previewMode === 'text' ? decodeUnicodeEscapes(selectedRawContent) : selectedRawContent;
+    setPreviewContent(content);
   }, [previewDirty, previewMode, selectedFile?.path, selectedRawContent]);
 
+  // Toggle between decoded Armenian text and raw Unicode escapes
   const togglePreviewMode = useCallback(() => {
+    if (!previewContent) return;
+    
     setPreviewMode((prev) => {
       const next = prev === 'text' ? 'code' : 'text';
-      setPreviewDirty(true);
-      setPreviewContent((current) => {
-        if (!current) return current;
-        return next === 'text' ? decodeUnicodeEscapes(current) : armenianToUnicode(current);
-      });
+      
+      // Convert content based on mode switch
+      if (next === 'text') {
+        // code -> text: decode \uXXXX to readable Armenian
+        setPreviewContent(decodeUnicodeEscapes(previewContent));
+      } else {
+        // text -> code: encode Armenian to \uXXXX
+        setPreviewContent(armenianToUnicode(previewContent));
+      }
+      
+      // Don't mark as dirty when just switching view mode
       return next;
     });
-  }, []);
+  }, [previewContent]);
 
   const convertEntireContent = useCallback(() => {
     if (!previewContent) return;
