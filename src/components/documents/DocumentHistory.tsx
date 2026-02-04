@@ -31,9 +31,11 @@ interface GeneratedDocument {
   recipient_organization: string | null;
 }
 
-interface DocumentHistoryProps {
-  onRepeat: (doc: GeneratedDocument) => void;
-  onPreview: (doc: GeneratedDocument) => void;
+export interface DocumentHistoryProps {
+  onLoadDocument?: (doc: GeneratedDocument) => void;
+  onRepeat?: (doc: GeneratedDocument) => void;
+  onPreview?: (doc: GeneratedDocument) => void;
+  onClose?: () => void;
   maxItems?: number;
 }
 
@@ -42,8 +44,10 @@ interface DocumentHistoryProps {
 // =============================================================================
 
 export function DocumentHistory({ 
+  onLoadDocument,
   onRepeat, 
   onPreview,
+  onClose,
   maxItems = 15 
 }: DocumentHistoryProps) {
   const { i18n } = useTranslation();
@@ -229,26 +233,30 @@ export function DocumentHistory({
                   </div>
                 </div>
 
-                {/* Actions */}
                 <div className="flex gap-1 mt-2 flex-wrap">
                   <Button
                     variant="ghost"
                     size="sm"
                     className="h-7 text-xs"
-                    onClick={() => onPreview(doc)}
+                    onClick={() => {
+                      if (onLoadDocument) onLoadDocument(doc);
+                      else if (onPreview) onPreview(doc);
+                    }}
                   >
                     <Eye className="h-3 w-3 mr-1" />
                     {labels.preview}
                   </Button>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    className="h-7 text-xs"
-                    onClick={() => onRepeat(doc)}
-                  >
-                    <RotateCcw className="h-3 w-3 mr-1" />
-                    {labels.repeat}
-                  </Button>
+                  {onRepeat && (
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="h-7 text-xs"
+                      onClick={() => onRepeat(doc)}
+                    >
+                      <RotateCcw className="h-3 w-3 mr-1" />
+                      {labels.repeat}
+                    </Button>
+                  )}
                   <Button
                     variant="ghost"
                     size="sm"

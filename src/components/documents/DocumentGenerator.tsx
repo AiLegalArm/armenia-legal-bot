@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { useTranslation } from "react-i18next";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
@@ -9,17 +9,20 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { ScrollArea } from "@/components/ui/scroll-area";
-import { Loader2, FileText, Download, Save, Copy, CheckCircle, Edit, Eye, Upload } from "lucide-react";
+import { Loader2, FileText, CheckCircle2, History } from "lucide-react";
 import { DocumentTemplateList } from "./DocumentTemplateList";
 import { DocumentPreview } from "./DocumentPreview";
 import { DocumentEditor } from "./DocumentEditor";
-import { DocumentFileUpload } from "./DocumentFileUpload";
 import { CourtSelector } from "./CourtSelector";
 import { ProsecutorSelector } from "./ProsecutorSelector";
 import { GovernmentSelector } from "./GovernmentSelector";
 import { InvestigativeBodySelector } from "./InvestigativeBodySelector";
 import { CommitteeServiceSelector } from "./CommitteeServiceSelector";
+import { DynamicDocumentFields } from "./DynamicDocumentFields";
+import { EnhancedFileUpload, UploadedFile } from "./EnhancedFileUpload";
+import { ValidationModal, validateDocumentForm, ValidationField } from "./ValidationModal";
+import { DocumentPreviewModal } from "./DocumentPreviewModal";
+import { DocumentHistory } from "./DocumentHistory";
 import { FlatCourt } from "@/data/armenianCourts";
 import { FlatProsecutor } from "@/data/armenianProsecutors";
 import { FlatGovernmentBody } from "@/data/armenianGovernment";
@@ -52,6 +55,16 @@ interface DocumentTemplate {
   required_fields: string[];
 }
 
+interface DynamicFieldsState {
+  claimAmount: string;
+  courtFee: string;
+  currentMeasure: string;
+  proposedAlternative: string;
+  thirdParties: Array<{ id: string; fullName: string; address: string; role: string }>;
+  coDefendants: Array<{ id: string; fullName: string; address: string; role: string }>;
+  requirements: Array<{ id: string; text: string }>;
+}
+
 export function DocumentGenerator({ caseData, preselectedType, onClose }: DocumentGeneratorProps) {
   const { t, i18n } = useTranslation(["cases", "common"]);
   const { toast } = useToast();
@@ -62,7 +75,6 @@ export function DocumentGenerator({ caseData, preselectedType, onClose }: Docume
   const [generatedContent, setGeneratedContent] = useState("");
   const [editedContent, setEditedContent] = useState("");
   const [isEditing, setIsEditing] = useState(false);
-  const [copied, setCopied] = useState(false);
   const [activeTab, setActiveTab] = useState("template");
   
   // Form fields
@@ -87,6 +99,22 @@ export function DocumentGenerator({ caseData, preselectedType, onClose }: Docume
   const [fileExtractedText, setFileExtractedText] = useState("");
   const [language, setLanguage] = useState(i18n.language);
 
+  // New state for enhanced features
+  const [uploadedFiles, setUploadedFiles] = useState<UploadedFile[]>([]);
+  const [dynamicFields, setDynamicFields] = useState<DynamicFieldsState>({
+    claimAmount: "",
+    courtFee: "",
+    currentMeasure: "",
+    proposedAlternative: "",
+    thirdParties: [],
+    coDefendants: [],
+    requirements: []
+  });
+  const [showValidationModal, setShowValidationModal] = useState(false);
+  const [validationFields, setValidationFields] = useState<ValidationField[]>([]);
+  const [showPreviewModal, setShowPreviewModal] = useState(false);
+  const [showHistory, setShowHistory] = useState(false);
+
   useEffect(() => {
     fetchTemplates();
   }, []);
@@ -96,7 +124,6 @@ export function DocumentGenerator({ caseData, preselectedType, onClose }: Docume
     if (preselectedType && templates.length > 0 && !selectedTemplate) {
       const caseType = caseData?.case_type || 'civil';
       
-      // Map case type to template category
       const categoryMap: Record<string, string> = {
         criminal: 'criminal_process',
         civil: 'civil_process',
@@ -104,7 +131,6 @@ export function DocumentGenerator({ caseData, preselectedType, onClose }: Docume
       };
       const targetCategory = categoryMap[caseType] || 'civil_process';
       
-      // Find matching template
       let matchingTemplate: DocumentTemplate | undefined;
       
       if (preselectedType === 'appeal') {
@@ -119,7 +145,6 @@ export function DocumentGenerator({ caseData, preselectedType, onClose }: Docume
         );
       }
       
-      // Fallback to any appeal/cassation template
       if (!matchingTemplate) {
         matchingTemplate = templates.find(t => 
           preselectedType === 'appeal' 
@@ -130,7 +155,6 @@ export function DocumentGenerator({ caseData, preselectedType, onClose }: Docume
       
       if (matchingTemplate) {
         setSelectedTemplate(matchingTemplate);
-        // Set recipient type to court for complaints
         setRecipientType('court');
       }
     }
@@ -167,6 +191,24 @@ export function DocumentGenerator({ caseData, preselectedType, onClose }: Docume
     }
   };
 
+  // Validate form before generation
+  const handleValidate = useCallback(() => {
+    const fields = validateDocumentForm({
+      selectedTemplate,
+      senderName,
+      senderAddress,
+      senderContact,
+      recipientOrganization,
+      recipientName,
+      recipientPosition,
+      sourceText,
+      fileExtractedText
+    }, i18n.language);
+    
+    setValidationFields(fields);
+    setShowValidationModal(true);
+  }, [selectedTemplate, senderName, senderAddress, senderContact, recipientOrganization, recipientName, recipientPosition, sourceText, fileExtractedText, i18n.language]);
+
   const handleGenerate = async () => {
     if (!selectedTemplate) {
       toast({
@@ -179,6 +221,7 @@ export function DocumentGenerator({ caseData, preselectedType, onClose }: Docume
 
     setIsGenerating(true);
     setGeneratedContent("");
+    setShowValidationModal(false);
 
     try {
       // Build recipient organization with court or prosecutor data
@@ -228,11 +271,23 @@ export function DocumentGenerator({ caseData, preselectedType, onClose }: Docume
         recipientEmail = selectedCommitteeData.email || null;
       }
 
+      // Build additional fields including dynamic fields and uploaded files
+      const additionalFields = {
+        ...dynamicFields,
+        uploadedFiles: uploadedFiles.map((f, idx) => ({
+          name: f.file.name,
+          description: f.description,
+          attachmentNumber: idx + 1,
+          extractedText: f.extractedText
+        }))
+      };
+
       const { data, error } = await supabase.functions.invoke("generate-document", {
         body: {
           templateId: selectedTemplate.id,
           templateName: getTemplateName(selectedTemplate),
           category: selectedTemplate.category,
+          subcategory: selectedTemplate.subcategory,
           caseData: caseData || null,
           sourceText: sourceText || null,
           fileExtractedText: fileExtractedText || null,
@@ -246,6 +301,7 @@ export function DocumentGenerator({ caseData, preselectedType, onClose }: Docume
           senderAddress,
           senderContact,
           language,
+          additionalFields
         },
       });
 
@@ -258,7 +314,7 @@ export function DocumentGenerator({ caseData, preselectedType, onClose }: Docume
       setGeneratedContent(data.content);
       setEditedContent(data.content);
       setIsEditing(false);
-      setActiveTab("result"); // Auto-switch to result tab
+      setShowPreviewModal(true);
       
       toast({
         title: t("cases:document_created"),
@@ -274,24 +330,6 @@ export function DocumentGenerator({ caseData, preselectedType, onClose }: Docume
     } finally {
       setIsGenerating(false);
     }
-  };
-
-  const handleCopy = async () => {
-    const contentToCopy = isEditing ? editedContent : generatedContent;
-    await navigator.clipboard.writeText(contentToCopy);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
-    toast({
-      title: t("cases:copied_to_clipboard"),
-      description: t("cases:document_copied"),
-    });
-  };
-
-  const handleToggleEdit = () => {
-    if (!isEditing) {
-      setEditedContent(generatedContent);
-    }
-    setIsEditing(!isEditing);
   };
 
   const handleSave = async () => {
@@ -334,17 +372,35 @@ export function DocumentGenerator({ caseData, preselectedType, onClose }: Docume
     }
   };
 
-  const handleDownload = () => {
-    const contentToDownload = editedContent || generatedContent;
-    const blob = new Blob([contentToDownload], { type: "text/plain;charset=utf-8" });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = `${selectedTemplate ? getTemplateName(selectedTemplate) : "document"}.txt`;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    URL.revokeObjectURL(url);
+  // Handle loading document from history
+  const handleLoadFromHistory = useCallback((doc: { content_text: string; title: string }) => {
+    setGeneratedContent(doc.content_text);
+    setEditedContent(doc.content_text);
+    setShowHistory(false);
+    setShowPreviewModal(true);
+  }, []);
+
+  // Labels for UI
+  const labels = {
+    validate: i18n.language === 'hy' ? "\u054d\u057f\u0578\u0582\u0563\u0565\u056c \u057f\u057e\u0575\u0561\u056c\u0576\u0565\u0580\u0568" : i18n.language === 'ru' ? "\u041f\u0440\u043e\u0432\u0435\u0440\u0438\u0442\u044c \u0434\u0430\u043d\u043d\u044b\u0435" : "Validate data",
+    history: i18n.language === 'hy' ? "\u054a\u0561\u057f\u0574\u0578\u0582\u0569\u0575\u0578\u0582\u0576" : i18n.language === 'ru' ? "\u0418\u0441\u0442\u043e\u0440\u0438\u044f" : "History",
+    recipient: i18n.language === 'hy' ? '\u0540\u0561\u057D\u0581\u0565\u0561\u057F\u0565\u0580' : i18n.language === 'en' ? 'Recipient' : 'Адресат',
+    court: i18n.language === 'hy' ? "\u0534\u0561\u057F\u0561\u0580\u0561\u0576" : i18n.language === 'en' ? 'Court' : 'Суд',
+    prosecutor: i18n.language === 'hy' ? "\u0534\u0561\u057F\u0561\u056D\u0561\u0566\u0578\u0582\u0569\u0575\u0578\u0582\u0576" : i18n.language === 'en' ? "Prosecutor" : 'Прокуратура',
+    investigative: i18n.language === 'hy' ? "\u0554\u0576\u0576\u0579\u0561\u056F\u0561\u0576" : i18n.language === 'en' ? 'Investigative' : 'Расследование',
+    government: i18n.language === 'hy' ? "\u053F\u0561\u057C\u0561\u057E\u0561\u0580\u0578\u0582\u0569\u0575\u0578\u0582\u0576" : i18n.language === 'en' ? 'Government' : 'Правительство',
+    other: i18n.language === 'hy' ? "\u0531\u0575\u056C" : i18n.language === 'en' ? 'Other' : 'Другое',
+    position: i18n.language === 'hy' ? '\u054A\u0561\u0577\u057F\u0578\u0576' : i18n.language === 'en' ? 'Position' : 'Должность',
+    fullName: i18n.language === 'hy' ? '\u0531\u0576\u0578\u0582\u0576 \u0561\u0566\u0563\u0561\u0576\u0578\u0582\u0576' : i18n.language === 'en' ? 'Full name' : 'ФИО',
+    orEnterManually: i18n.language === 'hy' ? "\u053F\u0561\u0574 \u0574\u0578\u0582\u057F\u0584\u0561\u0563\u0580\u0565\u0584 \u0571\u0565\u057C\u0584\u0578\u057E" : i18n.language === 'en' ? 'Or enter manually' : 'Или введите вручную',
+    describeYourSituation: i18n.language === 'hy' ? "\u0546\u056F\u0561\u0580\u0561\u0563\u0580\u0565\u0584 \u0571\u0565\u0580 \u056B\u0580\u0561\u057E\u056B\u0573\u0561\u056F\u0568" : i18n.language === 'en' ? 'Describe Your Situation' : 'Опишите вашу ситуацию',
+    aiWillGenerate: i18n.language === 'hy' ? "\u0531\u0532-\u0576 \u056F\u057D\u057F\u0565\u0572\u056E\u056B \u0574\u0561\u057D\u0576\u0561\u0563\u056B\u057F\u0561\u056F\u0561\u0576 \u056B\u0580\u0561\u057E\u0561\u0562\u0561\u0576\u0561\u056F\u0561\u0576 \u0583\u0561\u057D\u057F\u0561\u0569\u0578\u0582\u0572\u0569 \u0571\u0565\u0580 \u0576\u056F\u0561\u0580\u0561\u0563\u0580\u0578\u0582\u0569\u0575\u0561\u0576 \u0570\u056B\u0574\u0561\u0576 \u057E\u0580\u0561" : i18n.language === 'en' ? 'The AI will generate a professional legal document based on your description' : 'ИИ сгенерирует профессиональный юридический документ на основе вашего описания',
+    textareaPlaceholder: i18n.language === 'hy' 
+      ? "\u0546\u056F\u0561\u0580\u0561\u0563\u0580\u0565\u0584 \u0571\u0565\u0580 \u0563\u0578\u0580\u056E\u056B \u0583\u0561\u057D\u057F\u0565\u0580\u0568, \u056B\u0576\u0579 \u0567 \u057A\u0561\u057F\u0561\u0570\u0565\u056C, \u056B\u0576\u0579 \u0565\u0584 \u0578\u0582\u0566\u0578\u0582\u0574 \u0570\u0561\u057D\u0576\u0565\u056C, \u0571\u0565\u0580 \u057A\u0561\u0570\u0561\u0576\u057B\u0576\u0565\u0580\u0568..." 
+      : i18n.language === 'en'
+      ? 'Describe the facts of your case, what happened, what you want to achieve, your demands...' 
+      : 'Опишите факты вашего дела, что произошло, чего вы хотите добиться, ваши требования...',
+    caseDataNote: i18n.language === 'hy' ? "\u0533\u0578\u0580\u056E\u056B \u057F\u057E\u0575\u0561\u056C\u0576\u0565\u0580\u0568 \u0576\u0578\u0582\u0575\u0576\u057A\u0565\u057D \u056F\u0585\u0563\u057F\u0561\u0563\u0578\u0580\u056E\u057E\u0565\u0576 \u0583\u0561\u057D\u057F\u0561\u0569\u0572\u0569\u056B \u057D\u057F\u0565\u0572\u056E\u0574\u0561\u0576 \u0570\u0561\u0574\u0561\u0580\u0589" : i18n.language === 'en' ? 'Case data will also be used for generation.' : 'Данные дела также будут использованы для генерации.',
   };
 
   if (isLoading) {
@@ -358,10 +414,14 @@ export function DocumentGenerator({ caseData, preselectedType, onClose }: Docume
   return (
     <div className="space-y-6">
       <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-        <TabsList className="grid w-full grid-cols-2">
+        <TabsList className="grid w-full grid-cols-3">
           <TabsTrigger value="template">{t("cases:template_select_tab")}</TabsTrigger>
           <TabsTrigger value="result" disabled={!generatedContent}>
             {t("cases:result_tab")}
+          </TabsTrigger>
+          <TabsTrigger value="history" className="flex items-center gap-1">
+            <History className="h-3 w-3" />
+            {labels.history}
           </TabsTrigger>
         </TabsList>
 
@@ -390,9 +450,7 @@ export function DocumentGenerator({ caseData, preselectedType, onClose }: Docume
             <div className="space-y-4">
               <Card>
                 <CardHeader>
-                  <CardTitle>
-                    {i18n.language === 'hy' ? '\u0540\u0561\u057D\u0581\u0565\u0561\u057F\u0565\u0580' : i18n.language === 'en' ? 'Recipient' : 'Адресат'}
-                  </CardTitle>
+                  <CardTitle>{labels.recipient}</CardTitle>
                 </CardHeader>
                 <CardContent className="space-y-4">
                   {/* Recipient Type Selector */}
@@ -414,7 +472,7 @@ export function DocumentGenerator({ caseData, preselectedType, onClose }: Docume
                         setSelectedCommitteeData(null);
                       }}
                     >
-                      {i18n.language === 'hy' ? "\u0534\u0561\u057F\u0561\u0580\u0561\u0576" : i18n.language === 'en' ? 'Court' : 'Суд'}
+                      {labels.court}
                     </Button>
                     <Button
                       type="button"
@@ -433,7 +491,7 @@ export function DocumentGenerator({ caseData, preselectedType, onClose }: Docume
                         setSelectedCommitteeData(null);
                       }}
                     >
-                      {i18n.language === 'hy' ? "\u0534\u0561\u057F\u0561\u056D\u0561\u0566\u0578\u0582\u0569\u0575\u0578\u0582\u0576" : i18n.language === 'en' ? "Prosecutor" : 'Прокуратура'}
+                      {labels.prosecutor}
                     </Button>
                     <Button
                       type="button"
@@ -452,7 +510,7 @@ export function DocumentGenerator({ caseData, preselectedType, onClose }: Docume
                         setSelectedCommitteeData(null);
                       }}
                     >
-                      {i18n.language === 'hy' ? "\u0554\u0576\u0576\u0579\u0561\u056F\u0561\u0576" : i18n.language === 'en' ? 'Investigative' : 'Расследование'}
+                      {labels.investigative}
                     </Button>
                     <Button
                       type="button"
@@ -471,7 +529,7 @@ export function DocumentGenerator({ caseData, preselectedType, onClose }: Docume
                         setSelectedCommitteeData(null);
                       }}
                     >
-                      {i18n.language === 'hy' ? "\u053F\u0561\u057C\u0561\u057E\u0561\u0580\u0578\u0582\u0569\u0575\u0578\u0582\u0576" : i18n.language === 'en' ? 'Government' : 'Правительство'}
+                      {labels.government}
                     </Button>
                     <Button
                       type="button"
@@ -490,7 +548,7 @@ export function DocumentGenerator({ caseData, preselectedType, onClose }: Docume
                         setSelectedInvestigativeData(null);
                       }}
                     >
-                      {i18n.language === 'hy' ? "\u0531\u0575\u056C" : i18n.language === 'en' ? 'Other' : 'Другое'}
+                      {labels.other}
                     </Button>
                   </div>
 
@@ -565,7 +623,6 @@ export function DocumentGenerator({ caseData, preselectedType, onClose }: Docume
                   {/* Other Organization */}
                   {recipientType === "other" && (
                     <div className="space-y-4">
-                      {/* Committee/Service Selector */}
                       <CommitteeServiceSelector
                         value={selectedCommitteeId}
                         onChange={(bodyId, bodyData) => {
@@ -580,13 +637,8 @@ export function DocumentGenerator({ caseData, preselectedType, onClose }: Docume
                         }}
                       />
                       
-                      {/* Manual input for other organizations */}
                       <div>
-                        <Label htmlFor="recipientOrganization">
-                          {i18n.language === 'hy' ? "\u053F\u0561\u0574 \u0574\u0578\u0582\u057F\u0584\u0561\u0563\u0580\u0565\u0584 \u0571\u0565\u057C\u0584\u0578\u057E" : 
-                           i18n.language === 'en' ? 'Or enter manually' : 
-                           'Или введите вручную'}
-                        </Label>
+                        <Label htmlFor="recipientOrganization">{labels.orEnterManually}</Label>
                         <Input
                           id="recipientOrganization"
                           value={recipientOrganization}
@@ -604,9 +656,7 @@ export function DocumentGenerator({ caseData, preselectedType, onClose }: Docume
                   )}
                   
                   <div>
-                    <Label htmlFor="recipientPosition">
-                      {i18n.language === 'hy' ? '\u054A\u0561\u0577\u057F\u0578\u0576' : i18n.language === 'en' ? 'Position' : 'Должность'}
-                    </Label>
+                    <Label htmlFor="recipientPosition">{labels.position}</Label>
                     <Input
                       id="recipientPosition"
                       value={recipientPosition}
@@ -617,9 +667,7 @@ export function DocumentGenerator({ caseData, preselectedType, onClose }: Docume
                     />
                   </div>
                   <div>
-                    <Label htmlFor="recipientName">
-                      {i18n.language === 'hy' ? '\u0531\u0576\u0578\u0582\u0576 \u0561\u0566\u0563\u0561\u0576\u0578\u0582\u0576' : i18n.language === 'en' ? 'Full name' : 'ФИО'}
-                    </Label>
+                    <Label htmlFor="recipientName">{labels.fullName}</Label>
                     <Input
                       id="recipientName"
                       value={recipientName}
@@ -667,48 +715,42 @@ export function DocumentGenerator({ caseData, preselectedType, onClose }: Docume
                 </CardContent>
               </Card>
 
+              {/* Dynamic Document Fields */}
+              {selectedTemplate && (
+                <DynamicDocumentFields
+                  templateId={selectedTemplate.id}
+                  category={selectedTemplate.category}
+                  subcategory={selectedTemplate.subcategory}
+                  onFieldsChange={setDynamicFields}
+                />
+              )}
+
               <Card className="border-primary/20 bg-primary/5">
                 <CardHeader>
                   <CardTitle className="flex items-center gap-2">
                     <FileText className="h-5 w-5 text-primary" />
-                    {i18n.language === 'hy' ? "\u0546\u056F\u0561\u0580\u0561\u0563\u0580\u0565\u0584 \u0571\u0565\u0580 \u056B\u0580\u0561\u057E\u056B\u0573\u0561\u056F\u0568" : 
-                     i18n.language === 'en' ? 'Describe Your Situation' : 
-                     'Опишите вашу ситуацию'}
+                    {labels.describeYourSituation}
                   </CardTitle>
-                  <p className="text-sm text-muted-foreground">
-                    {i18n.language === 'hy' ? "\u0531\u0532-\u0576 \u056F\u057D\u057F\u0565\u0572\u056E\u056B \u0574\u0561\u057D\u0576\u0561\u0563\u056B\u057F\u0561\u056F\u0561\u0576 \u056B\u0580\u0561\u057E\u0561\u0562\u0561\u0576\u0561\u056F\u0561\u0576 \u0583\u0561\u057D\u057F\u0561\u0569\u0578\u0582\u0572\u0569 \u0571\u0565\u0580 \u0576\u056F\u0561\u0580\u0561\u0563\u0580\u0578\u0582\u0569\u0575\u0561\u0576 \u0570\u056B\u0574\u0561\u0576 \u057E\u0580\u0561" : 
-                     i18n.language === 'en' ? 'The AI will generate a professional legal document based on your description' : 
-                     'ИИ сгенерирует профессиональный юридический документ на основе вашего описания'}
-                  </p>
+                  <p className="text-sm text-muted-foreground">{labels.aiWillGenerate}</p>
                 </CardHeader>
                 <CardContent className="space-y-4">
                   <Textarea
                     value={sourceText}
                     onChange={(e) => setSourceText(e.target.value)}
-                    placeholder={
-                      i18n.language === 'hy' 
-                        ? "\u0546\u056F\u0561\u0580\u0561\u0563\u0580\u0565\u0584 \u0571\u0565\u0580 \u0563\u0578\u0580\u056E\u056B \u0583\u0561\u057D\u057F\u0565\u0580\u0568, \u056B\u0576\u0579 \u0567 \u057A\u0561\u057F\u0561\u0570\u0565\u056C, \u056B\u0576\u0579 \u0565\u0584 \u0578\u0582\u0566\u0578\u0582\u0574 \u0570\u0561\u057D\u0576\u0565\u056C, \u0571\u0565\u0580 \u057A\u0561\u0570\u0561\u0576\u057B\u0576\u0565\u0580\u0568..." 
-                        : i18n.language === 'en'
-                        ? 'Describe the facts of your case, what happened, what you want to achieve, your demands...\n\nFor example:\n- What happened and when?\n- Who are the parties involved?\n- What rights were violated?\n- What do you want to request from the court/authority?' 
-                        : 'Опишите факты вашего дела, что произошло, чего вы хотите добиться, ваши требования...\n\nНапример:\n- Что произошло и когда?\n- Кто участники ситуации?\n- Какие права были нарушены?\n- Что вы хотите попросить у суда/органа?'
-                    }
+                    placeholder={labels.textareaPlaceholder}
                     className="min-h-[180px] text-base"
                   />
                   
-                  {/* File Upload for AI Analysis */}
-                  <DocumentFileUpload
-                    onFileAnalyzed={setFileExtractedText}
+                  {/* Enhanced File Upload */}
+                  <EnhancedFileUpload
+                    files={uploadedFiles}
+                    onFilesChange={setUploadedFiles}
+                    onExtractedTextChange={setFileExtractedText}
                     isDisabled={isGenerating}
-                    documentType={selectedTemplate?.subcategory || preselectedType || undefined}
-                    caseData={caseData}
                   />
                   
                   {caseData && (
-                    <p className="text-xs text-muted-foreground">
-                      {i18n.language === 'hy' ? "\u0533\u0578\u0580\u056E\u056B \u057F\u057E\u0575\u0561\u056C\u0576\u0565\u0580\u0568 \u0576\u0578\u0582\u0575\u0576\u057A\u0565\u057D \u056F\u0585\u0563\u057F\u0561\u0563\u0578\u0580\u056E\u057E\u0565\u0576 \u0583\u0561\u057D\u057F\u0561\u0569\u0572\u0569\u056B \u057D\u057F\u0565\u0572\u056E\u0574\u0561\u0576 \u0570\u0561\u0574\u0561\u0580\u0589 \u053F\u0561\u0580\u0578\u0572 \u0565\u0584 \u056C\u0580\u0561\u0581\u0578\u0582\u0581\u056B\u0579 \u0574\u0561\u0576\u0580\u0561\u0574\u0561\u057D\u0576\u0565\u0580 \u0561\u057E\u0565\u056C\u0561\u0581\u0576\u0565\u056C \u0561\u0575\u057D\u057F\u0565\u0572\u0589" : 
-                       i18n.language === 'en' ? 'Case data will also be used for generation. You can add additional details here.' : 
-                       'Данные дела также будут использованы для генерации. Здесь можете добавить дополнительные детали.'}
-                    </p>
+                    <p className="text-xs text-muted-foreground">{labels.caseDataNote}</p>
                   )}
                 </CardContent>
               </Card>
@@ -731,24 +773,36 @@ export function DocumentGenerator({ caseData, preselectedType, onClose }: Docume
                 </CardContent>
               </Card>
 
-              <Button
-                onClick={handleGenerate}
-                disabled={!selectedTemplate || isGenerating}
-                className="w-full"
-                size="lg"
-              >
-                {isGenerating ? (
-                  <>
-                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                    {t("cases:generating")}
-                  </>
-                ) : (
-                  <>
-                    <FileText className="mr-2 h-4 w-4" />
-                    {t("cases:generate_document_btn")}
-                  </>
-                )}
-              </Button>
+              {/* Action Buttons */}
+              <div className="flex flex-col sm:flex-row gap-3">
+                <Button
+                  variant="outline"
+                  onClick={handleValidate}
+                  disabled={isGenerating}
+                  className="flex-1"
+                >
+                  <CheckCircle2 className="mr-2 h-4 w-4" />
+                  {labels.validate}
+                </Button>
+                <Button
+                  onClick={handleGenerate}
+                  disabled={!selectedTemplate || isGenerating}
+                  className="flex-1"
+                  size="lg"
+                >
+                  {isGenerating ? (
+                    <>
+                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                      {t("cases:generating")}
+                    </>
+                  ) : (
+                    <>
+                      <FileText className="mr-2 h-4 w-4" />
+                      {t("cases:generate_document_btn")}
+                    </>
+                  )}
+                </Button>
+              </div>
             </div>
           </div>
         </TabsContent>
@@ -756,43 +810,10 @@ export function DocumentGenerator({ caseData, preselectedType, onClose }: Docume
         <TabsContent value="result">
           {generatedContent && (
             <Card>
-              <CardHeader className="flex flex-row items-center justify-between flex-wrap gap-2">
+              <CardHeader>
                 <CardTitle>
                   {selectedTemplate ? getTemplateName(selectedTemplate) : "Документ"}
                 </CardTitle>
-                <div className="flex flex-wrap gap-2">
-                  <Button 
-                    variant={isEditing ? "default" : "outline"} 
-                    size="sm" 
-                    onClick={handleToggleEdit}
-                  >
-                    {isEditing ? (
-                      <>
-                        <Eye className="h-4 w-4 mr-1" />
-                        {t("cases:preview_mode")}
-                      </>
-                    ) : (
-                      <>
-                        <Edit className="h-4 w-4 mr-1" />
-                        {t("cases:edit_mode")}
-                      </>
-                    )}
-                  </Button>
-                  <Button variant="outline" size="sm" onClick={handleCopy}>
-                    {copied ? (
-                      <CheckCircle className="h-4 w-4 text-green-500" />
-                    ) : (
-                      <Copy className="h-4 w-4" />
-                    )}
-                  </Button>
-                  <Button variant="outline" size="sm" onClick={handleDownload}>
-                    <Download className="h-4 w-4" />
-                  </Button>
-                  <Button size="sm" onClick={handleSave}>
-                    <Save className="h-4 w-4 mr-1" />
-                    {t("cases:save_btn")}
-                  </Button>
-                </div>
               </CardHeader>
               <CardContent>
                 {isEditing ? (
@@ -808,7 +829,39 @@ export function DocumentGenerator({ caseData, preselectedType, onClose }: Docume
             </Card>
           )}
         </TabsContent>
+
+        <TabsContent value="history">
+          <DocumentHistory
+            onLoadDocument={handleLoadFromHistory}
+            onClose={() => setActiveTab("template")}
+          />
+        </TabsContent>
       </Tabs>
+
+      {/* Validation Modal */}
+      <ValidationModal
+        open={showValidationModal}
+        onOpenChange={setShowValidationModal}
+        fields={validationFields}
+        onProceed={handleGenerate}
+        onCancel={() => setShowValidationModal(false)}
+      />
+
+      {/* Preview Modal */}
+      <DocumentPreviewModal
+        open={showPreviewModal}
+        onOpenChange={setShowPreviewModal}
+        content={editedContent || generatedContent}
+        title={selectedTemplate ? getTemplateName(selectedTemplate) : "Документ"}
+        onEdit={() => {
+          setShowPreviewModal(false);
+          setIsEditing(true);
+          setActiveTab("result");
+        }}
+        onRegenerate={handleGenerate}
+        onSave={handleSave}
+        isGenerating={isGenerating}
+      />
     </div>
   );
 }

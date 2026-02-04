@@ -21,14 +21,15 @@ import { exportDocumentToPDF } from "@/lib/pdfExportDocument";
 // TYPES
 // =============================================================================
 
-interface DocumentPreviewModalProps {
+export interface DocumentPreviewModalProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   content: string;
   title: string;
-  onRegenerate: () => void;
-  onSave: (content: string) => void;
-  isRegenerating?: boolean;
+  onEdit?: () => void;
+  onRegenerate?: () => void;
+  onSave?: () => void;
+  isGenerating?: boolean;
 }
 
 // =============================================================================
@@ -40,9 +41,10 @@ export function DocumentPreviewModal({
   onOpenChange,
   content,
   title,
+  onEdit,
   onRegenerate,
   onSave,
-  isRegenerating = false
+  isGenerating = false
 }: DocumentPreviewModalProps) {
   const { i18n } = useTranslation();
   const lang = i18n.language;
@@ -113,7 +115,7 @@ export function DocumentPreviewModal({
   };
 
   const handleSave = () => {
-    onSave(editedContent);
+    onSave?.();
     setIsEditing(false);
   };
 
@@ -192,9 +194,9 @@ export function DocumentPreviewModal({
             <Button
               variant="outline"
               onClick={onRegenerate}
-              disabled={isRegenerating}
+              disabled={isGenerating || !onRegenerate}
             >
-              {isRegenerating ? (
+              {isGenerating ? (
                 <Loader2 className="h-4 w-4 mr-2 animate-spin" />
               ) : (
                 <RotateCcw className="h-4 w-4 mr-2" />
