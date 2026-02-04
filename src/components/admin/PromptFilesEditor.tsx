@@ -76,18 +76,6 @@ const PROMPT_FILES = [
   }
 ];
 
-// Sample prompt contents for preview (you can expand this)
-const PROMPT_PREVIEWS: Record<string, string> = {
-  'supabase/functions/ai-analyze/prompts/defense.ts': `export const defensePrompt = \`
-\u0534\u0578\u0582\u0584 \u0583\u0578\u0580\u0571\u0561\u057C\u0578\u0582 \u0561\u0564\u057E\u0578\u056F\u0561\u057F \u0565\u0584...
-\u054E\u0565\u0580\u056C\u0578\u0582\u056E\u0565\u0584 \u0563\u0578\u0580\u056E\u0568 \u057A\u0561\u0577\u057F\u057A\u0561\u0576\u056B \u057F\u0565\u057D\u0561\u0576\u056F\u0575\u0578\u0582\u0576\u056B\u0581...
-\`;`,
-  'supabase/functions/ai-analyze/prompts/prosecution.ts': `export const prosecutionPrompt = \`
-\u0534\u0578\u0582\u0584 \u0583\u0578\u0580\u0571\u0561\u057C\u0578\u0582 \u0564\u0561\u057F\u0561\u056D\u0561\u0566 \u0565\u0584...
-\u054E\u0565\u0580\u056C\u0578\u0582\u056E\u0565\u0584 \u0563\u0578\u0580\u056E\u0568 \u0574\u0565\u0572\u0561\u0564\u0580\u0561\u0576\u0584\u056B \u057F\u0565\u057D\u0561\u0576\u056F\u0575\u0578\u0582\u0576\u056B\u0581...
-\`;`,
-};
-
 // Convert Armenian characters to Unicode escape sequences
 const armenianToUnicode = (text: string): string => {
   return text.replace(/[\u0531-\u058F]/g, (char) => {
@@ -99,6 +87,15 @@ const armenianToUnicode = (text: string): string => {
 const hasArmenianChars = (text: string): boolean => {
   return /[\u0531-\u058F]/.test(text);
 };
+
+// Workflow steps for the user
+const WORKFLOW_STEPS = [
+  { step: 1, text: "\u0538\u0576\u057F\u0580\u0565\u0584 \u0586\u0561\u0575\u056C\u0568 \u0571\u0561\u056D\u056B \u0581\u0561\u0576\u056F\u056B\u0581" },
+  { step: 2, text: "\u054A\u0561\u057F\u0573\u0565\u0576\u0565\u0584 \u057A\u0580\u0578\u0574\u057A\u057F\u056B \u0562\u0578\u057E\u0561\u0576\u0564\u0561\u056F\u0578\u0582\u0569\u0575\u0578\u0582\u0576\u0568 \u056F\u0565\u0576\u057F\u0580\u0578\u0576\u0561\u056F\u0561\u0576 \u057E\u0561\u0570\u0561\u0576\u0561\u056F\u0578\u0582\u0574" },
+  { step: 3, text: "\u053D\u0574\u0562\u0561\u0563\u0580\u0565\u0584 \u0570\u0561\u0575\u0565\u0580\u0565\u0576 \u057F\u0565\u0584\u057D\u057F\u0568 \u0578\u0580\u0568 \u057A\u0565\u057F\u0584 \u0567 \u0583\u0578\u056D\u0561\u0580\u056F\u0565\u056C" },
+  { step: 4, text: "\u054D\u0565\u0572\u0574\u0565\u0584 '\u0553\u0578\u056D\u0561\u0580\u056F\u0565\u056C \u0561\u0574\u0562\u0578\u0572\u057B\u0568' \u056F\u0578\u0573\u0561\u056F\u0568" },
+  { step: 5, text: "\u054A\u0561\u057F\u0573\u0565\u0576\u0565\u0584 \u0561\u0580\u0564\u0575\u0578\u0582\u0576\u0584\u0568 \u0587 \u057F\u0565\u0572\u0561\u0564\u0580\u0565\u0584 \u0586\u0561\u0575\u056C\u0578\u0582\u0574" },
+];
 
 export const PromptFilesEditor = () => {
   const { i18n } = useTranslation();
@@ -159,19 +156,42 @@ export const PromptFilesEditor = () => {
 
   const copyFilePath = (path: string) => {
     navigator.clipboard.writeText(path);
-    toast.success(`\u0556\u0561\u0575\u056C\u056B \u0573\u0561\u0576\u0561\u057A\u0561\u0580\u0570\u0568 \u057A\u0561\u057F\u0573\u0565\u0576\u057E\u0565\u0581`);
+    toast.success("\u0556\u0561\u0575\u056C\u056B \u0573\u0561\u0576\u0561\u057A\u0561\u0580\u0570\u0568 \u057A\u0561\u057F\u0573\u0565\u0576\u057E\u0565\u0581");
   };
 
   const viewFile = (file: {path: string; name: string}) => {
     setSelectedFile(file);
-    // Show preview content if available
-    const preview = PROMPT_PREVIEWS[file.path] || `// \u0556\u0561\u0575\u056C\u055D ${file.path}\n// \u054A\u0580\u0578\u0574\u057A\u057F\u056B \u0562\u0578\u057E\u0561\u0576\u0564\u0561\u056F\u0578\u0582\u0569\u0575\u0578\u0582\u0576\u0568 \u056F\u0562\u0565\u057C\u0576\u057E\u056B \u0561\u0575\u057D\u057F\u0565\u0572\u0589\n\n// \u0555\u0563\u057F\u0561\u0563\u0578\u0580\u056E\u0565\u0584 Lovable-\u056B\u0576 \u0586\u0561\u0575\u056C\u0568 \u0562\u0561\u0581\u0565\u056C\u0578\u0582 \u0570\u0561\u0574\u0561\u0580\u0589`;
-    setPreviewContent(preview);
+    // Show instructions for the user
+    const instructions = `// \u0556\u0561\u0575\u056C\u055D ${file.path}
+// 
+// \u054A\u0561\u057F\u0573\u0565\u0576\u0565\u0584 \u0561\u0575\u057D\u057F\u0565\u0572 \u0586\u0561\u0575\u056C\u056B \u0562\u0578\u057E\u0561\u0576\u0564\u0561\u056F\u0578\u0582\u0569\u0575\u0578\u0582\u0576\u0568 \u0571\u0565\u0580 IDE-\u056B\u0581
+// \u0587 \u057F\u0565\u0572\u0561\u0564\u0580\u0565\u0584 \u0561\u0575\u057D\u057F\u0565\u0572 \u056D\u0574\u0562\u0561\u0563\u0580\u0565\u056C\u0578\u0582 \u0570\u0561\u0574\u0561\u0580\u0589
+//
+// \u0540\u0565\u057F\u0578 \u056F\u0561\u0580\u0578\u0572 \u0565\u0584\u055D
+// 1. \u053D\u0574\u0562\u0561\u0563\u0580\u0565\u0584 \u0570\u0561\u0575\u0565\u0580\u0565\u0576 \u057F\u0565\u0584\u057D\u057F\u0568 \u0561\u057B \u056F\u0578\u0572\u0574\u0578\u0582\u0574
+// 2. \u054D\u0565\u0572\u0574\u0565\u0584 "\u0553\u0578\u056D\u0561\u0580\u056F\u0565\u056C \u0561\u0574\u0562\u0578\u0572\u057B\u0568"
+// 3. \u054A\u0561\u057F\u0573\u0565\u0576\u0565\u0584 \u0561\u0580\u0564\u0575\u0578\u0582\u0576\u0584\u0568
+// 4. \u054F\u0565\u0572\u0561\u0564\u0580\u0565\u0584 \u0586\u0561\u0575\u056C\u0578\u0582\u0574
+
+`;
+    setPreviewContent(instructions);
   };
+
+  const convertEntireContent = useCallback(() => {
+    if (!previewContent) return;
+    const converted = armenianToUnicode(previewContent);
+    setPreviewContent(converted);
+    
+    if (hasArmenianChars(previewContent)) {
+      const count = (previewContent.match(/[\u0531-\u058F]/g) || []).length;
+      toast.success(`${count} \u057D\u056B\u0574\u057E\u0578\u056C \u0583\u0578\u056D\u0561\u0580\u056F\u057E\u0565\u0581`);
+    } else {
+      toast.info("\u0540\u0561\u0575\u0565\u0580\u0565\u0576 \u057D\u056B\u0574\u057E\u0578\u056C\u0576\u0565\u0580 \u0579\u0565\u0576 \u0563\u057F\u0576\u057E\u0565\u056C");
+    }
+  }, [previewContent]);
 
   const insertToOutput = useCallback(() => {
     if (outputText && selectedFile) {
-      // Copy the converted text - user can then paste it into the file
       navigator.clipboard.writeText(outputText);
       toast.success(`\u054A\u0561\u057F\u0580\u0561\u057D\u057F \u0567 \u057F\u0565\u0572\u0561\u0564\u0580\u0565\u056C\u0578\u0582 \u0570\u0561\u0574\u0561\u0580\u055D ${selectedFile.name}`);
     }
@@ -263,12 +283,12 @@ export const PromptFilesEditor = () => {
         </CardContent>
       </Card>
 
-      {/* Middle: File Preview */}
+      {/* Middle: File Preview & Editor */}
       <Card>
         <CardHeader className="pb-3">
           <CardTitle className="flex items-center gap-2 text-base">
             <Eye className="h-5 w-5" />
-            {selectedFile ? selectedFile.name : "\u0556\u0561\u0575\u056C\u056B \u0562\u0578\u057E\u0561\u0576\u0564\u0561\u056F\u0578\u0582\u0569\u0575\u0578\u0582\u0576"}
+            {selectedFile ? selectedFile.name : "\u053D\u0574\u0562\u0561\u0563\u0580\u056B\u0579"}
           </CardTitle>
           {selectedFile && (
             <CardDescription className="text-xs font-mono truncate">
@@ -276,15 +296,49 @@ export const PromptFilesEditor = () => {
             </CardDescription>
           )}
         </CardHeader>
-        <CardContent className="pt-0">
+        <CardContent className="pt-0 space-y-3">
+          {/* Workflow hint */}
+          <div className="rounded-lg border border-primary/20 bg-primary/5 p-3">
+            <p className="text-xs font-medium mb-2">{"\u053B\u0576\u0579\u057A\u0565\u057D \u0585\u0563\u057F\u0561\u0563\u0578\u0580\u056E\u0565\u056C\u055D"}</p>
+            <ol className="text-[10px] text-muted-foreground space-y-1 list-decimal list-inside">
+              {WORKFLOW_STEPS.map((item) => (
+                <li key={item.step}>{item.text}</li>
+              ))}
+            </ol>
+          </div>
+
           <Textarea
             value={previewContent}
             onChange={(e) => setPreviewContent(e.target.value)}
-            className="min-h-[400px] font-mono text-xs bg-muted/30"
-            placeholder={"\u0538\u0576\u057F\u0580\u0565\u0584 \u0586\u0561\u0575\u056C \u0562\u0578\u057E\u0561\u0576\u0564\u0561\u056F\u0578\u0582\u0569\u0575\u0578\u0582\u0576\u0568 \u0564\u056B\u057F\u0565\u056C\u0578\u0582 \u0570\u0561\u0574\u0561\u0580..."}
+            className="min-h-[300px] font-mono text-xs bg-muted/30"
+            placeholder={"\u054A\u0561\u057F\u0573\u0565\u0576\u0565\u0584 \u057A\u0580\u0578\u0574\u057A\u057F\u056B \u0562\u0578\u057E\u0561\u0576\u0564\u0561\u056F\u0578\u0582\u0569\u0575\u0578\u0582\u0576\u0568 \u0561\u0575\u057D\u057F\u0565\u0572..."}
           />
-          {selectedFile && (
-            <div className="flex gap-2 mt-3">
+          
+          <div className="flex flex-wrap gap-2">
+            <Button 
+              variant="default" 
+              size="sm"
+              onClick={convertEntireContent}
+              disabled={!previewContent}
+              className="text-xs"
+            >
+              <RefreshCw className="h-3 w-3 mr-1" />
+              {"\u0553\u0578\u056D\u0561\u0580\u056F\u0565\u056C \u0561\u0574\u0562\u0578\u0572\u057B\u0568"}
+            </Button>
+            <Button 
+              variant="outline" 
+              size="sm"
+              onClick={() => {
+                navigator.clipboard.writeText(previewContent);
+                toast.success("\u0532\u0578\u057E\u0561\u0576\u0564\u0561\u056F\u0578\u0582\u0569\u0575\u0578\u0582\u0576\u0568 \u057A\u0561\u057F\u0573\u0565\u0576\u057E\u0565\u0581");
+              }}
+              disabled={!previewContent}
+              className="text-xs"
+            >
+              <Copy className="h-3 w-3 mr-1" />
+              {"\u054A\u0561\u057F\u0573\u0565\u0576\u0565\u056C"}
+            </Button>
+            {selectedFile && (
               <Button 
                 variant="outline" 
                 size="sm"
@@ -292,22 +346,19 @@ export const PromptFilesEditor = () => {
                 className="text-xs"
               >
                 <Copy className="h-3 w-3 mr-1" />
-                {"\u054A\u0561\u057F\u0573\u0565\u0576\u0565\u056C \u0573\u0561\u0576\u0561\u057A\u0561\u0580\u0570\u0568"}
+                {"\u0543\u0561\u0576\u0561\u057A\u0561\u0580\u0570"}
               </Button>
-              <Button 
-                variant="outline" 
-                size="sm"
-                onClick={() => {
-                  navigator.clipboard.writeText(previewContent);
-                  toast.success("\u0532\u0578\u057E\u0561\u0576\u0564\u0561\u056F\u0578\u0582\u0569\u0575\u0578\u0582\u0576\u0568 \u057A\u0561\u057F\u0573\u0565\u0576\u057E\u0565\u0581");
-                }}
-                className="text-xs"
-              >
-                <Copy className="h-3 w-3 mr-1" />
-                {"\u054A\u0561\u057F\u0573\u0565\u0576\u0565\u056C \u0562\u0578\u057E\u0561\u0576\u0564\u0561\u056F\u0578\u0582\u0569\u0575\u0578\u0582\u0576\u0568"}
-              </Button>
-            </div>
-          )}
+            )}
+            <Button 
+              variant="ghost" 
+              size="sm"
+              onClick={() => setPreviewContent('')}
+              disabled={!previewContent}
+              className="text-xs"
+            >
+              {"\u0544\u0561\u0584\u0580\u0565\u056C"}
+            </Button>
+          </div>
         </CardContent>
       </Card>
 
