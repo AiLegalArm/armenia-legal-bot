@@ -11,7 +11,16 @@ interface TelegramUpdate {
     chat: { id: number };
     from?: { id: number; first_name?: string; username?: string };
     text?: string;
+    photo?: Array<{ file_id: string; file_size?: number; width: number; height: number }>;
+    document?: { file_id: string; file_name?: string; mime_type?: string; file_size?: number };
+    caption?: string;
   };
+}
+
+interface TelegramFile {
+  file_id: string;
+  file_path?: string;
+  file_size?: number;
 }
 
 serve(async (req) => {
@@ -32,28 +41,51 @@ serve(async (req) => {
     const update: TelegramUpdate = await req.json();
     const message = update.message;
 
-    if (!message?.text) {
+    if (!message) {
       return new Response(JSON.stringify({ ok: true }), {
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
 
     const chatId = message.chat.id;
-    const text = message.text.trim();
+
+    // Handle file uploads (photo or document)
+    if (message.photo || message.document) {
+      await handleFileUpload(
+        supabase as any, 
+        TELEGRAM_BOT_TOKEN, 
+        chatId, 
+        message.photo, 
+        message.document, 
+        message.caption
+      );
+      return new Response(JSON.stringify({ ok: true }), {
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
+    const text = message.text?.trim();
+
+    if (!text) {
+      return new Response(JSON.stringify({ ok: true }), {
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
 
     // Handle /start command
     if (text === "/start") {
       const welcomeMessage = `🔔 <b>Legal Assistant Bot</b>
 
-Добро пожаловать! Этот бот отправляет уведомления о судебных заседаниях и важных событиях.
+Добро пожаловать! Этот бот отправляет уведомления о судебных заседаниях и позволяет загружать файлы.
 
 <b>Ваш Chat ID:</b> <code>${chatId}</code>
 
-Скопируйте этот ID и вставьте его в настройках профиля в приложении, чтобы получать уведомления.
+Скопируйте этот ID и вставьте его в настройках профиля в приложении.
 
 <b>Команды:</b>
 /start - Показать Chat ID
-/status - Проверить статус уведомлений`;
+/status - Проверить статус
+/help - Помощь по загрузке файлов`;
 
       await sendTelegramMessage(TELEGRAM_BOT_TOKEN, chatId, welcomeMessage);
       return new Response(JSON.stringify({ ok: true }), {
@@ -61,9 +93,29 @@ serve(async (req) => {
       });
     }
 
+    // Handle /help command
+    if (text === "/help") {
+      const helpMessage = `📁 <b>Загрузка файлов</b>
+
+Чтобы загрузить файл в систему:
+1. Привяжите аккаунт через /link email@example.com
+2. Отправьте фото или документ в этот чат
+3. Файл автоматически сохранится в вашей папке
+
+<b>Поддерживаемые форматы:</b>
+📷 Фотографии (JPG, PNG)
+📄 Документы (PDF, DOCX, и др.)
+
+Максимальный размер: 20 МБ`;
+
+      await sendTelegramMessage(TELEGRAM_BOT_TOKEN, chatId, helpMessage);
+      return new Response(JSON.stringify({ ok: true }), {
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
     // Handle /status command
     if (text === "/status") {
-      // Find user by telegram_chat_id
       const { data: profile } = await supabase
         .from("profiles")
         .select("id, full_name, email, notification_preferences")
@@ -74,16 +126,24 @@ serve(async (req) => {
       if (profile) {
         const prefs = profile.notification_preferences as { telegram?: boolean } | null;
         const isEnabled = prefs?.telegram !== false;
+        
+        // Count uploaded files
+        const { count } = await supabase
+          .from("telegram_uploads")
+          .select("*", { count: "exact", head: true })
+          .eq("user_id", profile.id);
+        
         statusMessage = `✅ <b>Аккаунт подключен</b>
 
 👤 ${profile.full_name || profile.email}
-🔔 Уведомления: ${isEnabled ? "включены" : "выключены"}`;
+🔔 Уведомления: ${isEnabled ? "включены" : "выключены"}
+📁 Загружено файлов: ${count || 0}`;
       } else {
         statusMessage = `❌ <b>Аккаунт не подключен</b>
 
 Ваш Chat ID: <code>${chatId}</code>
 
-Добавьте этот ID в настройках профиля в приложении.`;
+Используйте /link email@example.com для привязки аккаунта.`;
       }
 
       await sendTelegramMessage(TELEGRAM_BOT_TOKEN, chatId, statusMessage);
@@ -103,7 +163,6 @@ serve(async (req) => {
         });
       }
 
-      // Find and update profile
       const { data: profile, error: updateError } = await supabase
         .from("profiles")
         .update({ telegram_chat_id: chatId.toString() })
@@ -114,7 +173,13 @@ serve(async (req) => {
       if (updateError || !profile) {
         await sendTelegramMessage(TELEGRAM_BOT_TOKEN, chatId, `❌ Пользователь с email ${email} не найден в системе.`);
       } else {
-        await sendTelegramMessage(TELEGRAM_BOT_TOKEN, chatId, `✅ Аккаунт успешно привязан!\n\nТеперь вы будете получать уведомления о судебных заседаниях и дедлайнах.`);
+        await sendTelegramMessage(TELEGRAM_BOT_TOKEN, chatId, `✅ Аккаунт успешно привязан!
+
+Теперь вы можете:
+• Получать уведомления о судебных заседаниях
+• Загружать файлы, отправляя их в этот чат
+
+Используйте /help для подробной информации.`);
       }
 
       return new Response(JSON.stringify({ ok: true }), {
@@ -124,7 +189,7 @@ serve(async (req) => {
 
     // Unknown command
     await sendTelegramMessage(TELEGRAM_BOT_TOKEN, chatId, 
-      "Используйте /start для получения Chat ID или /link email@example.com для привязки аккаунта."
+      "Используйте /start для начала, /help для помощи, или отправьте файл для загрузки."
     );
 
     return new Response(JSON.stringify({ ok: true }), {
@@ -138,6 +203,135 @@ serve(async (req) => {
     });
   }
 });
+
+async function handleFileUpload(
+  supabase: any,
+  botToken: string,
+  chatId: number,
+  photo: Array<{ file_id: string; file_size?: number; width: number; height: number }> | undefined,
+  document: { file_id: string; file_name?: string; mime_type?: string; file_size?: number } | undefined,
+  caption: string | undefined
+): Promise<void> {
+  // Find user by telegram_chat_id
+  const { data: profile, error: profileError } = await supabase
+    .from("profiles")
+    .select("id, full_name, email")
+    .eq("telegram_chat_id", chatId.toString())
+    .single();
+
+  if (profileError || !profile) {
+    await sendTelegramMessage(botToken, chatId, 
+      `❌ Аккаунт не привязан.
+
+Сначала привяжите аккаунт командой:
+/link ваш@email.com`
+    );
+    return;
+  }
+
+  let fileId: string;
+  let originalFilename: string;
+  let mimeType: string;
+  let fileSize: number | undefined;
+
+  if (photo && photo.length > 0) {
+    // Get the largest photo (last in array)
+    const largestPhoto = photo[photo.length - 1];
+    fileId = largestPhoto.file_id;
+    originalFilename = `photo_${Date.now()}.jpg`;
+    mimeType = "image/jpeg";
+    fileSize = largestPhoto.file_size;
+  } else if (document) {
+    fileId = document.file_id;
+    originalFilename = document.file_name || `document_${Date.now()}`;
+    mimeType = document.mime_type || "application/octet-stream";
+    fileSize = document.file_size;
+  } else {
+    return;
+  }
+
+  // Check file size (max 20MB)
+  if (fileSize && fileSize > 20 * 1024 * 1024) {
+    await sendTelegramMessage(botToken, chatId, "❌ Файл слишком большой. Максимальный размер: 20 МБ.");
+    return;
+  }
+
+  try {
+    // Get file path from Telegram
+    const fileInfoResponse = await fetch(
+      `https://api.telegram.org/bot${botToken}/getFile?file_id=${fileId}`
+    );
+    const fileInfo = await fileInfoResponse.json();
+
+    if (!fileInfo.ok || !fileInfo.result?.file_path) {
+      throw new Error("Failed to get file info from Telegram");
+    }
+
+    const telegramFilePath: string = fileInfo.result.file_path;
+
+    // Download file from Telegram
+    const fileResponse = await fetch(
+      `https://api.telegram.org/file/bot${botToken}/${telegramFilePath}`
+    );
+    
+    if (!fileResponse.ok) {
+      throw new Error("Failed to download file from Telegram");
+    }
+
+    const fileBuffer = await fileResponse.arrayBuffer();
+
+    // Generate storage path
+    const fileExt = originalFilename.split('.').pop() || 'bin';
+    const storagePath = `${profile.id}/${crypto.randomUUID()}.${fileExt}`;
+
+    // Upload to Supabase Storage
+    const { error: uploadError } = await supabase.storage
+      .from("telegram-uploads")
+      .upload(storagePath, fileBuffer, {
+        contentType: mimeType,
+        upsert: false,
+      });
+
+    if (uploadError) {
+      throw uploadError;
+    }
+
+    // Save record to database
+    const { error: dbError } = await supabase
+      .from("telegram_uploads")
+      .insert({
+        user_id: profile.id,
+        telegram_chat_id: chatId.toString(),
+        filename: `${crypto.randomUUID()}.${fileExt}`,
+        original_filename: originalFilename,
+        storage_path: storagePath,
+        file_type: mimeType,
+        file_size: fileSize,
+        caption: caption,
+      });
+
+    if (dbError) {
+      // Rollback storage upload
+      await supabase.storage.from("telegram-uploads").remove([storagePath]);
+      throw dbError;
+    }
+
+    await sendTelegramMessage(botToken, chatId, 
+      `✅ <b>Файл загружен</b>
+
+📄 ${originalFilename}
+${caption ? `📝 ${caption}` : ""}
+
+Файл доступен в вашем личном кабинете.`
+    );
+
+  } catch (error) {
+    console.error("File upload error:", error);
+    await sendTelegramMessage(botToken, chatId, 
+      "❌ Ошибка при загрузке файла. Попробуйте позже."
+    );
+  }
+}
 
 async function sendTelegramMessage(token: string, chatId: number, text: string): Promise<void> {
   await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
