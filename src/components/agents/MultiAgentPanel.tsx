@@ -13,6 +13,7 @@ import { VolumeManager } from "./VolumeManager";
 import { EvidenceRegistry } from "./EvidenceRegistry";
 import { AgentRunCard } from "./AgentRunCard";
 import { AggregatedReportView } from "./AggregatedReportView";
+import { GenerateComplaintButton } from "./GenerateComplaintButton";
 
 interface MultiAgentPanelProps {
   caseId: string;
@@ -89,23 +90,31 @@ export function MultiAgentPanel({ caseId, caseFacts }: MultiAgentPanelProps) {
                 {t("ai:multi_agent_description")}
               </CardDescription>
             </div>
-            <Button
-              onClick={() => runAllAgents(caseId)}
-              disabled={isLoading || volumes.length === 0}
-              size="lg"
-            >
-              {isLoading ? (
-                <>
-                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                  {currentAgent && AGENT_CONFIGS.find(a => a.type === currentAgent)?.nameHy}
-                </>
-              ) : (
-                <>
-                  <Play className="mr-2 h-4 w-4" />
-                  {t("ai:run_all_agents")}
-                </>
-              )}
-            </Button>
+            <div className="flex items-center gap-2">
+              <GenerateComplaintButton
+                caseId={caseId}
+                runs={runs}
+                evidenceRegistry={evidenceRegistry}
+                aggregatedReport={aggregatedReport}
+              />
+              <Button
+                onClick={() => runAllAgents(caseId)}
+                disabled={isLoading || volumes.length === 0}
+                size="lg"
+              >
+                {isLoading ? (
+                  <>
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    {currentAgent && AGENT_CONFIGS.find(a => a.type === currentAgent)?.nameHy}
+                  </>
+                ) : (
+                  <>
+                    <Play className="mr-2 h-4 w-4" />
+                    {t("ai:run_all_agents")}
+                  </>
+                )}
+              </Button>
+            </div>
           </div>
           
           {/* Progress bar */}
