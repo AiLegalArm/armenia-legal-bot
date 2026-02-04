@@ -1045,6 +1045,45 @@ export type Database = {
         }
         Relationships: []
       }
+      telegram_uploads: {
+        Row: {
+          caption: string | null
+          created_at: string
+          file_size: number | null
+          file_type: string | null
+          filename: string
+          id: string
+          original_filename: string
+          storage_path: string
+          telegram_chat_id: string
+          user_id: string
+        }
+        Insert: {
+          caption?: string | null
+          created_at?: string
+          file_size?: number | null
+          file_type?: string | null
+          filename: string
+          id?: string
+          original_filename: string
+          storage_path: string
+          telegram_chat_id: string
+          user_id: string
+        }
+        Update: {
+          caption?: string | null
+          created_at?: string
+          file_size?: number | null
+          file_type?: string | null
+          filename?: string
+          id?: string
+          original_filename?: string
+          storage_path?: string
+          telegram_chat_id?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       user_feedback: {
         Row: {
           analysis_id: string | null
