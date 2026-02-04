@@ -9,6 +9,8 @@ import { CaseForm } from '@/components/cases/CaseForm';
 import { UsageMonitor } from '@/components/UsageMonitor';
 import { TeamStats } from '@/components/team/TeamStats';
 import { LegalChatBot } from '@/components/chat/LegalChatBot';
+import { TelegramUploads } from '@/components/profile/TelegramUploads';
+import { TelegramSettings } from '@/components/profile/TelegramSettings';
 import { Button } from '@/components/ui/button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { useCases, type CaseFilters as CaseFiltersType } from '@/hooks/useCases';
@@ -31,7 +33,8 @@ import {
   MessageCircle,
   FileWarning,
   ExternalLink,
-  FolderArchive
+  FolderArchive,
+  Send
 } from 'lucide-react';
 import { DocumentGeneratorDialog } from '@/components/documents/DocumentGeneratorDialog';
 import { ComplaintWizard } from '@/components/complaints/ComplaintWizard';
@@ -266,6 +269,30 @@ const Dashboard = () => {
               <ExternalLink className="h-4 w-4 sm:mr-2" />
               <span className="text-xs sm:text-sm mt-1 sm:mt-0">E-request</span>
             </Button>
+            {/* Telegram Uploads */}
+            <Sheet>
+              <SheetTrigger asChild>
+                <Button variant="outline" size="sm" className="flex-col sm:flex-row h-auto py-2 sm:py-2 sm:h-9">
+                  <Send className="h-4 w-4 sm:mr-2" />
+                  <span className="text-xs sm:text-sm mt-1 sm:mt-0">Telegram</span>
+                </Button>
+              </SheetTrigger>
+              <SheetContent className="w-full sm:max-w-lg overflow-y-auto">
+                <SheetHeader>
+                  <SheetTitle>{t('common:telegram_files', 'Telegram Files')}</SheetTitle>
+                  <SheetDescription>
+                    {t('common:telegram_files_desc', 'Files sent via Telegram bot')}
+                  </SheetDescription>
+                </SheetHeader>
+                <div className="mt-6 space-y-6">
+                  <TelegramSettings />
+                  <div className="border-t pt-4">
+                    <h4 className="font-medium mb-3">{t('common:uploaded_files', 'Uploaded files')}</h4>
+                    <TelegramUploads />
+                  </div>
+                </div>
+              </SheetContent>
+            </Sheet>
             {/* KB Management - Admin only */}
             {isAdmin && (
               <Button variant="outline" size="sm" onClick={() => navigate('/kb')} className="flex-col sm:flex-row h-auto py-2 sm:py-2 sm:h-9">
