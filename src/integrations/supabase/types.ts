@@ -14,6 +14,196 @@ export type Database = {
   }
   public: {
     Tables: {
+      agent_analysis_runs: {
+        Row: {
+          agent_type: Database["public"]["Enums"]["agent_type"]
+          analysis_result: string | null
+          case_id: string
+          completed_at: string | null
+          created_at: string
+          created_by: string | null
+          error_message: string | null
+          findings: Json | null
+          id: string
+          sources_used: Json | null
+          started_at: string | null
+          status: Database["public"]["Enums"]["agent_run_status"]
+          summary: string | null
+          tokens_used: number | null
+          updated_at: string
+        }
+        Insert: {
+          agent_type: Database["public"]["Enums"]["agent_type"]
+          analysis_result?: string | null
+          case_id: string
+          completed_at?: string | null
+          created_at?: string
+          created_by?: string | null
+          error_message?: string | null
+          findings?: Json | null
+          id?: string
+          sources_used?: Json | null
+          started_at?: string | null
+          status?: Database["public"]["Enums"]["agent_run_status"]
+          summary?: string | null
+          tokens_used?: number | null
+          updated_at?: string
+        }
+        Update: {
+          agent_type?: Database["public"]["Enums"]["agent_type"]
+          analysis_result?: string | null
+          case_id?: string
+          completed_at?: string | null
+          created_at?: string
+          created_by?: string | null
+          error_message?: string | null
+          findings?: Json | null
+          id?: string
+          sources_used?: Json | null
+          started_at?: string | null
+          status?: Database["public"]["Enums"]["agent_run_status"]
+          summary?: string | null
+          tokens_used?: number | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "agent_analysis_runs_case_id_fkey"
+            columns: ["case_id"]
+            isOneToOne: false
+            referencedRelation: "cases"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      agent_findings: {
+        Row: {
+          case_id: string
+          created_at: string
+          description: string
+          evidence_refs: string[] | null
+          finding_type: string
+          id: string
+          legal_basis: string[] | null
+          metadata: Json | null
+          page_references: string[] | null
+          recommendation: string | null
+          run_id: string
+          severity: string | null
+          title: string
+          volume_refs: string[] | null
+        }
+        Insert: {
+          case_id: string
+          created_at?: string
+          description: string
+          evidence_refs?: string[] | null
+          finding_type: string
+          id?: string
+          legal_basis?: string[] | null
+          metadata?: Json | null
+          page_references?: string[] | null
+          recommendation?: string | null
+          run_id: string
+          severity?: string | null
+          title: string
+          volume_refs?: string[] | null
+        }
+        Update: {
+          case_id?: string
+          created_at?: string
+          description?: string
+          evidence_refs?: string[] | null
+          finding_type?: string
+          id?: string
+          legal_basis?: string[] | null
+          metadata?: Json | null
+          page_references?: string[] | null
+          recommendation?: string | null
+          run_id?: string
+          severity?: string | null
+          title?: string
+          volume_refs?: string[] | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "agent_findings_case_id_fkey"
+            columns: ["case_id"]
+            isOneToOne: false
+            referencedRelation: "cases"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "agent_findings_run_id_fkey"
+            columns: ["run_id"]
+            isOneToOne: false
+            referencedRelation: "agent_analysis_runs"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      aggregated_reports: {
+        Row: {
+          agent_runs: string[] | null
+          case_id: string
+          created_by: string | null
+          defense_strategy: string | null
+          evidence_summary: string | null
+          executive_summary: string | null
+          full_report: string | null
+          generated_at: string
+          id: string
+          prosecution_weaknesses: string | null
+          recommendations: string | null
+          report_type: string
+          statistics: Json | null
+          title: string
+          violations_summary: string | null
+        }
+        Insert: {
+          agent_runs?: string[] | null
+          case_id: string
+          created_by?: string | null
+          defense_strategy?: string | null
+          evidence_summary?: string | null
+          executive_summary?: string | null
+          full_report?: string | null
+          generated_at?: string
+          id?: string
+          prosecution_weaknesses?: string | null
+          recommendations?: string | null
+          report_type?: string
+          statistics?: Json | null
+          title: string
+          violations_summary?: string | null
+        }
+        Update: {
+          agent_runs?: string[] | null
+          case_id?: string
+          created_by?: string | null
+          defense_strategy?: string | null
+          evidence_summary?: string | null
+          executive_summary?: string | null
+          full_report?: string | null
+          generated_at?: string
+          id?: string
+          prosecution_weaknesses?: string | null
+          recommendations?: string | null
+          report_type?: string
+          statistics?: Json | null
+          title?: string
+          violations_summary?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "aggregated_reports_case_id_fkey"
+            columns: ["case_id"]
+            isOneToOne: false
+            referencedRelation: "cases"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       ai_analysis: {
         Row: {
           case_id: string
@@ -354,6 +544,63 @@ export type Database = {
           },
         ]
       }
+      case_volumes: {
+        Row: {
+          case_id: string
+          created_at: string
+          description: string | null
+          file_id: string | null
+          id: string
+          ocr_completed: boolean | null
+          ocr_text: string | null
+          page_count: number | null
+          title: string
+          updated_at: string
+          volume_number: number
+        }
+        Insert: {
+          case_id: string
+          created_at?: string
+          description?: string | null
+          file_id?: string | null
+          id?: string
+          ocr_completed?: boolean | null
+          ocr_text?: string | null
+          page_count?: number | null
+          title: string
+          updated_at?: string
+          volume_number: number
+        }
+        Update: {
+          case_id?: string
+          created_at?: string
+          description?: string | null
+          file_id?: string | null
+          id?: string
+          ocr_completed?: boolean | null
+          ocr_text?: string | null
+          page_count?: number | null
+          title?: string
+          updated_at?: string
+          volume_number?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "case_volumes_case_id_fkey"
+            columns: ["case_id"]
+            isOneToOne: false
+            referencedRelation: "cases"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "case_volumes_file_id_fkey"
+            columns: ["file_id"]
+            isOneToOne: false
+            referencedRelation: "case_files"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       cases: {
         Row: {
           case_number: string
@@ -545,6 +792,102 @@ export type Database = {
             columns: ["file_id"]
             isOneToOne: false
             referencedRelation: "case_files"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      evidence_registry: {
+        Row: {
+          admissibility_notes: string | null
+          admissibility_status:
+            | Database["public"]["Enums"]["evidence_status"]
+            | null
+          ai_analysis: string | null
+          case_id: string
+          created_at: string
+          created_by: string | null
+          date_obtained: string | null
+          defense_arguments: string | null
+          description: string | null
+          evidence_number: number
+          evidence_type: Database["public"]["Enums"]["evidence_type"]
+          id: string
+          metadata: Json | null
+          obtained_by: string | null
+          page_reference: string | null
+          prosecution_position: string | null
+          related_articles: string[] | null
+          source_document: string | null
+          title: string
+          updated_at: string
+          violations_found: string[] | null
+          volume_id: string | null
+        }
+        Insert: {
+          admissibility_notes?: string | null
+          admissibility_status?:
+            | Database["public"]["Enums"]["evidence_status"]
+            | null
+          ai_analysis?: string | null
+          case_id: string
+          created_at?: string
+          created_by?: string | null
+          date_obtained?: string | null
+          defense_arguments?: string | null
+          description?: string | null
+          evidence_number: number
+          evidence_type: Database["public"]["Enums"]["evidence_type"]
+          id?: string
+          metadata?: Json | null
+          obtained_by?: string | null
+          page_reference?: string | null
+          prosecution_position?: string | null
+          related_articles?: string[] | null
+          source_document?: string | null
+          title: string
+          updated_at?: string
+          violations_found?: string[] | null
+          volume_id?: string | null
+        }
+        Update: {
+          admissibility_notes?: string | null
+          admissibility_status?:
+            | Database["public"]["Enums"]["evidence_status"]
+            | null
+          ai_analysis?: string | null
+          case_id?: string
+          created_at?: string
+          created_by?: string | null
+          date_obtained?: string | null
+          defense_arguments?: string | null
+          description?: string | null
+          evidence_number?: number
+          evidence_type?: Database["public"]["Enums"]["evidence_type"]
+          id?: string
+          metadata?: Json | null
+          obtained_by?: string | null
+          page_reference?: string | null
+          prosecution_position?: string | null
+          related_articles?: string[] | null
+          source_document?: string | null
+          title?: string
+          updated_at?: string
+          violations_found?: string[] | null
+          volume_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "evidence_registry_case_id_fkey"
+            columns: ["case_id"]
+            isOneToOne: false
+            referencedRelation: "cases"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "evidence_registry_volume_id_fkey"
+            columns: ["volume_id"]
+            isOneToOne: false
+            referencedRelation: "case_volumes"
             referencedColumns: ["id"]
           },
         ]
@@ -1276,6 +1619,17 @@ export type Database = {
       }
     }
     Enums: {
+      agent_run_status: "pending" | "running" | "completed" | "failed"
+      agent_type:
+        | "evidence_collector"
+        | "evidence_admissibility"
+        | "charge_qualification"
+        | "procedural_violations"
+        | "substantive_violations"
+        | "defense_strategy"
+        | "prosecution_weaknesses"
+        | "rights_violations"
+        | "aggregator"
       app_role: "admin" | "lawyer" | "client" | "auditor"
       case_outcome:
         | "granted"
@@ -1301,6 +1655,19 @@ export type Database = {
         | "international"
         | "pre_trial"
         | "contract"
+      evidence_status:
+        | "admissible"
+        | "inadmissible"
+        | "questionable"
+        | "pending_review"
+      evidence_type:
+        | "document"
+        | "testimony"
+        | "expert_conclusion"
+        | "physical"
+        | "protocol"
+        | "audio_video"
+        | "other"
       kb_category:
         | "constitution"
         | "civil_code"
@@ -1479,6 +1846,18 @@ export type CompositeTypes<
 export const Constants = {
   public: {
     Enums: {
+      agent_run_status: ["pending", "running", "completed", "failed"],
+      agent_type: [
+        "evidence_collector",
+        "evidence_admissibility",
+        "charge_qualification",
+        "procedural_violations",
+        "substantive_violations",
+        "defense_strategy",
+        "prosecution_weaknesses",
+        "rights_violations",
+        "aggregator",
+      ],
       app_role: ["admin", "lawyer", "client", "auditor"],
       case_outcome: [
         "granted",
@@ -1506,6 +1885,21 @@ export const Constants = {
         "international",
         "pre_trial",
         "contract",
+      ],
+      evidence_status: [
+        "admissible",
+        "inadmissible",
+        "questionable",
+        "pending_review",
+      ],
+      evidence_type: [
+        "document",
+        "testimony",
+        "expert_conclusion",
+        "physical",
+        "protocol",
+        "audio_video",
+        "other",
       ],
       kb_category: [
         "constitution",

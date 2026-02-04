@@ -1,0 +1,438 @@
+import { useState, useCallback } from "react";
+import { supabase } from "@/integrations/supabase/client";
+import { toast } from "sonner";
+import { useTranslation } from "react-i18next";
+import type { Json } from "@/integrations/supabase/types";
+import type { 
+  AgentType, 
+  AgentAnalysisRun, 
+  EvidenceItem, 
+  CaseVolume,
+  AggregatedReport,
+  AgentFinding
+} from "@/components/agents/types";
+
+// Helper to safely cast DB results
+function castToAgentRuns(data: unknown[]): AgentAnalysisRun[] {
+  return data as unknown as AgentAnalysisRun[];
+}
+
+function castToEvidenceItems(data: unknown[]): EvidenceItem[] {
+  return data as unknown as EvidenceItem[];
+}
+
+function castToVolumes(data: unknown[]): CaseVolume[] {
+  return data as unknown as CaseVolume[];
+}
+
+interface UseMultiAgentAnalysisReturn {
+  isLoading: boolean;
+  currentAgent: AgentType | null;
+  runs: AgentAnalysisRun[];
+  evidenceRegistry: EvidenceItem[];
+  volumes: CaseVolume[];
+  aggregatedReport: AggregatedReport | null;
+  
+  // Volume management
+  loadVolumes: (caseId: string) => Promise<void>;
+  createVolume: (caseId: string, data: Partial<CaseVolume>) => Promise<CaseVolume | null>;
+  updateVolume: (volumeId: string, data: Partial<CaseVolume>) => Promise<void>;
+  deleteVolume: (volumeId: string) => Promise<void>;
+  
+  // Agent execution
+  runAgent: (caseId: string, agentType: AgentType) => Promise<AgentAnalysisRun | null>;
+  runAllAgents: (caseId: string) => Promise<void>;
+  loadRuns: (caseId: string) => Promise<void>;
+  
+  // Evidence registry
+  loadEvidenceRegistry: (caseId: string) => Promise<void>;
+  updateEvidenceItem: (itemId: string, data: Partial<EvidenceItem>) => Promise<void>;
+  
+  // Aggregated report
+  generateAggregatedReport: (caseId: string) => Promise<AggregatedReport | null>;
+  loadAggregatedReport: (caseId: string) => Promise<void>;
+}
+
+export function useMultiAgentAnalysis(): UseMultiAgentAnalysisReturn {
+  const { t } = useTranslation(["ai", "cases"]);
+  const [isLoading, setIsLoading] = useState(false);
+  const [currentAgent, setCurrentAgent] = useState<AgentType | null>(null);
+  const [runs, setRuns] = useState<AgentAnalysisRun[]>([]);
+  const [evidenceRegistry, setEvidenceRegistry] = useState<EvidenceItem[]>([]);
+  const [volumes, setVolumes] = useState<CaseVolume[]>([]);
+  const [aggregatedReport, setAggregatedReport] = useState<AggregatedReport | null>(null);
+
+  // Load volumes for a case
+  const loadVolumes = useCallback(async (caseId: string) => {
+    const { data, error } = await supabase
+      .from("case_volumes")
+      .select("*")
+      .eq("case_id", caseId)
+      .order("volume_number");
+    
+    if (error) {
+      console.error("Error loading volumes:", error);
+      toast.error(t("cases:error_loading_volumes"));
+      return;
+    }
+    
+    setVolumes(castToVolumes(data || []));
+  }, [t]);
+
+  // Create a new volume
+  const createVolume = useCallback(async (caseId: string, data: Partial<CaseVolume>): Promise<CaseVolume | null> => {
+    // Get next volume number
+    const maxVolume = volumes.reduce((max, v) => Math.max(max, v.volume_number), 0);
+    
+    const { data: newVolume, error } = await supabase
+      .from("case_volumes")
+      .insert({
+        case_id: caseId,
+        volume_number: maxVolume + 1,
+        title: data.title || `\u054f\u0578\u0574 ${maxVolume + 1}`,
+        description: data.description,
+        file_id: data.file_id,
+        page_count: data.page_count
+      })
+      .select()
+      .single();
+    
+    if (error) {
+      console.error("Error creating volume:", error);
+      toast.error(t("cases:error_creating_volume"));
+      return null;
+    }
+    
+    setVolumes(prev => [...prev, newVolume as CaseVolume]);
+    toast.success(t("cases:volume_created"));
+    return newVolume as CaseVolume;
+  }, [volumes, t]);
+
+  // Update volume
+  const updateVolume = useCallback(async (volumeId: string, data: Partial<CaseVolume>) => {
+    const { error } = await supabase
+      .from("case_volumes")
+      .update(data)
+      .eq("id", volumeId);
+    
+    if (error) {
+      console.error("Error updating volume:", error);
+      toast.error(t("cases:error_updating_volume"));
+      return;
+    }
+    
+    setVolumes(prev => prev.map(v => v.id === volumeId ? { ...v, ...data } : v));
+  }, [t]);
+
+  // Delete volume
+  const deleteVolume = useCallback(async (volumeId: string) => {
+    const { error } = await supabase
+      .from("case_volumes")
+      .delete()
+      .eq("id", volumeId);
+    
+    if (error) {
+      console.error("Error deleting volume:", error);
+      toast.error(t("cases:error_deleting_volume"));
+      return;
+    }
+    
+    setVolumes(prev => prev.filter(v => v.id !== volumeId));
+    toast.success(t("cases:volume_deleted"));
+  }, [t]);
+
+  // Load agent runs
+  const loadRuns = useCallback(async (caseId: string) => {
+    const { data, error } = await supabase
+      .from("agent_analysis_runs")
+      .select("*")
+      .eq("case_id", caseId)
+      .order("created_at", { ascending: false });
+    
+    if (error) {
+      console.error("Error loading runs:", error);
+      return;
+    }
+    
+    setRuns(castToAgentRuns(data || []));
+  }, []);
+
+  // Run a single agent
+  const runAgent = useCallback(async (caseId: string, agentType: AgentType): Promise<AgentAnalysisRun | null> => {
+    setIsLoading(true);
+    setCurrentAgent(agentType);
+    
+    try {
+      // Create run record
+      const { data: run, error: createError } = await supabase
+        .from("agent_analysis_runs")
+        .insert({
+          case_id: caseId,
+          agent_type: agentType,
+          status: "running",
+          started_at: new Date().toISOString()
+        })
+        .select()
+        .single();
+      
+      if (createError) {
+        throw createError;
+      }
+      
+      // Call the edge function
+      const { data, error } = await supabase.functions.invoke("multi-agent-analyze", {
+        body: {
+          caseId,
+          agentType,
+          runId: run.id
+        }
+      });
+      
+      if (error) {
+        // Update run with error
+        await supabase
+          .from("agent_analysis_runs")
+          .update({
+            status: "failed",
+            error_message: error.message,
+            completed_at: new Date().toISOString()
+          })
+          .eq("id", run.id);
+        
+        throw error;
+      }
+      
+      // Update run with results
+      const updatedRun: AgentAnalysisRun = {
+        ...run,
+        status: "completed",
+        completed_at: new Date().toISOString(),
+        analysis_result: data.analysis,
+        summary: data.summary,
+        findings: data.findings || [],
+        sources_used: data.sources || [],
+        tokens_used: data.tokensUsed
+      };
+      
+      await supabase
+        .from("agent_analysis_runs")
+        .update({
+          status: "completed",
+          completed_at: updatedRun.completed_at,
+          analysis_result: updatedRun.analysis_result,
+          summary: updatedRun.summary,
+          findings: (updatedRun.findings || []) as unknown as Json,
+          sources_used: (updatedRun.sources_used || []) as unknown as Json,
+          tokens_used: updatedRun.tokens_used
+        })
+        .eq("id", run.id);
+      
+      // Save findings to separate table
+      if (data.findings?.length > 0) {
+        const findingsToInsert = data.findings.map((f: AgentFinding) => ({
+          run_id: run.id,
+          case_id: caseId,
+          finding_type: f.finding_type,
+          severity: f.severity,
+          title: f.title,
+          description: f.description,
+          legal_basis: f.legal_basis || [],
+          evidence_refs: f.evidence_refs || [],
+          page_references: f.page_references || [],
+          recommendation: f.recommendation || null
+        }));
+        
+        await supabase.from("agent_findings").insert(findingsToInsert);
+      }
+      
+      // If evidence collector, save to evidence registry
+      if (agentType === "evidence_collector" && data.evidenceItems?.length > 0) {
+        const evidenceToInsert = data.evidenceItems.map((e: Partial<EvidenceItem>, idx: number) => ({
+          case_id: caseId,
+          evidence_number: idx + 1,
+          evidence_type: e.evidence_type || "document",
+          title: e.title,
+          description: e.description,
+          page_reference: e.page_reference,
+          source_document: e.source_document,
+          admissibility_status: "pending_review",
+          ai_analysis: e.ai_analysis
+        }));
+        
+        await supabase.from("evidence_registry").insert(evidenceToInsert);
+      }
+      
+      setRuns(prev => [updatedRun as AgentAnalysisRun, ...prev.filter(r => r.id !== run.id)]);
+      toast.success(t("ai:analysis_complete"));
+      
+      return updatedRun as AgentAnalysisRun;
+      
+    } catch (error) {
+      console.error("Agent run error:", error);
+      toast.error(t("ai:analysis_failed"));
+      return null;
+    } finally {
+      setIsLoading(false);
+      setCurrentAgent(null);
+    }
+  }, [t]);
+
+  // Run all agents sequentially
+  const runAllAgents = useCallback(async (caseId: string) => {
+    const agentOrder: AgentType[] = [
+      "evidence_collector",
+      "evidence_admissibility",
+      "charge_qualification",
+      "procedural_violations",
+      "substantive_violations",
+      "defense_strategy",
+      "prosecution_weaknesses",
+      "rights_violations",
+      "aggregator"
+    ];
+    
+    setIsLoading(true);
+    
+    try {
+      for (const agentType of agentOrder) {
+        const result = await runAgent(caseId, agentType);
+        if (!result) {
+          toast.error(`${t("ai:analysis_failed")}: ${agentType}`);
+          break;
+        }
+      }
+      
+      toast.success(t("ai:all_agents_complete"));
+    } finally {
+      setIsLoading(false);
+    }
+  }, [runAgent, t]);
+
+  // Load evidence registry
+  const loadEvidenceRegistry = useCallback(async (caseId: string) => {
+    const { data, error } = await supabase
+      .from("evidence_registry")
+      .select("*")
+      .eq("case_id", caseId)
+      .order("evidence_number");
+    
+    if (error) {
+      console.error("Error loading evidence:", error);
+      return;
+    }
+    
+    setEvidenceRegistry(castToEvidenceItems(data || []));
+  }, []);
+
+  // Update evidence item
+  const updateEvidenceItem = useCallback(async (itemId: string, data: Partial<EvidenceItem>) => {
+    // Convert to DB-safe format
+    const dbData: Record<string, unknown> = { ...data };
+    if (data.metadata) {
+      dbData.metadata = data.metadata as unknown as Json;
+    }
+    
+    const { error } = await supabase
+      .from("evidence_registry")
+      .update(dbData)
+      .eq("id", itemId);
+    
+    if (error) {
+      console.error("Error updating evidence:", error);
+      toast.error(t("cases:error_updating_evidence"));
+      return;
+    }
+    
+    setEvidenceRegistry(prev => prev.map(e => e.id === itemId ? { ...e, ...data } : e));
+    toast.success(t("cases:evidence_updated"));
+  }, [t]);
+
+  // Generate aggregated report
+  const generateAggregatedReport = useCallback(async (caseId: string): Promise<AggregatedReport | null> => {
+    setIsLoading(true);
+    
+    try {
+      const { data, error } = await supabase.functions.invoke("multi-agent-analyze", {
+        body: {
+          caseId,
+          agentType: "aggregator",
+          generateReport: true
+        }
+      });
+      
+      if (error) throw error;
+      
+      // Save report
+      const { data: report, error: saveError } = await supabase
+        .from("aggregated_reports")
+        .insert({
+          case_id: caseId,
+          report_type: "full_analysis",
+          title: data.title,
+          executive_summary: data.executiveSummary,
+          evidence_summary: data.evidenceSummary,
+          violations_summary: data.violationsSummary,
+          defense_strategy: data.defenseStrategy,
+          prosecution_weaknesses: data.prosecutionWeaknesses,
+          recommendations: data.recommendations,
+          full_report: data.fullReport,
+          agent_runs: runs.map(r => r.id),
+          statistics: data.statistics
+        })
+        .select()
+        .single();
+      
+      if (saveError) throw saveError;
+      
+      setAggregatedReport(report as AggregatedReport);
+      toast.success(t("ai:report_generated"));
+      
+      return report as AggregatedReport;
+      
+    } catch (error) {
+      console.error("Report generation error:", error);
+      toast.error(t("ai:report_failed"));
+      return null;
+    } finally {
+      setIsLoading(false);
+    }
+  }, [runs, t]);
+
+  // Load aggregated report
+  const loadAggregatedReport = useCallback(async (caseId: string) => {
+    const { data, error } = await supabase
+      .from("aggregated_reports")
+      .select("*")
+      .eq("case_id", caseId)
+      .order("generated_at", { ascending: false })
+      .limit(1)
+      .single();
+    
+    if (error && error.code !== "PGRST116") {
+      console.error("Error loading report:", error);
+      return;
+    }
+    
+    setAggregatedReport(data as AggregatedReport | null);
+  }, []);
+
+  return {
+    isLoading,
+    currentAgent,
+    runs,
+    evidenceRegistry,
+    volumes,
+    aggregatedReport,
+    loadVolumes,
+    createVolume,
+    updateVolume,
+    deleteVolume,
+    runAgent,
+    runAllAgents,
+    loadRuns,
+    loadEvidenceRegistry,
+    updateEvidenceItem,
+    generateAggregatedReport,
+    loadAggregatedReport
+  };
+}
