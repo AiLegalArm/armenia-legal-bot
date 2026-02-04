@@ -896,7 +896,9 @@ export type Database = {
           encrypted_ssn: string | null
           full_name: string | null
           id: string
+          notification_preferences: Json | null
           phone: string | null
+          telegram_chat_id: string | null
           updated_at: string
           username: string | null
         }
@@ -910,7 +912,9 @@ export type Database = {
           encrypted_ssn?: string | null
           full_name?: string | null
           id: string
+          notification_preferences?: Json | null
           phone?: string | null
+          telegram_chat_id?: string | null
           updated_at?: string
           username?: string | null
         }
@@ -924,7 +928,9 @@ export type Database = {
           encrypted_ssn?: string | null
           full_name?: string | null
           id?: string
+          notification_preferences?: Json | null
           phone?: string | null
+          telegram_chat_id?: string | null
           updated_at?: string
           username?: string | null
         }
