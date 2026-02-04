@@ -119,5 +119,22 @@
   "no_content": "No content",
   "all_agents_complete": "All agents complete",
   "report_generated": "Report generated",
-  "report_failed": "Report generation failed"
+  "report_failed": "Report generation failed",
+  "available_case_files": "Available case files",
+  "click_to_create_volume": "Click on a file to create a volume",
+  "link_file": "Link file",
+  "select_file_optional": "Select file (optional)",
+  "no_file": "No file",
+  "generate_complaint_from_analysis": "Generate complaint from analysis",
+  "complaint_from_analysis_description": "Generate a complaint based on agent findings and evidence registry",
+  "appeal_based_on_analysis": "Appeal based on multi-agent analysis",
+  "complaint_generated": "Complaint generated successfully",
+  "complaint_generation_failed": "Complaint generation failed",
+  "generating_complaint": "Generating...",
+  "generate_complaint": "Generate complaint",
+  "aggregated_report_available": "Aggregated report available",
+  "inadmissible": "inadmissible",
+  "regenerate": "Regenerate",
+  "save_to_documents": "Save to documents",
+  "document_saved": "Document saved"
 }

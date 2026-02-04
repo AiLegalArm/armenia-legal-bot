@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useTranslation } from "react-i18next";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -8,8 +8,19 @@ import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter } from "@/components/ui/dialog";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
 import { Label } from "@/components/ui/label";
-import { Plus, FileText, Trash2, Edit2, CheckCircle, Clock } from "lucide-react";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Plus, FileText, Trash2, Edit2, CheckCircle, Clock, Link2, FileArchive } from "lucide-react";
+import { supabase } from "@/integrations/supabase/client";
 import type { CaseVolume } from "./types";
+
+interface CaseFile {
+  id: string;
+  filename: string;
+  original_filename: string;
+  file_type: string | null;
+  file_size: number | null;
+  storage_path: string;
+}
 
 interface VolumeManagerProps {
   caseId: string;
@@ -29,21 +40,55 @@ export function VolumeManager({
   const { t } = useTranslation(["ai", "cases"]);
   const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
   const [editingVolume, setEditingVolume] = useState<CaseVolume | null>(null);
+  const [caseFiles, setCaseFiles] = useState<CaseFile[]>([]);
   const [formData, setFormData] = useState({
     title: "",
     description: "",
-    page_count: ""
+    page_count: "",
+    file_id: ""
   });
+
+  // Load case files
+  useEffect(() => {
+    const loadCaseFiles = async () => {
+      const { data, error } = await supabase
+        .from("case_files")
+        .select("id, filename, original_filename, file_type, file_size, storage_path")
+        .eq("case_id", caseId)
+        .is("deleted_at", null)
+        .order("created_at", { ascending: false });
+      
+      if (!error && data) {
+        setCaseFiles(data);
+      }
+    };
+    
+    loadCaseFiles();
+  }, [caseId]);
+
+  // Get files not yet linked to any volume
+  const getAvailableFiles = () => {
+    const linkedFileIds = volumes.map(v => v.file_id).filter(Boolean);
+    return caseFiles.filter(f => !linkedFileIds.includes(f.id));
+  };
+
+  // Get file name by ID
+  const getFileName = (fileId: string | null) => {
+    if (!fileId) return null;
+    const file = caseFiles.find(f => f.id === fileId);
+    return file?.original_filename || null;
+  };
 
   const handleCreateVolume = async () => {
     const result = await onCreateVolume({
       title: formData.title,
       description: formData.description,
-      page_count: formData.page_count ? parseInt(formData.page_count) : undefined
+      page_count: formData.page_count ? parseInt(formData.page_count) : undefined,
+      file_id: formData.file_id || undefined
     });
     
     if (result) {
-      setFormData({ title: "", description: "", page_count: "" });
+      setFormData({ title: "", description: "", page_count: "", file_id: "" });
       setIsAddDialogOpen(false);
     }
   };
@@ -54,11 +99,12 @@ export function VolumeManager({
     await onUpdateVolume(editingVolume.id, {
       title: formData.title,
       description: formData.description,
-      page_count: formData.page_count ? parseInt(formData.page_count) : undefined
+      page_count: formData.page_count ? parseInt(formData.page_count) : undefined,
+      file_id: formData.file_id || undefined
     });
     
     setEditingVolume(null);
-    setFormData({ title: "", description: "", page_count: "" });
+    setFormData({ title: "", description: "", page_count: "", file_id: "" });
   };
 
   const openEditDialog = (volume: CaseVolume) => {
@@ -66,12 +112,66 @@ export function VolumeManager({
     setFormData({
       title: volume.title,
       description: volume.description || "",
-      page_count: volume.page_count?.toString() || ""
+      page_count: volume.page_count?.toString() || "",
+      file_id: volume.file_id || ""
     });
   };
 
+  const formatFileSize = (bytes: number | null) => {
+    if (!bytes) return "";
+    const kb = bytes / 1024;
+    if (kb < 1024) return `${kb.toFixed(1)} KB`;
+    return `${(kb / 1024).toFixed(1)} MB`;
+  };
+
+  const availableFiles = getAvailableFiles();
+
   return (
     <div className="space-y-4">
+      {/* Available Case Files */}
+      {availableFiles.length > 0 && (
+        <Card className="border-blue-200 bg-blue-50/50 dark:bg-blue-950/20 dark:border-blue-800">
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm flex items-center gap-2">
+              <FileArchive className="h-4 w-4" />
+              {t("ai:available_case_files")}
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="flex flex-wrap gap-2">
+              {availableFiles.map((file) => (
+                <Badge 
+                  key={file.id} 
+                  variant="outline" 
+                  className="cursor-pointer hover:bg-primary/10 py-1.5"
+                  onClick={() => {
+                    setFormData({
+                      title: file.original_filename.replace(/\.[^.]+$/, ""),
+                      description: "",
+                      page_count: "",
+                      file_id: file.id
+                    });
+                    setIsAddDialogOpen(true);
+                  }}
+                >
+                  <FileText className="mr-1 h-3 w-3" />
+                  {file.original_filename}
+                  {file.file_size && (
+                    <span className="ml-1 text-xs text-muted-foreground">
+                      ({formatFileSize(file.file_size)})
+                    </span>
+                  )}
+                  <Plus className="ml-1 h-3 w-3" />
+                </Badge>
+              ))}
+            </div>
+            <p className="text-xs text-muted-foreground mt-2">
+              {t("ai:click_to_create_volume")}
+            </p>
+          </CardContent>
+        </Card>
+      )}
+
       {/* Header with Add button */}
       <div className="flex items-center justify-between">
         <div>
@@ -93,6 +193,27 @@ export function VolumeManager({
               <DialogTitle>{t("ai:add_volume")}</DialogTitle>
             </DialogHeader>
             <div className="space-y-4 py-4">
+              {/* File Selection */}
+              <div className="space-y-2">
+                <Label htmlFor="file">{t("ai:link_file")}</Label>
+                <Select 
+                  value={formData.file_id} 
+                  onValueChange={(value) => setFormData(prev => ({ ...prev, file_id: value }))}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder={t("ai:select_file_optional")} />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="">{t("ai:no_file")}</SelectItem>
+                    {caseFiles.map((file) => (
+                      <SelectItem key={file.id} value={file.id}>
+                        {file.original_filename}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              
               <div className="space-y-2">
                 <Label htmlFor="title">{t("ai:volume_title")}</Label>
                 <Input
@@ -208,6 +329,15 @@ export function VolumeManager({
                     {volume.description}
                   </p>
                 )}
+                
+                {/* Linked file */}
+                {volume.file_id && (
+                  <div className="flex items-center gap-1 text-sm text-blue-600 dark:text-blue-400 mb-2">
+                    <Link2 className="h-3 w-3" />
+                    <span className="truncate">{getFileName(volume.file_id)}</span>
+                  </div>
+                )}
+                
                 <div className="flex items-center gap-2 flex-wrap">
                   {volume.page_count && (
                     <Badge variant="secondary">
@@ -241,6 +371,27 @@ export function VolumeManager({
             <DialogTitle>{t("ai:edit_volume")}</DialogTitle>
           </DialogHeader>
           <div className="space-y-4 py-4">
+            {/* File Selection */}
+            <div className="space-y-2">
+              <Label htmlFor="edit-file">{t("ai:link_file")}</Label>
+              <Select 
+                value={formData.file_id} 
+                onValueChange={(value) => setFormData(prev => ({ ...prev, file_id: value }))}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder={t("ai:select_file_optional")} />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="">{t("ai:no_file")}</SelectItem>
+                  {caseFiles.map((file) => (
+                    <SelectItem key={file.id} value={file.id}>
+                      {file.original_filename}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            
             <div className="space-y-2">
               <Label htmlFor="edit-title">{t("ai:volume_title")}</Label>
               <Input

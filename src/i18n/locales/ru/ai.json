@@ -119,5 +119,22 @@
   "no_content": "Нет содержимого",
   "all_agents_complete": "Все агенты завершены",
   "report_generated": "Отчёт создан",
-  "report_failed": "Ошибка создания отчёта"
+  "report_failed": "Ошибка создания отчёта",
+  "available_case_files": "Доступные файлы дела",
+  "click_to_create_volume": "Нажмите на файл, чтобы создать том",
+  "link_file": "Связать с файлом",
+  "select_file_optional": "Выберите файл (необязательно)",
+  "no_file": "Без файла",
+  "generate_complaint_from_analysis": "Создать жалобу на основе анализа",
+  "complaint_from_analysis_description": "Создать жалобу на основе выводов агентов и реестра доказательств",
+  "appeal_based_on_analysis": "Жалоба на основе мультиагентного анализа",
+  "complaint_generated": "Жалоба успешно создана",
+  "complaint_generation_failed": "Ошибка создания жалобы",
+  "generating_complaint": "Генерация...",
+  "generate_complaint": "Создать жалобу",
+  "aggregated_report_available": "Агрегированный отчёт доступен",
+  "inadmissible": "недопустимых",
+  "regenerate": "Перегенерировать",
+  "save_to_documents": "Сохранить в документы",
+  "document_saved": "Документ сохранён"
 }
