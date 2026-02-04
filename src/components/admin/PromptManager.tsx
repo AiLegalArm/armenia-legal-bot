@@ -314,40 +314,154 @@ export const PromptManager = () => {
   // Parse TypeScript file to extract prompts array
   const parseTsFile = (content: string): any[] | null => {
     try {
-      // Try to find export const ... = [...] or export default [...]
-      const arrayMatch = content.match(/export\s+(?:const\s+\w+\s*=|default)\s*\[([\s\S]*?)\];?\s*(?:export|$)/);
-      if (!arrayMatch) {
-        // Try to find array assigned to variable
-        const varMatch = content.match(/(?:const|let|var)\s+\w+\s*(?::\s*\w+(?:<[^>]+>)?(?:\[\])?)?\s*=\s*\[([\s\S]*?)\];/);
-        if (!varMatch) return null;
-        return evalTsArray(varMatch[1]);
+      // Remove comments first
+      let cleaned = content
+        .replace(/\/\/[^\n]*/g, '')
+        .replace(/\/\*[\s\S]*?\*\//g, '');
+      
+      // Find the start of the array (after "= [")
+      const arrayStartMatch = cleaned.match(/(?:export\s+)?(?:const|let|var)\s+\w+\s*(?::\s*\w+(?:<[^>]+>)?(?:\[\])?)?\s*=\s*\[/);
+      if (!arrayStartMatch) return null;
+      
+      const startIndex = cleaned.indexOf(arrayStartMatch[0]) + arrayStartMatch[0].length;
+      
+      // Find matching closing bracket
+      let depth = 1;
+      let endIndex = startIndex;
+      let inString = false;
+      let stringChar = '';
+      let inTemplateLiteral = false;
+      
+      for (let i = startIndex; i < cleaned.length && depth > 0; i++) {
+        const char = cleaned[i];
+        const prevChar = i > 0 ? cleaned[i - 1] : '';
+        
+        if (inTemplateLiteral) {
+          if (char === '`' && prevChar !== '\\') {
+            inTemplateLiteral = false;
+          }
+          continue;
+        }
+        
+        if (inString) {
+          if (char === stringChar && prevChar !== '\\') {
+            inString = false;
+          }
+          continue;
+        }
+        
+        if (char === '`') {
+          inTemplateLiteral = true;
+          continue;
+        }
+        
+        if (char === '"' || char === "'") {
+          inString = true;
+          stringChar = char;
+          continue;
+        }
+        
+        if (char === '[') depth++;
+        if (char === ']') depth--;
+        
+        endIndex = i;
       }
-      return evalTsArray(arrayMatch[1]);
-    } catch {
+      
+      const arrayContent = cleaned.substring(startIndex, endIndex);
+      return parseArrayContent(arrayContent);
+    } catch (error) {
+      console.error('parseTsFile error:', error);
       return null;
     }
   };
 
-  // Safely evaluate TS array content
-  const evalTsArray = (arrayContent: string): any[] => {
-    // Clean up TypeScript-specific syntax
-    let cleaned = arrayContent
-      // Remove type annotations like `: PromptType`
-      .replace(/:\s*\w+(?:<[^>]+>)?(?:\[\])?(?=\s*[,}=])/g, '')
-      // Convert single quotes to double for JSON
-      .replace(/'/g, '"')
-      // Handle template literals (basic)
-      .replace(/`([^`]*)`/g, (_, content) => JSON.stringify(content))
-      // Remove trailing commas before ] or }
-      .replace(/,(\s*[}\]])/g, '$1')
-      // Remove comments
-      .replace(/\/\/[^\n]*/g, '')
-      .replace(/\/\*[\s\S]*?\*\//g, '');
+  // Parse array content by extracting objects
+  const parseArrayContent = (content: string): any[] => {
+    const results: any[] = [];
+    let depth = 0;
+    let objectStart = -1;
+    let inString = false;
+    let stringChar = '';
+    let inTemplateLiteral = false;
     
-    // Wrap in array brackets if needed
-    cleaned = `[${cleaned}]`;
+    for (let i = 0; i < content.length; i++) {
+      const char = content[i];
+      const prevChar = i > 0 ? content[i - 1] : '';
+      
+      if (inTemplateLiteral) {
+        if (char === '`' && prevChar !== '\\') {
+          inTemplateLiteral = false;
+        }
+        continue;
+      }
+      
+      if (inString) {
+        if (char === stringChar && prevChar !== '\\') {
+          inString = false;
+        }
+        continue;
+      }
+      
+      if (char === '`') {
+        inTemplateLiteral = true;
+        continue;
+      }
+      
+      if (char === '"' || char === "'") {
+        inString = true;
+        stringChar = char;
+        continue;
+      }
+      
+      if (char === '{') {
+        if (depth === 0) objectStart = i;
+        depth++;
+      }
+      
+      if (char === '}') {
+        depth--;
+        if (depth === 0 && objectStart >= 0) {
+          const objectStr = content.substring(objectStart, i + 1);
+          const parsed = parseObjectString(objectStr);
+          if (parsed) results.push(parsed);
+          objectStart = -1;
+        }
+      }
+    }
     
-    return JSON.parse(cleaned);
+    return results;
+  };
+
+  // Parse a single object string
+  const parseObjectString = (objStr: string): any | null => {
+    try {
+      // Extract key-value pairs manually
+      const result: any = {};
+      
+      // Match key: value patterns
+      const keyValueRegex = /(\w+)\s*:\s*(?:`([\s\S]*?)`|"([^"\\]*(?:\\.[^"\\]*)*)"|'([^'\\]*(?:\\.[^'\\]*)*)'|([^,}\n]+))/g;
+      
+      let match;
+      while ((match = keyValueRegex.exec(objStr)) !== null) {
+        const key = match[1];
+        // Template literal, double quote, single quote, or unquoted value
+        let value = match[2] ?? match[3] ?? match[4] ?? match[5]?.trim();
+        
+        if (value === 'null') value = null;
+        else if (value === 'true') value = true;
+        else if (value === 'false') value = false;
+        else if (value !== null && value !== undefined && !isNaN(Number(value)) && value !== '') {
+          value = Number(value);
+        }
+        
+        result[key] = value;
+      }
+      
+      return Object.keys(result).length > 0 ? result : null;
+    } catch (error) {
+      console.error('parseObjectString error:', error);
+      return null;
+    }
   };
 
   // Import prompts from JSON or TS file
