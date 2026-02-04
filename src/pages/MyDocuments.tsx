@@ -42,8 +42,18 @@ import {
   X,
   LogOut,
   FolderOpen,
+  Settings,
 } from 'lucide-react';
 import { exportDocumentToPDF } from '@/lib/pdfExportDocument';
+import { SendToTelegramButton } from '@/components/documents/SendToTelegramButton';
+import { TelegramSettings } from '@/components/profile/TelegramSettings';
+import {
+  Sheet,
+  SheetContent,
+  SheetHeader,
+  SheetTitle,
+  SheetTrigger,
+} from '@/components/ui/sheet';
 
 interface GeneratedDocument {
   id: string;
@@ -260,6 +270,22 @@ const MyDocuments = () => {
             <h1 className="text-lg sm:text-xl font-bold">{t('common:app_name')}</h1>
           </div>
           <div className="flex items-center gap-2 sm:gap-4">
+            {/* Telegram Settings */}
+            <Sheet>
+              <SheetTrigger asChild>
+                <Button variant="ghost" size="icon">
+                  <Settings className="h-5 w-5" />
+                </Button>
+              </SheetTrigger>
+              <SheetContent>
+                <SheetHeader>
+                  <SheetTitle>Telegram</SheetTitle>
+                </SheetHeader>
+                <div className="mt-4">
+                  <TelegramSettings />
+                </div>
+              </SheetContent>
+            </Sheet>
             <LanguageSwitcher />
             <Button variant="ghost" size="icon" onClick={() => signOut()}>
               <LogOut className="h-5 w-5" />
@@ -363,6 +389,13 @@ const MyDocuments = () => {
                     <Download className="h-4 w-4 mr-1" />
                     PDF
                   </Button>
+                  <div onClick={(e) => e.stopPropagation()}>
+                    <SendToTelegramButton
+                      documentTitle={doc.title}
+                      documentContent={doc.content_text}
+                      size="sm"
+                    />
+                  </div>
                   <Button
                     variant="ghost"
                     size="sm"
@@ -437,6 +470,13 @@ const MyDocuments = () => {
                   {isExporting ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Download className="h-4 w-4 mr-2" />}
                   {getText('\u0531\u0580\u057f\u0561\u0570\u0561\u0576\u0565\u056c PDF', '\u042d\u043a\u0441\u043f\u043e\u0440\u0442 PDF', 'Export PDF')}
                 </Button>
+                {selectedDocument && (
+                  <SendToTelegramButton
+                    documentTitle={selectedDocument.title}
+                    documentContent={selectedDocument.content_text}
+                    variant="outline"
+                  />
+                )}
               </>
             )}
           </DialogFooter>
