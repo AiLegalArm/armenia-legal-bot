@@ -311,17 +311,68 @@ export const PromptManager = () => {
     toast.success('Экспорт завершён');
   };
 
-  // Import prompts from JSON
+  // Parse TypeScript file to extract prompts array
+  const parseTsFile = (content: string): any[] | null => {
+    try {
+      // Try to find export const ... = [...] or export default [...]
+      const arrayMatch = content.match(/export\s+(?:const\s+\w+\s*=|default)\s*\[([\s\S]*?)\];?\s*(?:export|$)/);
+      if (!arrayMatch) {
+        // Try to find array assigned to variable
+        const varMatch = content.match(/(?:const|let|var)\s+\w+\s*(?::\s*\w+(?:<[^>]+>)?(?:\[\])?)?\s*=\s*\[([\s\S]*?)\];/);
+        if (!varMatch) return null;
+        return evalTsArray(varMatch[1]);
+      }
+      return evalTsArray(arrayMatch[1]);
+    } catch {
+      return null;
+    }
+  };
+
+  // Safely evaluate TS array content
+  const evalTsArray = (arrayContent: string): any[] => {
+    // Clean up TypeScript-specific syntax
+    let cleaned = arrayContent
+      // Remove type annotations like `: PromptType`
+      .replace(/:\s*\w+(?:<[^>]+>)?(?:\[\])?(?=\s*[,}=])/g, '')
+      // Convert single quotes to double for JSON
+      .replace(/'/g, '"')
+      // Handle template literals (basic)
+      .replace(/`([^`]*)`/g, (_, content) => JSON.stringify(content))
+      // Remove trailing commas before ] or }
+      .replace(/,(\s*[}\]])/g, '$1')
+      // Remove comments
+      .replace(/\/\/[^\n]*/g, '')
+      .replace(/\/\*[\s\S]*?\*\//g, '');
+    
+    // Wrap in array brackets if needed
+    cleaned = `[${cleaned}]`;
+    
+    return JSON.parse(cleaned);
+  };
+
+  // Import prompts from JSON or TS file
   const handleImport = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     if (!file) return;
 
     try {
       const text = await file.text();
-      const importData = JSON.parse(text);
+      let importData: any[];
+
+      if (file.name.endsWith('.ts') || file.name.endsWith('.tsx')) {
+        // Parse TypeScript file
+        const parsed = parseTsFile(text);
+        if (!parsed) {
+          throw new Error('Could not parse TypeScript file. Expected an exported array.');
+        }
+        importData = parsed;
+      } else {
+        // Parse as JSON
+        importData = JSON.parse(text);
+      }
       
       if (!Array.isArray(importData)) {
-        throw new Error('Invalid JSON format');
+        throw new Error('Invalid format: expected an array');
       }
 
       let imported = 0;
@@ -359,7 +410,10 @@ export const PromptManager = () => {
       fetchPrompts();
     } catch (error) {
       console.error('Import error:', error);
-      toast.error('Ошибка импорта JSON');
+      toast.error(file.name.endsWith('.ts') 
+        ? 'Ошибка парсинга TS файла. Убедитесь что файл содержит экспортируемый массив.' 
+        : 'Ошибка импорта. Убедитесь что файл содержит валидный JSON массив.'
+      );
     }
     
     // Reset input
@@ -465,7 +519,7 @@ export const PromptManager = () => {
                 </Button>
                 <input
                   type="file"
-                  accept=".json"
+                  accept=".json,.ts,.tsx"
                   onChange={handleImport}
                   className="hidden"
                 />
