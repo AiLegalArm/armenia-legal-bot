@@ -156,60 +156,60 @@ ${aggregatedReport.recommendations || ""}
       <Button
         onClick={() => setIsDialogOpen(true)}
         disabled={!hasEnoughData}
-        variant="default"
-        className="gap-2"
+        variant="outline"
+        className="gap-2 w-full sm:w-auto order-2 sm:order-1"
       >
-        <FileText className="h-4 w-4" />
-        {t("ai:generate_complaint_from_analysis")}
+        <FileText className="h-4 w-4 flex-shrink-0" />
+        <span className="truncate">{t("ai:generate_complaint_from_analysis")}</span>
       </Button>
 
       <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
-        <DialogContent className="max-w-4xl max-h-[90vh]">
+        <DialogContent className="max-w-4xl max-h-[90vh] w-[95vw] sm:w-full p-4 sm:p-6">
           <DialogHeader>
-            <DialogTitle>{t("ai:generate_complaint_from_analysis")}</DialogTitle>
-            <DialogDescription>
+            <DialogTitle className="text-base sm:text-lg">{t("ai:generate_complaint_from_analysis")}</DialogTitle>
+            <DialogDescription className="text-xs sm:text-sm">
               {t("ai:complaint_from_analysis_description")}
             </DialogDescription>
           </DialogHeader>
 
           {!generatedContent ? (
-            <div className="space-y-4 py-4">
+            <div className="space-y-3 sm:space-y-4 py-2 sm:py-4">
               {/* Summary of available data */}
-              <div className="grid grid-cols-2 gap-4">
-                <div className="p-4 border rounded-lg">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
+                <div className="p-3 sm:p-4 border rounded-lg">
                   <div className="flex items-center gap-2 mb-2">
-                    <CheckCircle2 className="h-4 w-4 text-green-500" />
-                    <span className="font-medium">{t("ai:agents_completed")}</span>
+                    <CheckCircle2 className="h-4 w-4 text-green-500 flex-shrink-0" />
+                    <span className="font-medium text-sm sm:text-base">{t("ai:agents_completed")}</span>
                   </div>
-                  <p className="text-2xl font-bold">{completedRuns.length}</p>
+                  <p className="text-xl sm:text-2xl font-bold">{completedRuns.length}</p>
                   <div className="flex flex-wrap gap-1 mt-2">
                     {completedRuns.map(run => (
-                      <Badge key={run.id} variant="secondary" className="text-xs">
+                      <Badge key={run.id} variant="secondary" className="text-[10px] sm:text-xs">
                         {run.agent_type}
                       </Badge>
                     ))}
                   </div>
                 </div>
 
-                <div className="p-4 border rounded-lg">
+                <div className="p-3 sm:p-4 border rounded-lg">
                   <div className="flex items-center gap-2 mb-2">
-                    <AlertTriangle className="h-4 w-4 text-orange-500" />
-                    <span className="font-medium">{t("ai:evidence_items")}</span>
+                    <AlertTriangle className="h-4 w-4 text-orange-500 flex-shrink-0" />
+                    <span className="font-medium text-sm sm:text-base">{t("ai:evidence_items")}</span>
                   </div>
-                  <p className="text-2xl font-bold">{evidenceRegistry.length}</p>
-                  <p className="text-sm text-muted-foreground mt-1">
+                  <p className="text-xl sm:text-2xl font-bold">{evidenceRegistry.length}</p>
+                  <p className="text-xs sm:text-sm text-muted-foreground mt-1">
                     {evidenceRegistry.filter(e => e.admissibility_status === "inadmissible").length} {t("ai:inadmissible")}
                   </p>
                 </div>
               </div>
 
               {aggregatedReport && (
-                <div className="p-4 border rounded-lg bg-green-50 dark:bg-green-950/20">
+                <div className="p-3 sm:p-4 border rounded-lg bg-green-50 dark:bg-green-950/20">
                   <div className="flex items-center gap-2">
-                    <CheckCircle2 className="h-4 w-4 text-green-500" />
-                    <span className="font-medium">{t("ai:aggregated_report_available")}</span>
+                    <CheckCircle2 className="h-4 w-4 text-green-500 flex-shrink-0" />
+                    <span className="font-medium text-sm sm:text-base">{t("ai:aggregated_report_available")}</span>
                   </div>
-                  <p className="text-sm text-muted-foreground mt-1">
+                  <p className="text-xs sm:text-sm text-muted-foreground mt-1 line-clamp-3">
                     {aggregatedReport.executive_summary?.substring(0, 200)}...
                   </p>
                 </div>
@@ -219,43 +219,43 @@ ${aggregatedReport.recommendations || ""}
                 onClick={handleGenerate} 
                 disabled={isGenerating || !hasEnoughData}
                 className="w-full"
-                size="lg"
+                size="default"
               >
                 {isGenerating ? (
                   <>
                     <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                    {t("ai:generating_complaint")}
+                    <span className="truncate">{t("ai:generating_complaint")}</span>
                   </>
                 ) : (
                   <>
-                    <FileText className="mr-2 h-4 w-4" />
-                    {t("ai:generate_complaint")}
+                    <FileText className="mr-2 h-4 w-4 flex-shrink-0" />
+                    <span className="truncate">{t("ai:generate_complaint")}</span>
                   </>
                 )}
               </Button>
             </div>
           ) : (
-            <ScrollArea className="h-[60vh]">
-              <div className="prose prose-sm max-w-none dark:prose-invert p-4 border rounded-lg bg-muted/30">
-                <pre className="whitespace-pre-wrap font-sans text-sm">
+            <ScrollArea className="h-[50vh] sm:h-[60vh]">
+              <div className="prose prose-sm max-w-none dark:prose-invert p-3 sm:p-4 border rounded-lg bg-muted/30">
+                <pre className="whitespace-pre-wrap font-sans text-xs sm:text-sm">
                   {generatedContent}
                 </pre>
               </div>
             </ScrollArea>
           )}
 
-          <DialogFooter>
+          <DialogFooter className="flex-col sm:flex-row gap-2 sm:gap-0">
             {generatedContent ? (
               <>
-                <Button variant="outline" onClick={() => setGeneratedContent(null)}>
+                <Button variant="outline" onClick={() => setGeneratedContent(null)} className="w-full sm:w-auto">
                   {t("ai:regenerate")}
                 </Button>
-                <Button onClick={handleSaveDocument}>
+                <Button onClick={handleSaveDocument} className="w-full sm:w-auto">
                   {t("ai:save_to_documents")}
                 </Button>
               </>
             ) : (
-              <Button variant="outline" onClick={() => setIsDialogOpen(false)}>
+              <Button variant="outline" onClick={() => setIsDialogOpen(false)} className="w-full sm:w-auto">
                 {t("common:cancel")}
               </Button>
             )}
