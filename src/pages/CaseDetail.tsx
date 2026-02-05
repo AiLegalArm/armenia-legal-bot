@@ -267,40 +267,40 @@ const CaseDetail = () => {
           {/* Main Content */}
           <div className="lg:col-span-2">
             <Tabs defaultValue="details" className="w-full">
-              {/* Tab Navigation - Horizontal scroll on mobile */}
-              <div className="-mx-4 px-4 sm:mx-0 sm:px-0 overflow-x-auto">
-                <TabsList className="inline-flex w-max min-w-full sm:w-full justify-start gap-1 rounded-xl bg-muted/50 p-1.5">
+              {/* Tab Navigation - Horizontal scroll on mobile with visible scrollbar hint */}
+              <div className="-mx-4 px-4 sm:mx-0 sm:px-0 overflow-x-auto scrollbar-thin">
+                <TabsList className="inline-flex w-max gap-1 rounded-xl bg-muted/50 p-1.5 sm:w-full sm:justify-start">
                   <TabsTrigger 
                     value="details" 
-                    className="min-h-[44px] px-4 rounded-lg text-mobile-sm sm:text-sm font-medium data-[state=active]:shadow-soft"
+                    className="min-h-[44px] px-3 sm:px-4 rounded-lg text-mobile-sm sm:text-sm font-medium data-[state=active]:shadow-soft whitespace-nowrap"
                   >
                     {t('common:details', 'Details')}
                   </TabsTrigger>
                   <TabsTrigger 
                     value="files"
-                    className="min-h-[44px] px-4 rounded-lg text-mobile-sm sm:text-sm font-medium data-[state=active]:shadow-soft"
+                    className="min-h-[44px] px-3 sm:px-4 rounded-lg text-mobile-sm sm:text-sm font-medium data-[state=active]:shadow-soft whitespace-nowrap"
                   >
                     {t('files')}
                   </TabsTrigger>
                   <TabsTrigger 
                     value="reminders"
-                    className="min-h-[44px] px-4 rounded-lg text-mobile-sm sm:text-sm font-medium data-[state=active]:shadow-soft"
+                    className="min-h-[44px] px-3 sm:px-4 rounded-lg text-mobile-sm sm:text-sm font-medium data-[state=active]:shadow-soft whitespace-nowrap"
                   >
-                    <Bell className="h-4 w-4 sm:mr-2" />
+                    <Bell className="h-4 w-4 sm:mr-2 shrink-0" />
                     <span className="hidden sm:inline">{t('reminders:reminders')}</span>
                   </TabsTrigger>
                   <TabsTrigger 
                     value="analysis"
-                    className="min-h-[44px] px-4 rounded-lg text-mobile-sm sm:text-sm font-medium data-[state=active]:shadow-soft"
+                    className="min-h-[44px] px-3 sm:px-4 rounded-lg text-mobile-sm sm:text-sm font-medium data-[state=active]:shadow-soft whitespace-nowrap"
                   >
-                    <Brain className="h-4 w-4 sm:mr-2" />
+                    <Brain className="h-4 w-4 sm:mr-2 shrink-0" />
                     <span className="hidden sm:inline">{t('ai:analyze')}</span>
                   </TabsTrigger>
                   <TabsTrigger 
                     value="agents"
-                    className="min-h-[44px] px-4 rounded-lg text-mobile-sm sm:text-sm font-medium data-[state=active]:shadow-soft"
+                    className="min-h-[44px] px-3 sm:px-4 rounded-lg text-mobile-sm sm:text-sm font-medium data-[state=active]:shadow-soft whitespace-nowrap"
                   >
-                    <Bot className="h-4 w-4 sm:mr-2" />
+                    <Bot className="h-4 w-4 sm:mr-2 shrink-0" />
                     <span className="hidden sm:inline">{t('ai:multi_agent_analysis', 'Multi-Agent')}</span>
                   </TabsTrigger>
                 </TabsList>

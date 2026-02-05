@@ -441,10 +441,12 @@ export function CaseTimeline({ caseId }: CaseTimelineProps) {
                 </div>
                 
                 {/* Content */}
-                <div className="flex-1 pt-1 min-w-0">
-                  <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-1">
-                    <span className="font-medium text-sm">{event.title}</span>
-                    <span className="text-xs text-muted-foreground whitespace-nowrap">
+                <div className="flex-1 pt-1 min-w-0 overflow-hidden">
+                  <div className="flex flex-col gap-0.5">
+                    <span className="font-medium text-sm break-words" style={{ overflowWrap: 'anywhere' }}>
+                      {event.title}
+                    </span>
+                    <span className="text-xs text-muted-foreground">
                       {format(new Date(event.timestamp), 'dd.MM.yyyy HH:mm')}
                     </span>
                   </div>
