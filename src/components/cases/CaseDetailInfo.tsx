@@ -37,7 +37,7 @@ export function CaseDetailInfo({
               <FileText className="h-4 w-4 text-muted-foreground" />
               <div>
                 <p className="text-xs text-muted-foreground">{t('cases:court_name')}</p>
-                <p className="text-sm">{courtName}</p>
+                <p className="text-sm break-words" style={{ overflowWrap: 'anywhere' }}>{courtName}</p>
               </div>
             </div>
           )}

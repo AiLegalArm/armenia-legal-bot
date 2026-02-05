@@ -313,7 +313,7 @@ const CaseDetail = () => {
                     <PdfExportButton onClick={handleExportCaseDetails} />
                   </CardHeader>
                   <CardContent className="p-4 sm:p-6 pt-0 sm:pt-0">
-                    <p className="whitespace-pre-wrap text-mobile-sm sm:text-sm leading-relaxed">
+                    <p className="whitespace-pre-wrap break-words overflow-wrap-anywhere text-mobile-sm sm:text-sm leading-relaxed">
                       {caseData.description || t('common:no_description', 'No description')}
                     </p>
                   </CardContent>
