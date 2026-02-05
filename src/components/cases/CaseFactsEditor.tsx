@@ -206,7 +206,7 @@ export function CaseFactsEditor({
               <p className="text-xs font-semibold text-muted-foreground mb-1">
                 {t('cases:facts', 'Facts')} ({t('cases:facts_hy', '\u0553\u0561\u057D\u057F\u0565\u0580')})
               </p>
-              <p className="whitespace-pre-wrap text-sm border rounded-md p-3 bg-muted/50 min-h-[60px]">
+              <p className="whitespace-pre-wrap break-words text-sm border rounded-md p-3 bg-muted/50 min-h-[60px]" style={{ overflowWrap: 'anywhere' }}>
                 {facts || t('cases:no_facts')}
               </p>
             </div>
@@ -214,7 +214,7 @@ export function CaseFactsEditor({
               <p className="text-xs font-semibold text-muted-foreground mb-1">
                 {t('cases:legal_question', 'Legal Question')} ({t('cases:legal_question_hy', '\u053b\u0580\u0561\u057e\u0561\u056f\u0561\u0576 \u0570\u0561\u0580\u0581')})
               </p>
-              <p className="whitespace-pre-wrap text-sm border rounded-md p-3 bg-muted/50 min-h-[60px]">
+              <p className="whitespace-pre-wrap break-words text-sm border rounded-md p-3 bg-muted/50 min-h-[60px]" style={{ overflowWrap: 'anywhere' }}>
                 {legalQuestion || t('cases:no_legal_question')}
               </p>
             </div>
