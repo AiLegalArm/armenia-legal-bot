@@ -76,27 +76,27 @@ export function MultiAgentPanel({ caseId, caseFacts }: MultiAgentPanelProps) {
   };
 
   return (
-    <div className="space-y-4 sm:space-y-6 w-full max-w-full overflow-hidden">
+    <div className="space-y-4 sm:space-y-6 w-full">
       {/* Header - Premium card */}
-      <Card className="card-premium overflow-hidden">
-        <CardHeader className="pb-4">
-          <div className="space-y-4">
+      <Card className="card-premium">
+        <CardHeader className="pb-4 px-3 sm:px-6">
+          <div className="space-y-3">
             <div className="min-w-0">
-              <CardTitle className="flex items-start gap-2 text-base sm:text-xl flex-wrap">
+              <CardTitle className="flex items-center gap-2 text-base sm:text-xl">
                 <span className="text-xl sm:text-2xl shrink-0">🤖</span>
-                <span className="break-words min-w-0">{t("ai:multi_agent_analysis")}</span>
+                <span className="break-words">{t("ai:multi_agent_analysis")}</span>
               </CardTitle>
               <CardDescription className="text-xs sm:text-sm mt-2 leading-relaxed">
                 {t("ai:multi_agent_description")}
               </CardDescription>
             </div>
             
-            {/* Action Buttons - Full width stack on mobile */}
+            {/* Action Buttons - Full width stack */}
             <div className="flex flex-col gap-2 w-full">
               <Button
                 onClick={() => runAllAgents(caseId)}
                 disabled={isLoading || volumes.length === 0}
-                className="h-11 sm:h-11 w-full rounded-xl text-xs sm:text-sm font-medium"
+                className="h-11 w-full rounded-xl text-xs sm:text-sm font-medium justify-center"
               >
                 {isLoading ? (
                   <>
@@ -108,7 +108,7 @@ export function MultiAgentPanel({ caseId, caseFacts }: MultiAgentPanelProps) {
                 ) : (
                   <>
                     <Play className="mr-2 h-4 w-4 shrink-0" />
-                    <span className="truncate">{t("ai:run_all_agents")}</span>
+                    <span>{t("ai:run_all_agents")}</span>
                   </>
                 )}
               </Button>
