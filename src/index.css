@@ -130,15 +130,15 @@ html {
     /* Prevent text inflation on mobile */
     text-size-adjust: 100%;
     -webkit-text-size-adjust: 100%;
-    /* Ensure long words/URLs break properly */
+    /* Break long words/URLs without forcing per-letter wrapping */
     overflow-wrap: break-word;
-    word-break: break-word;
+    word-break: normal;
   }
 
   /* Utility class for breaking long text */
   .overflow-wrap-anywhere {
     overflow-wrap: anywhere;
-    word-break: break-word;
+    word-break: normal;
   }
 
   /* Ensure smooth scrolling on iOS */

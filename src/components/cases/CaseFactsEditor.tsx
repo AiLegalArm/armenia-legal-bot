@@ -130,16 +130,24 @@ export function CaseFactsEditor({
 
   return (
     <Card className="mt-4">
-      <CardHeader className="flex flex-row items-center justify-between">
-        <CardTitle>{t('cases:facts_and_question', 'Facts & Legal Question')}</CardTitle>
-        <div className="flex gap-2">
+      <CardHeader className="flex flex-col items-start justify-between gap-3 sm:flex-row sm:items-center">
+        <CardTitle className="w-full min-w-0 break-normal leading-tight sm:w-auto">
+          {t('cases:facts_and_question', 'Facts & Legal Question')}
+        </CardTitle>
+        <div className="grid w-full grid-cols-2 gap-2 sm:flex sm:w-auto">
           {!isEditingFields ? (
             <>
-              <Button variant="outline" size="sm" onClick={handleStartEditFields}>
+              <Button variant="outline" size="sm" onClick={handleStartEditFields} className="w-full">
                 <Pencil className="mr-2 h-4 w-4" />
                 {t('cases:edit_fields', 'Edit')}
               </Button>
-              <Button variant="outline" size="sm" onClick={handleExtractFields} disabled={isExtracting}>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={handleExtractFields}
+                disabled={isExtracting}
+                className="w-full"
+              >
                 {isExtracting ? (
                   <>
                     <Loader2 className="mr-2 h-4 w-4 animate-spin" />
@@ -155,12 +163,22 @@ export function CaseFactsEditor({
             </>
           ) : (
             <>
-              <Button variant="outline" size="sm" onClick={handleCancelEditFields} disabled={isSavingFields}>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={handleCancelEditFields}
+                disabled={isSavingFields}
+                className="w-full"
+              >
                 <X className="mr-2 h-4 w-4" />
                 {t('cases:cancel_edit', 'Cancel')}
               </Button>
-              <Button size="sm" onClick={handleSaveFields} disabled={isSavingFields}>
-                {isSavingFields ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save className="mr-2 h-4 w-4" />}
+              <Button size="sm" onClick={handleSaveFields} disabled={isSavingFields} className="w-full">
+                {isSavingFields ? (
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                ) : (
+                  <Save className="mr-2 h-4 w-4" />
+                )}
                 {t('cases:save_fields', 'Save')}
               </Button>
             </>
