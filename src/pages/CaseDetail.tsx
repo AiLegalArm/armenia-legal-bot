@@ -195,58 +195,65 @@ const CaseDetail = () => {
   }
 
   return (
-    <div className="min-h-screen bg-background">
+    <div className="min-h-screen bg-background no-overflow-x">
       <CaseDetailHeader userEmail={user?.email} onSignOut={signOut} />
 
-      {/* Main Content */}
-      <main className="container mx-auto px-4 py-6">
-        {/* Case Header */}
-        <div className="mb-6 flex flex-col gap-4">
-          <div>
-            <h2 className="text-xl sm:text-2xl font-bold line-clamp-2">{caseData.title}</h2>
-            <p className="mt-1 text-xs sm:text-sm text-muted-foreground">
-              {caseData.case_number}
-            </p>
-            <div className="mt-2 flex flex-wrap gap-2">
-              <Badge className={statusColors[caseData.status]}>
-                {t(`status_${caseData.status}`)}
-              </Badge>
-              <Badge className={priorityColors[caseData.priority]}>
-                {t(`priority_${caseData.priority}`)}
-              </Badge>
+      {/* Main Content - Mobile-first with safe areas */}
+      <main className="container-mobile mx-auto py-4 sm:py-6 lg:py-8 safe-bottom">
+        {/* Case Header - Premium mobile card */}
+        <div className="card-premium p-4 sm:p-6 mb-4 sm:mb-6">
+          <div className="space-y-4">
+            {/* Title Section */}
+            <div>
+              <h2 className="text-mobile-xl sm:text-2xl lg:text-3xl font-bold leading-tight line-clamp-2">
+                {caseData.title}
+              </h2>
+              <p className="mt-2 text-mobile-sm sm:text-sm text-muted-foreground font-medium">
+                {caseData.case_number}
+              </p>
+              <div className="mt-3 flex flex-wrap gap-2">
+                <Badge className={`${statusColors[caseData.status]} min-h-[32px] px-3 py-1.5 text-mobile-sm rounded-full`}>
+                  {t(`status_${caseData.status}`)}
+                </Badge>
+                <Badge className={`${priorityColors[caseData.priority]} min-h-[32px] px-3 py-1.5 text-mobile-sm rounded-full`}>
+                  {t(`priority_${caseData.priority}`)}
+                </Badge>
+              </div>
             </div>
+            
+            {/* Action Buttons - Touch-friendly */}
+            {canEdit && (
+              <div className="grid grid-cols-2 gap-3 pt-2">
+                <Button
+                  variant="outline"
+                  size="lg"
+                  onClick={() => setEditFormOpen(true)}
+                  className="h-12 sm:h-11 rounded-xl text-mobile-sm sm:text-sm font-medium shadow-soft active:scale-[0.98] transition-transform"
+                >
+                  <Edit className="h-4 w-4 sm:h-5 sm:w-5 mr-2 shrink-0" />
+                  <span className="truncate">
+                    {i18n.language === 'hy' ? '\u053D\u0574\u0562\u0561\u0563\u0580\u0565\u056C' : t('edit_case')}
+                  </span>
+                </Button>
+                <Button
+                  variant="destructive"
+                  size="lg"
+                  onClick={() => setDeleteDialogOpen(true)}
+                  className="h-12 sm:h-11 rounded-xl text-mobile-sm sm:text-sm font-medium shadow-soft active:scale-[0.98] transition-transform"
+                >
+                  <Trash2 className="h-4 w-4 sm:h-5 sm:w-5 mr-2 shrink-0" />
+                  <span className="truncate">
+                    {i18n.language === 'hy' ? '\u054B\u0576\u057B\u0565\u056C' : t('delete_case')}
+                  </span>
+                </Button>
+              </div>
+            )}
           </div>
-          {canEdit && (
-            <div className="grid w-full grid-cols-2 gap-2 sm:w-auto">
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => setEditFormOpen(true)}
-                className="w-full justify-center min-w-0 px-2"
-              >
-                <Edit className="h-4 w-4 mr-1 sm:mr-2 shrink-0" />
-                <span className="text-xs sm:text-sm truncate">
-                  {i18n.language === 'hy' ? '\u053D\u0574\u0562.' : t('edit_case')}
-                </span>
-              </Button>
-              <Button
-                variant="destructive"
-                size="sm"
-                onClick={() => setDeleteDialogOpen(true)}
-                className="w-full justify-center min-w-0 px-2"
-              >
-                <Trash2 className="h-4 w-4 mr-1 sm:mr-2 shrink-0" />
-                <span className="text-xs sm:text-sm truncate">
-                  {i18n.language === 'hy' ? '\u054B\u0576\u057B\u0565\u056C' : t('delete_case')}
-                </span>
-              </Button>
-            </div>
-          )}
         </div>
 
         {/* Court Date Reminder Suggestion */}
         {caseData.court_date && (
-          <div className="mb-4">
+          <div className="mb-4 sm:mb-6">
             <CourtDateReminderSuggestion
               caseId={caseData.id}
               caseTitle={caseData.title}
@@ -255,36 +262,58 @@ const CaseDetail = () => {
           </div>
         )}
 
-        {/* Case Details & Tabs */}
-        <div className="grid gap-6 lg:grid-cols-3">
+        {/* Case Details & Tabs - Stack on mobile, grid on desktop */}
+        <div className="grid gap-4 sm:gap-6 lg:grid-cols-3">
           {/* Main Content */}
           <div className="lg:col-span-2">
             <Tabs defaultValue="details" className="w-full">
-              <TabsList className="w-full justify-start overflow-x-auto">
-                <TabsTrigger value="details">{t('common:details', 'Details')}</TabsTrigger>
-                <TabsTrigger value="files">{t('files')}</TabsTrigger>
-                <TabsTrigger value="reminders">
-                  <Bell className="mr-2 h-4 w-4" />
-                  {t('reminders:reminders')}
-                </TabsTrigger>
-                <TabsTrigger value="analysis">
-                  <Brain className="mr-2 h-4 w-4" />
-                  {t('ai:analyze')}
-                </TabsTrigger>
-                <TabsTrigger value="agents">
-                  <Bot className="mr-2 h-4 w-4" />
-                  {t('ai:multi_agent_analysis', 'Multi-Agent')}
-                </TabsTrigger>
-              </TabsList>
+              {/* Tab Navigation - Horizontal scroll on mobile */}
+              <div className="-mx-4 px-4 sm:mx-0 sm:px-0 overflow-x-auto">
+                <TabsList className="inline-flex w-max min-w-full sm:w-full justify-start gap-1 rounded-xl bg-muted/50 p-1.5">
+                  <TabsTrigger 
+                    value="details" 
+                    className="min-h-[44px] px-4 rounded-lg text-mobile-sm sm:text-sm font-medium data-[state=active]:shadow-soft"
+                  >
+                    {t('common:details', 'Details')}
+                  </TabsTrigger>
+                  <TabsTrigger 
+                    value="files"
+                    className="min-h-[44px] px-4 rounded-lg text-mobile-sm sm:text-sm font-medium data-[state=active]:shadow-soft"
+                  >
+                    {t('files')}
+                  </TabsTrigger>
+                  <TabsTrigger 
+                    value="reminders"
+                    className="min-h-[44px] px-4 rounded-lg text-mobile-sm sm:text-sm font-medium data-[state=active]:shadow-soft"
+                  >
+                    <Bell className="h-4 w-4 sm:mr-2" />
+                    <span className="hidden sm:inline">{t('reminders:reminders')}</span>
+                  </TabsTrigger>
+                  <TabsTrigger 
+                    value="analysis"
+                    className="min-h-[44px] px-4 rounded-lg text-mobile-sm sm:text-sm font-medium data-[state=active]:shadow-soft"
+                  >
+                    <Brain className="h-4 w-4 sm:mr-2" />
+                    <span className="hidden sm:inline">{t('ai:analyze')}</span>
+                  </TabsTrigger>
+                  <TabsTrigger 
+                    value="agents"
+                    className="min-h-[44px] px-4 rounded-lg text-mobile-sm sm:text-sm font-medium data-[state=active]:shadow-soft"
+                  >
+                    <Bot className="h-4 w-4 sm:mr-2" />
+                    <span className="hidden sm:inline">{t('ai:multi_agent_analysis', 'Multi-Agent')}</span>
+                  </TabsTrigger>
+                </TabsList>
+              </div>
 
-              <TabsContent value="details" className="mt-4">
-                <Card>
-                  <CardHeader className="flex flex-row items-center justify-between">
-                    <CardTitle>{t('description')}</CardTitle>
+              <TabsContent value="details" className="mt-4 sm:mt-6">
+                <Card className="card-premium overflow-hidden">
+                  <CardHeader className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 p-4 sm:p-6">
+                    <CardTitle className="text-mobile-lg sm:text-lg">{t('description')}</CardTitle>
                     <PdfExportButton onClick={handleExportCaseDetails} />
                   </CardHeader>
-                  <CardContent>
-                    <p className="whitespace-pre-wrap text-sm">
+                  <CardContent className="p-4 sm:p-6 pt-0 sm:pt-0">
+                    <p className="whitespace-pre-wrap text-mobile-sm sm:text-sm leading-relaxed">
                       {caseData.description || t('common:no_description', 'No description')}
                     </p>
                   </CardContent>
@@ -299,43 +328,43 @@ const CaseDetail = () => {
                 />
 
                 {caseData.notes && (
-                  <Card className="mt-4">
-                    <CardHeader>
-                      <CardTitle>{t('notes')}</CardTitle>
+                  <Card className="mt-4 card-premium overflow-hidden">
+                    <CardHeader className="p-4 sm:p-6">
+                      <CardTitle className="text-mobile-lg sm:text-lg">{t('notes')}</CardTitle>
                     </CardHeader>
-                    <CardContent>
-                      <p className="whitespace-pre-wrap text-sm">{caseData.notes}</p>
+                    <CardContent className="p-4 sm:p-6 pt-0 sm:pt-0">
+                      <p className="whitespace-pre-wrap text-mobile-sm sm:text-sm leading-relaxed">{caseData.notes}</p>
                     </CardContent>
                   </Card>
                 )}
               </TabsContent>
 
-              <TabsContent value="files" className="mt-4">
-                <Card>
-                  <CardHeader>
-                    <div className="flex items-center justify-between">
-                      <CardTitle>{t('files')}</CardTitle>
-                      <div className="flex gap-2">
+              <TabsContent value="files" className="mt-4 sm:mt-6">
+                <Card className="card-premium overflow-hidden">
+                  <CardHeader className="p-4 sm:p-6">
+                    <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+                      <CardTitle className="text-mobile-lg sm:text-lg">{t('files')}</CardTitle>
+                      <div className="grid grid-cols-2 sm:flex gap-2 w-full sm:w-auto">
                         <Button 
                           variant="outline" 
-                          size="sm"
                           onClick={() => setPdfUploadOpen(true)}
+                          className="h-11 rounded-xl text-mobile-sm sm:text-sm shadow-soft active:scale-[0.98] transition-transform"
                         >
                           <FilePlus className="mr-2 h-4 w-4" />
-                          {t('pdf_ocr')}
+                          <span className="truncate">{t('pdf_ocr')}</span>
                         </Button>
                         <Button 
                           variant="outline" 
-                          size="sm"
                           onClick={() => navigate(`/cases/${caseData.id}/transcriptions`)}
+                          className="h-11 rounded-xl text-mobile-sm sm:text-sm shadow-soft active:scale-[0.98] transition-transform"
                         >
                           <Music className="mr-2 h-4 w-4" />
-                          {t('audio_transcription', '\u0531\u0578\u0582\u0564\u056B\u0578 \u057F\u0580\u0561\u0576\u057D\u056F\u0580\u056B\u057A\u0581\u056B\u0561')}
+                          <span className="truncate">{t('audio_transcription', '\u0531\u0578\u0582\u0564\u056B\u0578')}</span>
                         </Button>
                       </div>
                     </div>
                   </CardHeader>
-                  <CardContent>
+                  <CardContent className="p-4 sm:p-6 pt-0 sm:pt-0">
                     <CaseFileUpload caseId={caseData.id} />
                   </CardContent>
                 </Card>
@@ -374,10 +403,10 @@ const CaseDetail = () => {
           />
         </div>
 
-        {/* Legal Disclaimer */}
-        <div className="mt-8 rounded-lg border border-amber-500/50 bg-amber-500/10 p-4">
-          <p className="text-sm text-amber-700 dark:text-amber-400">
-            \u26A0\uFE0F {t('disclaimer:main')}
+        {/* Legal Disclaimer - Premium styling */}
+        <div className="mt-6 sm:mt-8 rounded-2xl border border-border bg-muted/30 p-4 sm:p-5 shadow-soft">
+          <p className="text-mobile-sm sm:text-sm text-muted-foreground leading-relaxed">
+            ⚠️ {t('disclaimer:main')}
           </p>
         </div>
       </main>

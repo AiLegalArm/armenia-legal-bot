@@ -8,12 +8,44 @@ export default {
   theme: {
     container: {
       center: true,
-      padding: "2rem",
+      padding: {
+        DEFAULT: "1rem",
+        sm: "1.5rem",
+        lg: "2rem",
+      },
       screens: {
+        sm: "640px",
+        md: "768px",
+        lg: "1024px",
+        xl: "1280px",
         "2xl": "1400px",
       },
     },
     extend: {
+      /* Mobile-first screens - explicit breakpoints */
+      screens: {
+        xs: "375px",
+        sm: "640px",
+        md: "768px",
+        lg: "1024px",
+        xl: "1280px",
+        "2xl": "1400px",
+      },
+      /* Premium spacing for mobile */
+      spacing: {
+        "touch": "48px",
+        "touch-lg": "56px",
+        "safe": "env(safe-area-inset-bottom)",
+      },
+      /* Font sizes optimized for mobile readability */
+      fontSize: {
+        "mobile-xs": ["0.75rem", { lineHeight: "1rem" }],
+        "mobile-sm": ["0.875rem", { lineHeight: "1.25rem" }],
+        "mobile-base": ["1rem", { lineHeight: "1.5rem" }],
+        "mobile-lg": ["1.125rem", { lineHeight: "1.75rem" }],
+        "mobile-xl": ["1.25rem", { lineHeight: "1.75rem" }],
+        "mobile-2xl": ["1.5rem", { lineHeight: "2rem" }],
+      },
       colors: {
         border: "hsl(var(--border))",
         input: "hsl(var(--input))",
@@ -60,9 +92,17 @@ export default {
         },
       },
       borderRadius: {
+        "2xl": "1rem",
+        "3xl": "1.25rem",
+        "4xl": "1.5rem",
         lg: "var(--radius)",
         md: "calc(var(--radius) - 2px)",
         sm: "calc(var(--radius) - 4px)",
+      },
+      boxShadow: {
+        "soft": "var(--shadow-soft)",
+        "medium": "var(--shadow-medium)",
+        "elevated": "var(--shadow-elevated)",
       },
       keyframes: {
         "accordion-down": {
