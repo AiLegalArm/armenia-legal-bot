@@ -45,28 +45,27 @@ export function useUserFeedback(filters: FeedbackFilters = {}) {
       const { data, error, count } = await query;
       if (error) throw error;
 
-      // Fetch user emails separately for each feedback item
-      const feedbackWithDetails = await Promise.all(
-        (data || []).map(async (item) => {
-          let userEmail = 'Unknown';
-          if (item.user_id) {
-            const { data: userData } = await supabase
-              .from('profiles')
-              .select('email')
-              .eq('id', item.user_id)
-              .single();
-            if (userData) {
-              userEmail = userData.email;
-            }
-          }
-          
-          return {
-            ...item,
-            case_number: (item.cases as { case_number?: string })?.case_number || 'N/A',
-            user_email: userEmail,
-          };
-        })
-      );
+      // Batch fetch user emails (fix N+1 query)
+      const userIds = [...new Set((data || []).map(item => item.user_id).filter(Boolean))] as string[];
+      
+      let userEmailMap: Record<string, string> = {};
+      if (userIds.length > 0) {
+        const { data: profilesData } = await supabase
+          .from('profiles')
+          .select('id, email')
+          .in('id', userIds);
+        
+        userEmailMap = (profilesData || []).reduce((acc, profile) => {
+          acc[profile.id] = profile.email;
+          return acc;
+        }, {} as Record<string, string>);
+      }
+
+      const feedbackWithDetails = (data || []).map((item) => ({
+        ...item,
+        case_number: (item.cases as { case_number?: string })?.case_number || 'N/A',
+        user_email: item.user_id ? (userEmailMap[item.user_id] || 'Unknown') : 'Unknown',
+      }));
 
       return {
         items: feedbackWithDetails,
