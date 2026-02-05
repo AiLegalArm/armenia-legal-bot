@@ -1,4 +1,5 @@
 import { useTranslation } from "react-i18next";
+import { getText } from "@/lib/i18n-utils";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -110,8 +111,8 @@ export function DocumentGenerator({ caseData, preselectedType, onClose }: Docume
   } = useDocumentGenerator(caseData, preselectedType);
 
   const labels = {
-    validate: i18n.language === 'hy' ? "\u054d\u057f\u0578\u0582\u0563\u0565\u056c \u057f\u057e\u0575\u0561\u056c\u0576\u0565\u0580\u0568" : i18n.language === 'ru' ? "\u041f\u0440\u043e\u0432\u0435\u0440\u0438\u0442\u044c \u0434\u0430\u043d\u043d\u044b\u0435" : "Validate data",
-    history: i18n.language === 'hy' ? "\u054a\u0561\u057f\u0574\u0578\u0582\u0569\u0575\u0578\u0582\u0576" : i18n.language === 'ru' ? "\u0418\u0441\u0442\u043e\u0440\u0438\u044f" : "History",
+    validate: getText("\u054d\u057f\u0578\u0582\u0563\u0565\u056c \u057f\u057e\u0575\u0561\u056c\u0576\u0565\u0580\u0568", "\u041f\u0440\u043e\u0432\u0435\u0440\u0438\u0442\u044c \u0434\u0430\u043d\u043d\u044b\u0435", "Validate data"),
+    history: getText("\u054a\u0561\u057f\u0574\u0578\u0582\u0569\u0575\u0578\u0582\u0576", "\u0418\u0441\u0442\u043e\u0440\u0438\u044f", "History"),
   };
 
   if (isLoading) {

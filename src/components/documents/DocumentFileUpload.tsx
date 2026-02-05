@@ -1,5 +1,6 @@
 import { useState, useCallback } from "react";
 import { useTranslation } from "react-i18next";
+import { getText } from "@/lib/i18n-utils";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
@@ -385,36 +386,20 @@ export function DocumentFileUpload({ onFileAnalyzed, isDisabled, documentType, c
 
   // Labels based on language
   const labels = {
-    uploadLabel: i18n.language === 'hy' 
-      ? (needsAIAnalysis 
-          ? "\u054E\u0565\u0580\u0562\u0565\u057C\u0576\u0565\u0584 \u0583\u0561\u057D\u057F\u0561\u0569\u0572\u0569\u0565\u0580 AI-\u057E\u0565\u0580\u056C\u0578\u0582\u056E\u0578\u0582\u0569\u0575\u0561\u0576 \u0570\u0561\u0574\u0561\u0580" 
-          : "\u053F\u0561\u0574 \u057E\u0565\u0580\u0562\u0565\u057C\u0576\u0565\u0584 \u0583\u0561\u057D\u057F\u0561\u0569\u0572\u0569\u0565\u0580")
-      : i18n.language === 'en' 
-      ? (needsAIAnalysis 
-          ? "Upload documents for AI analysis" 
-          : "Or upload documents") 
-      : (needsAIAnalysis 
-          ? "\u0417\u0430\u0433\u0440\u0443\u0437\u0438\u0442\u0435 \u0434\u043E\u043A\u0443\u043C\u0435\u043D\u0442\u044B \u0434\u043B\u044F AI-\u0430\u043D\u0430\u043B\u0438\u0437\u0430" 
-          : "\u0418\u043B\u0438 \u0437\u0430\u0433\u0440\u0443\u0437\u0438\u0442\u0435 \u0434\u043E\u043A\u0443\u043C\u0435\u043D\u0442\u044B"),
-    dropzone: i18n.language === 'hy' 
-      ? "PDF, \u0576\u056F\u0561\u0580\u0576\u0565\u0580, \u057F\u0565\u0584\u057D\u057F" 
-      : i18n.language === 'en' 
-      ? "PDF, images, text" 
-      : "PDF, \u0438\u0437\u043E\u0431\u0440\u0430\u0436\u0435\u043D\u0438\u044F, \u0442\u0435\u043A\u0441\u0442",
-    supports: i18n.language === 'hy' 
-      ? "\u0531\u057B\u0561\u056F\u0581\u057E\u0578\u0582\u0574 \u0567 PDF, JPG, PNG, DOCX" 
-      : i18n.language === 'en' 
-      ? "Supports PDF, JPG, PNG, DOCX" 
-      : "\u041F\u043E\u0434\u0434\u0435\u0440\u0436\u043A\u0430 PDF, JPG, PNG, DOCX",
-    files: i18n.language === 'hy' ? " \u0586\u0561\u0575\u056C" : i18n.language === 'en' ? "file(s)" : "\u0444\u0430\u0439\u043B(\u043E\u0432)",
-    chars: i18n.language === 'hy' ? "\u0576\u0577\u0561\u0576" : i18n.language === 'en' ? "chars" : "\u0441\u0438\u043C\u0432",
-    clearAll: i18n.language === 'hy' ? "\u0544\u0561\u0584\u0580\u0565\u056C" : i18n.language === 'en' ? "Clear all" : "\u041E\u0447\u0438\u0441\u0442\u0438\u0442\u044C",
-    waiting: i18n.language === 'hy' ? "\u054D\u057A\u0561\u057D\u0578\u0582\u0574..." : i18n.language === 'en' ? "Waiting..." : "\u041E\u0436\u0438\u0434\u0430\u043D\u0438\u0435...",
-    analyzing: i18n.language === 'hy' ? "\u054E\u0565\u0580\u056C\u0578\u0582\u056E\u0578\u0582\u0574..." : i18n.language === 'en' ? "Analyzing..." : "\u0410\u043D\u0430\u043B\u0438\u0437...",
-    failed: i18n.language === 'hy' ? "\u054D\u056D\u0561\u056C" : i18n.language === 'en' ? "Failed" : "\u041E\u0448\u0438\u0431\u043A\u0430",
-    runAnalysis: i18n.language === 'hy' ? "AI \u057E\u0565\u0580\u056C\u0578\u0582\u056E\u0578\u0582\u0569\u0575\u0578\u0582\u0576" : i18n.language === 'en' ? "Run AI Analysis" : "\u0417\u0430\u043F\u0443\u0441\u0442\u0438\u0442\u044C AI-\u0430\u043D\u0430\u043B\u0438\u0437",
-    aiAnalyzing: i18n.language === 'hy' ? "AI \u057E\u0565\u0580\u056C\u0578\u0582\u056E\u0578\u0582\u0574..." : i18n.language === 'en' ? "AI analyzing..." : "AI-\u0430\u043D\u0430\u043B\u0438\u0437...",
-    aiComplete: i18n.language === 'hy' ? "AI \u057E\u0565\u0580\u056C\u0578\u0582\u056E\u0578\u0582\u0569\u0575\u0578\u0582\u0576\u0568 \u0561\u057E\u0561\u0580\u057F\u057E\u0561\u056E \u0567" : i18n.language === 'en' ? "AI analysis complete" : "AI-\u0430\u043D\u0430\u043B\u0438\u0437 \u0437\u0430\u0432\u0435\u0440\u0448\u0451\u043D"
+    uploadLabel: needsAIAnalysis 
+      ? getText("\u054E\u0565\u0580\u0562\u0565\u057C\u0576\u0565\u0584 \u0583\u0561\u057D\u057F\u0561\u0569\u0572\u0569\u0565\u0580 AI-\u057E\u0565\u0580\u056C\u0578\u0582\u056E\u0578\u0582\u0569\u0575\u0561\u0576 \u0570\u0561\u0574\u0561\u0580", "\u0417\u0430\u0433\u0440\u0443\u0437\u0438\u0442\u0435 \u0434\u043E\u043A\u0443\u043C\u0435\u043D\u0442\u044B \u0434\u043B\u044F AI-\u0430\u043D\u0430\u043B\u0438\u0437\u0430", "Upload documents for AI analysis")
+      : getText("\u053F\u0561\u0574 \u057E\u0565\u0580\u0562\u0565\u057C\u0576\u0565\u0584 \u0583\u0561\u057D\u057F\u0561\u0569\u0572\u0569\u0565\u0580", "\u0418\u043B\u0438 \u0437\u0430\u0433\u0440\u0443\u0437\u0438\u0442\u0435 \u0434\u043E\u043A\u0443\u043C\u0435\u043D\u0442\u044B", "Or upload documents"),
+    dropzone: getText("PDF, \u0576\u056F\u0561\u0580\u0576\u0565\u0580, \u057F\u0565\u0584\u057D\u057F", "PDF, \u0438\u0437\u043E\u0431\u0440\u0430\u0436\u0435\u043D\u0438\u044F, \u0442\u0435\u043A\u0441\u0442", "PDF, images, text"),
+    supports: getText("\u0531\u057B\u0561\u056F\u0581\u057E\u0578\u0582\u0574 \u0567 PDF, JPG, PNG, DOCX", "\u041F\u043E\u0434\u0434\u0435\u0440\u0436\u043A\u0430 PDF, JPG, PNG, DOCX", "Supports PDF, JPG, PNG, DOCX"),
+    files: getText(" \u0586\u0561\u0575\u056C", "\u0444\u0430\u0439\u043B(\u043E\u0432)", "file(s)"),
+    chars: getText("\u0576\u0577\u0561\u0576", "\u0441\u0438\u043C\u0432", "chars"),
+    clearAll: getText("\u0544\u0561\u0584\u0580\u0565\u056C", "\u041E\u0447\u0438\u0441\u0442\u0438\u0442\u044C", "Clear all"),
+    waiting: getText("\u054D\u057A\u0561\u057D\u0578\u0582\u0574...", "\u041E\u0436\u0438\u0434\u0430\u043D\u0438\u0435...", "Waiting..."),
+    analyzing: getText("\u054E\u0565\u0580\u056C\u0578\u0582\u056E\u0578\u0582\u0574...", "\u0410\u043D\u0430\u043B\u0438\u0437...", "Analyzing..."),
+    failed: getText("\u054D\u056D\u0561\u056C", "\u041E\u0448\u0438\u0431\u043A\u0430", "Failed"),
+    runAnalysis: getText("AI \u057E\u0565\u0580\u056C\u0578\u0582\u056E\u0578\u0582\u0569\u0575\u0578\u0582\u0576", "\u0417\u0430\u043F\u0443\u0441\u0442\u0438\u0442\u044C AI-\u0430\u043D\u0430\u043B\u0438\u0437", "Run AI Analysis"),
+    aiAnalyzing: getText("AI \u057E\u0565\u0580\u056C\u0578\u0582\u056E\u0578\u0582\u0574...", "AI-\u0430\u043D\u0430\u043B\u0438\u0437...", "AI analyzing..."),
+    aiComplete: getText("AI \u057E\u0565\u0580\u056C\u0578\u0582\u056E\u0578\u0582\u0569\u0575\u0578\u0582\u0576\u0568 \u0561\u057E\u0561\u0580\u057F\u057E\u0561\u056E \u0567", "AI-\u0430\u043D\u0430\u043B\u0438\u0437 \u0437\u0430\u0432\u0435\u0440\u0448\u0451\u043D", "AI analysis complete"),
   };
 
   return (
