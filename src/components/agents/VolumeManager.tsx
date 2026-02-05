@@ -138,12 +138,12 @@ export function VolumeManager({
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="flex flex-wrap gap-2">
+            <div className="space-y-2">
               {availableFiles.map((file) => (
                 <Badge 
                   key={file.id} 
                   variant="outline" 
-                  className="cursor-pointer hover:bg-primary/10 py-1.5"
+                  className="cursor-pointer hover:bg-primary/10 py-2 px-3 max-w-full whitespace-normal break-words rounded-xl"
                   onClick={() => {
                     setFormData({
                       title: file.original_filename.replace(/\.[^.]+$/, ""),
@@ -154,14 +154,20 @@ export function VolumeManager({
                     setIsAddDialogOpen(true);
                   }}
                 >
-                  <FileText className="mr-1 h-3 w-3" />
-                  {file.original_filename}
-                  {file.file_size && (
-                    <span className="ml-1 text-xs text-muted-foreground">
-                      ({formatFileSize(file.file_size)})
-                    </span>
-                  )}
-                  <Plus className="ml-1 h-3 w-3" />
+                  <div className="flex items-start gap-2 w-full min-w-0">
+                    <FileText className="mt-0.5 h-4 w-4 shrink-0" />
+                    <div className="min-w-0 flex-1">
+                      <div className="text-xs sm:text-sm leading-tight" style={{ overflowWrap: 'anywhere' }}>
+                        {file.original_filename}
+                      </div>
+                      {file.file_size && (
+                        <div className="mt-0.5 text-[11px] text-muted-foreground">
+                          {formatFileSize(file.file_size)}
+                        </div>
+                      )}
+                    </div>
+                    <Plus className="mt-0.5 h-4 w-4 shrink-0" />
+                  </div>
                 </Badge>
               ))}
             </div>
@@ -173,26 +179,26 @@ export function VolumeManager({
       )}
 
       {/* Header with Add button */}
-      <div className="flex items-center justify-between">
-        <div>
-          <h3 className="text-lg font-semibold">{t("ai:case_volumes")}</h3>
-          <p className="text-sm text-muted-foreground">
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+        <div className="min-w-0">
+          <h3 className="text-lg font-semibold break-words">{t("ai:case_volumes")}</h3>
+          <p className="text-sm text-muted-foreground break-words">
             {t("ai:volumes_description")}
           </p>
         </div>
         
         <Dialog open={isAddDialogOpen} onOpenChange={setIsAddDialogOpen}>
           <DialogTrigger asChild>
-            <Button>
+            <Button className="w-full sm:w-auto whitespace-normal text-center">
               <Plus className="mr-2 h-4 w-4" />
-              {t("ai:add_volume")}
+              <span className="leading-tight">{t("ai:add_volume")}</span>
             </Button>
           </DialogTrigger>
-          <DialogContent>
+          <DialogContent className="w-[95vw] sm:w-full max-h-[90vh] overflow-hidden flex flex-col">
             <DialogHeader>
-              <DialogTitle>{t("ai:add_volume")}</DialogTitle>
+              <DialogTitle className="break-words">{t("ai:add_volume")}</DialogTitle>
             </DialogHeader>
-            <div className="space-y-4 py-4">
+            <div className="space-y-4 py-4 overflow-y-auto">
               {/* File Selection */}
               <div className="space-y-2">
                 <Label htmlFor="file">{t("ai:link_file")}</Label>
@@ -200,7 +206,7 @@ export function VolumeManager({
                   value={formData.file_id || "__none__"} 
                   onValueChange={(value) => setFormData(prev => ({ ...prev, file_id: value === "__none__" ? "" : value }))}
                 >
-                  <SelectTrigger>
+                  <SelectTrigger className="min-w-0">
                     <SelectValue placeholder={t("ai:select_file_optional")} />
                   </SelectTrigger>
                   <SelectContent>
@@ -244,11 +250,11 @@ export function VolumeManager({
                 />
               </div>
             </div>
-            <DialogFooter>
-              <Button variant="outline" onClick={() => setIsAddDialogOpen(false)}>
+            <DialogFooter className="gap-2">
+              <Button variant="outline" onClick={() => setIsAddDialogOpen(false)} className="w-full sm:w-auto">
                 {t("common:cancel")}
               </Button>
-              <Button onClick={handleCreateVolume} disabled={!formData.title}>
+              <Button onClick={handleCreateVolume} disabled={!formData.title} className="w-full sm:w-auto">
                 {t("common:create")}
               </Button>
             </DialogFooter>
