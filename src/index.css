@@ -169,18 +169,23 @@ html {
 
   /* Mobile-first container with safe area padding */
   .container-mobile {
-    @apply w-full;
+    @apply w-full max-w-7xl mx-auto;
     padding-left: max(var(--spacing-md), env(safe-area-inset-left));
     padding-right: max(var(--spacing-md), env(safe-area-inset-right));
   }
 
-  /* Safe area for bottom navigation */
-  .safe-bottom {
-    padding-bottom: max(var(--spacing-md), env(safe-area-inset-bottom));
+  /* Safe area for bottom */
+  .pb-safe {
+    padding-bottom: max(16px, env(safe-area-inset-bottom));
+  }
+
+  /* Safe area for top */
+  .pt-safe {
+    padding-top: max(0px, env(safe-area-inset-top));
   }
 
   /* No horizontal overflow */
-  .no-overflow-x {
+  .overflow-x-hidden {
     overflow-x: hidden;
     max-width: 100vw;
   }

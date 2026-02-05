@@ -17,7 +17,7 @@ export function CaseDetailHeader({ userEmail, onSignOut }: CaseDetailHeaderProps
   return (
     <>
       {/* Header - Premium mobile styling */}
-      <header className="sticky top-0 z-10 border-b border-border/50 bg-card/95 backdrop-blur-md supports-[backdrop-filter]:bg-card/80">
+      <header className="sticky top-0 z-50 border-b border-border/50 bg-card/95 backdrop-blur-md supports-[backdrop-filter]:bg-card/80">
         <div className="container-mobile mx-auto flex h-14 sm:h-16 items-center justify-between">
           <div className="flex items-center gap-3">
             <Scale className="h-6 w-6 sm:h-7 sm:w-7 text-primary" />
