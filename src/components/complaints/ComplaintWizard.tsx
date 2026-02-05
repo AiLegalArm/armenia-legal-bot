@@ -107,15 +107,17 @@ export function ComplaintWizard({ open, onOpenChange }: ComplaintWizardProps) {
 
   return (
     <Dialog open={open} onOpenChange={(o) => { if (!o) reset(); onOpenChange(o); }}>
-      <DialogContent className="max-w-2xl max-h-[90vh] overflow-hidden flex flex-col">
-        <DialogHeader>
-          <DialogTitle className="flex items-center gap-2">
-            <Sparkles className="h-5 w-5 text-primary" />
-            {getText(
-              "AI \u0532\u0578\u0572\u0578\u0584\u0576\u0565\u0580\u056B \u0587 \u0570\u0561\u0575\u0581\u0565\u0580\u056B \u0563\u0565\u0576\u0565\u0580\u0561\u057F\u0578\u0580",
-              "AI генератор жалоб и исков",
-              "AI Complaints & Claims Generator"
-            )}
+      <DialogContent className="w-[95vw] max-w-2xl max-h-[90vh] overflow-hidden flex flex-col p-4 sm:p-6">
+        <DialogHeader className="min-w-0">
+          <DialogTitle className="flex items-center gap-2 text-base sm:text-lg">
+            <Sparkles className="h-5 w-5 text-primary shrink-0" />
+            <span className="break-words">
+              {getText(
+                "AI \u0532\u0578\u0572\u0578\u0584\u0576\u0565\u0580\u056B \u0587 \u0570\u0561\u0575\u0581\u0565\u0580\u056B \u0563\u0565\u0576\u0565\u0580\u0561\u057F\u0578\u0580",
+                "AI генератор жалоб и исков",
+                "AI Complaints & Claims Generator"
+              )}
+            </span>
           </DialogTitle>
         </DialogHeader>
 
@@ -191,26 +193,28 @@ export function ComplaintWizard({ open, onOpenChange }: ComplaintWizardProps) {
           </div>
         </ScrollArea>
 
-        {/* Footer with navigation */}
+        {/* Footer with navigation - sticky on mobile */}
         {state.step > 1 && state.step < 4 && (
-          <div className="flex flex-col gap-2 sm:flex-row sm:items-center pt-4 border-t">
-            <Button variant="ghost" onClick={goBack} className="w-full sm:w-auto">
-              <ArrowLeft className="h-4 w-4 mr-2" />
-              {getText("\u0540\u0565\u057F", "Назад", "Back")}
+          <div className="flex flex-col gap-2 pt-4 border-t mt-auto">
+            <Button variant="ghost" onClick={goBack} className="w-full h-11 rounded-xl">
+              <ArrowLeft className="h-4 w-4 mr-2 shrink-0" />
+              <span className="truncate">{getText("\u0540\u0565\u057F", "Назад", "Back")}</span>
             </Button>
 
             {state.step === 3 && (
               <Button
                 onClick={onGenerate}
-                className="w-full sm:w-auto sm:ml-auto"
+                className="w-full h-12 rounded-xl text-sm font-medium"
                 disabled={state.isProcessing || (state.files.length === 0 && !state.additionalInfo)}
               >
-                <Sparkles className="mr-2 h-4 w-4" />
-                {getText(
-                  "\u0533\u0565\u0576\u0565\u0580\u0561\u0581\u0576\u0565\u056C \u0562\u0578\u0572\u0578\u0584\u0568",
-                  "Сгенерировать жалобу",
-                  "Generate Complaint"
-                )}
+                <Sparkles className="mr-2 h-4 w-4 shrink-0" />
+                <span className="truncate">
+                  {getText(
+                    "\u0533\u0565\u0576\u0565\u0580\u0561\u0581\u0576\u0565\u056C \u0562\u0578\u0572\u0578\u0584\u0568",
+                    "Сгенерировать жалобу",
+                    "Generate Complaint"
+                  )}
+                </span>
               </Button>
             )}
           </div>

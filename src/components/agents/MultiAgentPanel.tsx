@@ -76,38 +76,38 @@ export function MultiAgentPanel({ caseId, caseFacts }: MultiAgentPanelProps) {
   };
 
   return (
-    <div className="space-y-4 sm:space-y-6">
+    <div className="space-y-4 sm:space-y-6 w-full max-w-full overflow-hidden">
       {/* Header - Premium card */}
       <Card className="card-premium overflow-hidden">
         <CardHeader className="pb-4">
           <div className="space-y-4">
-            <div>
+            <div className="min-w-0">
               <CardTitle className="flex items-center gap-3 text-mobile-lg sm:text-xl">
-                <span className="text-2xl">🤖</span>
-                <span className="truncate">{t("ai:multi_agent_analysis")}</span>
+                <span className="text-2xl shrink-0">🤖</span>
+                <span className="break-words">{t("ai:multi_agent_analysis")}</span>
               </CardTitle>
               <CardDescription className="text-mobile-sm sm:text-sm mt-2 leading-relaxed">
                 {t("ai:multi_agent_description")}
               </CardDescription>
             </div>
             
-            {/* Action Buttons - Touch-friendly, full width on mobile */}
-            <div className="grid gap-3 sm:flex sm:flex-row">
+            {/* Action Buttons - Full width stack on mobile */}
+            <div className="flex flex-col gap-3 w-full">
               <Button
                 onClick={() => runAllAgents(caseId)}
                 disabled={isLoading || volumes.length === 0}
-                className="h-12 sm:h-11 w-full sm:w-auto rounded-xl text-mobile-sm sm:text-sm font-medium"
+                className="h-12 sm:h-11 w-full rounded-xl text-mobile-sm sm:text-sm font-medium"
               >
                 {isLoading ? (
                   <>
-                    <Loader2 className="mr-2 h-5 w-5 animate-spin" />
+                    <Loader2 className="mr-2 h-5 w-5 animate-spin shrink-0" />
                     <span className="truncate">
                       {currentAgent && AGENT_CONFIGS.find(a => a.type === currentAgent)?.nameHy}
                     </span>
                   </>
                 ) : (
                   <>
-                    <Play className="mr-2 h-5 w-5 flex-shrink-0" />
+                    <Play className="mr-2 h-5 w-5 shrink-0" />
                     <span className="truncate">{t("ai:run_all_agents")}</span>
                   </>
                 )}

@@ -345,45 +345,47 @@ const MyDocuments = () => {
         ) : (
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
             {filteredDocuments.map((doc) => (
-              <Card key={doc.id} className="hover:shadow-md transition-shadow cursor-pointer" onClick={() => handleOpenDocument(doc)}>
-                <CardHeader className="pb-2">
-                  <div className="flex items-start justify-between">
-                    <CardTitle className="text-base line-clamp-2">{doc.title}</CardTitle>
-                    <Badge variant={getStatusColor(doc.status)}>{doc.status}</Badge>
+              <Card key={doc.id} className="hover:shadow-md transition-shadow cursor-pointer overflow-hidden" onClick={() => handleOpenDocument(doc)}>
+                <CardHeader className="pb-2 min-w-0">
+                  <div className="flex items-start justify-between gap-2 min-w-0">
+                    <CardTitle className="text-base line-clamp-2 break-words min-w-0">{doc.title}</CardTitle>
+                    <Badge variant={getStatusColor(doc.status)} className="shrink-0">{doc.status}</Badge>
                   </div>
-                  <CardDescription className="flex items-center gap-1">
-                    <Calendar className="h-3 w-3" />
-                    {formatDate(doc.created_at)}
+                  <CardDescription className="flex items-center gap-1 text-xs">
+                    <Calendar className="h-3 w-3 shrink-0" />
+                    <span className="truncate">{formatDate(doc.created_at)}</span>
                   </CardDescription>
                 </CardHeader>
-                <CardContent>
-                  <p className="text-sm text-muted-foreground line-clamp-3">
+                <CardContent className="min-w-0">
+                  <p className="text-sm text-muted-foreground line-clamp-3 break-words">
                     {doc.content_text.substring(0, 150)}...
                   </p>
                 </CardContent>
-                <CardFooter className="pt-2 gap-2">
+                <CardFooter className="pt-2 flex flex-wrap gap-2">
                   <Button
                     variant="outline"
                     size="sm"
+                    className="h-9 rounded-lg"
                     onClick={(e) => {
                       e.stopPropagation();
                       handleOpenDocument(doc);
                       setIsEditing(true);
                     }}
                   >
-                    <Edit className="h-4 w-4 mr-1" />
-                    {t('common:edit')}
+                    <Edit className="h-4 w-4 mr-1 shrink-0" />
+                    <span className="truncate">{t('common:edit')}</span>
                   </Button>
                   <Button
                     variant="outline"
                     size="sm"
+                    className="h-9 rounded-lg"
                     onClick={(e) => {
                       e.stopPropagation();
                       handleExportPDF(doc);
                     }}
                     disabled={isExporting}
                   >
-                    <Download className="h-4 w-4 mr-1" />
+                    <Download className="h-4 w-4 mr-1 shrink-0" />
                     PDF
                   </Button>
                   <div onClick={(e) => e.stopPropagation()}>
@@ -396,6 +398,7 @@ const MyDocuments = () => {
                   <Button
                     variant="ghost"
                     size="sm"
+                    className="h-9 rounded-lg"
                     onClick={(e) => {
                       e.stopPropagation();
                       setDeletingId(doc.id);
@@ -412,16 +415,16 @@ const MyDocuments = () => {
 
       {/* Document Editor Dialog */}
       <Dialog open={!!selectedDocument} onOpenChange={(open) => !open && setSelectedDocument(null)}>
-        <DialogContent className="max-w-4xl max-h-[90vh]">
-          <DialogHeader>
+        <DialogContent className="w-[95vw] max-w-4xl max-h-[90vh] p-4 sm:p-6">
+          <DialogHeader className="min-w-0">
             {isEditing ? (
               <Input
                 value={editedTitle}
                 onChange={(e) => setEditedTitle(e.target.value)}
-                className="text-lg font-semibold"
+                className="text-base sm:text-lg font-semibold"
               />
             ) : (
-              <DialogTitle className="text-xl">{selectedDocument?.title}</DialogTitle>
+              <DialogTitle className="text-base sm:text-xl break-words">{selectedDocument?.title}</DialogTitle>
             )}
           </DialogHeader>
           

@@ -157,9 +157,9 @@ ${aggregatedReport.recommendations || ""}
         onClick={() => setIsDialogOpen(true)}
         disabled={!hasEnoughData}
         variant="outline"
-        className="gap-2 w-full sm:w-auto order-2 sm:order-1"
+        className="h-12 sm:h-11 w-full rounded-xl text-mobile-sm sm:text-sm font-medium"
       >
-        <FileText className="h-4 w-4 flex-shrink-0" />
+        <FileText className="h-4 w-4 mr-2 shrink-0" />
         <span className="truncate">{t("ai:generate_complaint_from_analysis")}</span>
       </Button>
 

@@ -199,18 +199,18 @@ export function LegalChatBot({ isOpen: controlledIsOpen, onOpenChange }: LegalCh
   return (
     <Card
       className={cn(
-        "fixed z-50 shadow-2xl transition-all duration-300",
+        "fixed z-50 shadow-2xl transition-all duration-300 overflow-hidden",
         isExpanded
-          ? "bottom-4 right-4 left-4 top-4 sm:left-auto sm:top-auto sm:h-[90vh] sm:w-[600px]"
-          : "bottom-4 right-4 h-[500px] w-[380px]"
+          ? "inset-4 sm:left-auto sm:top-auto sm:bottom-4 sm:right-4 sm:h-[90vh] sm:w-[600px]"
+          : "bottom-4 right-4 h-[500px] w-[calc(100vw-32px)] max-w-[380px] sm:w-[380px]"
       )}
     >
-      <CardHeader className="flex flex-row items-center justify-between space-y-0 border-b p-3">
-        <CardTitle className="flex items-center gap-2 text-base">
-          <Bot className="h-5 w-5 text-primary" />
-          {t('ai_name')}
+      <CardHeader className="flex flex-row items-center justify-between space-y-0 border-b p-3 min-w-0">
+        <CardTitle className="flex items-center gap-2 text-base min-w-0">
+          <Bot className="h-5 w-5 text-primary shrink-0" />
+          <span className="truncate">{t('ai_name')}</span>
         </CardTitle>
-        <div className="flex items-center gap-1">
+        <div className="flex items-center gap-1 shrink-0">
           <Button
             variant="ghost"
             size="icon"

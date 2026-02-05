@@ -82,23 +82,24 @@ export function AgentRunCard({ agent, run, isRunning, onRun, disabled }: AgentRu
   const findings = (run?.findings || []) as AgentFinding[];
 
   return (
-    <Card className={`${agent.color.replace("bg-", "border-l-4 border-l-")}`}>
-      <CardHeader className="pb-2">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <span className="text-2xl">{agent.icon}</span>
-            <div>
-              <CardTitle className="text-base">{agent.nameHy}</CardTitle>
-              <p className="text-sm text-muted-foreground">{agent.descriptionHy}</p>
+    <Card className={`${agent.color.replace("bg-", "border-l-4 border-l-")} overflow-hidden`}>
+      <CardHeader className="pb-2 p-3 sm:p-4">
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+          <div className="flex items-start sm:items-center gap-3 min-w-0">
+            <span className="text-2xl shrink-0">{agent.icon}</span>
+            <div className="min-w-0">
+              <CardTitle className="text-base break-words">{agent.nameHy}</CardTitle>
+              <p className="text-sm text-muted-foreground break-words">{agent.descriptionHy}</p>
             </div>
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 shrink-0">
             {getStatusBadge()}
             <Button
               variant="outline"
               size="sm"
               onClick={onRun}
               disabled={disabled || isRunning}
+              className="h-10 w-10 p-0 rounded-lg"
             >
               {isRunning ? (
                 <Loader2 className="h-4 w-4 animate-spin" />

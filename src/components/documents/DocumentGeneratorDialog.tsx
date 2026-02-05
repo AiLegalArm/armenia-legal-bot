@@ -34,9 +34,9 @@ export function DocumentGeneratorDialog({
   
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-5xl max-h-[90vh] overflow-y-auto">
-        <DialogHeader>
-          <DialogTitle className="text-xl">
+      <DialogContent className="w-[95vw] max-w-5xl max-h-[90vh] overflow-y-auto p-4 sm:p-6">
+        <DialogHeader className="min-w-0">
+          <DialogTitle className="text-base sm:text-xl break-words">
             {t("document_generator_title")}
           </DialogTitle>
         </DialogHeader>
