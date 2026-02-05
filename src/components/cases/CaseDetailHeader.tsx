@@ -16,30 +16,34 @@ export function CaseDetailHeader({ userEmail, onSignOut }: CaseDetailHeaderProps
 
   return (
     <>
-      {/* Header */}
-      <header className="sticky top-0 z-10 border-b bg-card">
-        <div className="container mx-auto flex h-14 sm:h-16 items-center justify-between px-3 sm:px-4">
-          <div className="flex items-center gap-2">
-            <Scale className="h-5 w-5 sm:h-6 sm:w-6 text-primary" />
+      {/* Header - Premium mobile styling */}
+      <header className="sticky top-0 z-10 border-b border-border/50 bg-card/95 backdrop-blur-md supports-[backdrop-filter]:bg-card/80">
+        <div className="container-mobile mx-auto flex h-14 sm:h-16 items-center justify-between">
+          <div className="flex items-center gap-3">
+            <Scale className="h-6 w-6 sm:h-7 sm:w-7 text-primary" />
             <h1 className="text-lg sm:text-xl font-bold hidden sm:block">{t('common:app_name')}</h1>
           </div>
-          <div className="flex items-center gap-2 sm:gap-4">
-            <span className="hidden sm:block text-sm text-muted-foreground truncate max-w-[120px]">
+          <div className="flex items-center gap-2 sm:gap-3">
+            <span className="hidden md:block text-sm text-muted-foreground truncate max-w-[160px]">
               {userEmail}
             </span>
             <NotificationBell />
             <LanguageSwitcher />
-            <Button variant="ghost" size="icon" onClick={onSignOut}>
+            <Button variant="ghost" size="icon" onClick={onSignOut} className="h-11 w-11">
               <LogOut className="h-5 w-5" />
             </Button>
           </div>
         </div>
       </header>
 
-      {/* Back Button */}
-      <div className="container mx-auto px-4 pt-6">
-        <Button variant="ghost" className="mb-4" onClick={() => navigate('/dashboard')}>
-          <ArrowLeft className="mr-2 h-4 w-4" />
+      {/* Back Button - Touch-friendly */}
+      <div className="container-mobile mx-auto pt-4 sm:pt-6">
+        <Button 
+          variant="ghost" 
+          className="mb-3 sm:mb-4 h-11 px-4 rounded-xl text-muted-foreground hover:text-foreground" 
+          onClick={() => navigate('/dashboard')}
+        >
+          <ArrowLeft className="mr-2 h-5 w-5" />
           {t('common:back', 'Back')}
         </Button>
       </div>
