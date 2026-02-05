@@ -1,0 +1,226 @@
+import { useState, useCallback } from 'react';
+import { useTranslation } from 'react-i18next';
+import { useQueryClient } from '@tanstack/react-query';
+import { supabase } from '@/integrations/supabase/client';
+import { useToast } from '@/hooks/use-toast';
+import { Button } from '@/components/ui/button';
+import { Textarea } from '@/components/ui/textarea';
+import { Alert, AlertDescription } from '@/components/ui/alert';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Loader2, Wand2, Pencil, Save, X, AlertTriangle } from 'lucide-react';
+import { getFunctionsInvokeErrorMessage, isNoDataForExtractionMessage } from '@/lib/functionsInvokeError';
+
+interface CaseFactsEditorProps {
+  caseId: string;
+  facts?: string | null;
+  legalQuestion?: string | null;
+  aiCreditsExhausted: boolean;
+  onCreditsExhausted: () => void;
+}
+
+export function CaseFactsEditor({
+  caseId,
+  facts,
+  legalQuestion,
+  aiCreditsExhausted,
+  onCreditsExhausted
+}: CaseFactsEditorProps) {
+  const { t } = useTranslation(['cases', 'common', 'errors']);
+  const { toast } = useToast();
+  const queryClient = useQueryClient();
+  
+  const [isEditingFields, setIsEditingFields] = useState(false);
+  const [editFacts, setEditFacts] = useState('');
+  const [editLegalQuestion, setEditLegalQuestion] = useState('');
+  const [isSavingFields, setIsSavingFields] = useState(false);
+  const [isExtracting, setIsExtracting] = useState(false);
+
+  const handleStartEditFields = () => {
+    setEditFacts(facts || '');
+    setEditLegalQuestion(legalQuestion || '');
+    setIsEditingFields(true);
+  };
+
+  const handleCancelEditFields = () => {
+    setIsEditingFields(false);
+    setEditFacts('');
+    setEditLegalQuestion('');
+  };
+
+  const handleSaveFields = async () => {
+    setIsSavingFields(true);
+    try {
+      const { error } = await supabase
+        .from('cases')
+        .update({
+          facts: editFacts,
+          legal_question: editLegalQuestion,
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', caseId);
+      
+      if (error) throw error;
+      
+      toast({ title: t('cases:fields_saved', 'Fields saved successfully') });
+      queryClient.invalidateQueries({ queryKey: ['case', caseId] });
+      setIsEditingFields(false);
+    } catch (error) {
+      console.error('Save fields error:', error);
+      toast({
+        title: t('errors:operation_failed', 'Operation failed'),
+        description: error instanceof Error ? error.message : 'Unknown error',
+        variant: 'destructive',
+      });
+    } finally {
+      setIsSavingFields(false);
+    }
+  };
+
+  const handleExtractFields = async () => {
+    setIsExtracting(true);
+    try {
+      const { data, error } = await supabase.functions.invoke('extract-case-fields', {
+        body: { caseId }
+      });
+      
+      if (error) {
+        const parsedMsg = getFunctionsInvokeErrorMessage(error);
+        if (parsedMsg.includes('402') || parsedMsg.includes('Payment required') || parsedMsg.includes('credits')) {
+          onCreditsExhausted();
+          toast({ title: t('cases:ai_credits_exhausted'), variant: 'destructive' });
+          return;
+        }
+        throw new Error(parsedMsg);
+      }
+      
+      if (data.success) {
+        toast({
+          title: t('common:success', 'Success'),
+          description: t('cases:fields_extracted', 'Facts and legal question extracted successfully'),
+        });
+        queryClient.invalidateQueries({ queryKey: ['case', caseId] });
+      } else {
+        if (data.error?.includes('402') || data.error?.includes('credits')) {
+          onCreditsExhausted();
+          toast({ title: t('cases:ai_credits_exhausted'), variant: 'destructive' });
+          return;
+        }
+        throw new Error(data.error || 'Extraction failed');
+      }
+    } catch (error) {
+      console.error('Extraction error:', error);
+      const rawMsg = error instanceof Error ? error.message : getFunctionsInvokeErrorMessage(error);
+      const errorMsg = isNoDataForExtractionMessage(rawMsg) ? t('cases:extraction_no_data') : rawMsg;
+      
+      if (rawMsg.includes('402') || rawMsg.includes('credits')) {
+        onCreditsExhausted();
+        toast({ title: t('cases:ai_credits_exhausted'), variant: 'destructive' });
+        return;
+      }
+      
+      toast({
+        title: t('errors:operation_failed', 'Operation failed'),
+        description: errorMsg,
+        variant: 'destructive',
+      });
+    } finally {
+      setIsExtracting(false);
+    }
+  };
+
+  return (
+    <Card className="mt-4">
+      <CardHeader className="flex flex-row items-center justify-between">
+        <CardTitle>{t('cases:facts_and_question', 'Facts & Legal Question')}</CardTitle>
+        <div className="flex gap-2">
+          {!isEditingFields ? (
+            <>
+              <Button variant="outline" size="sm" onClick={handleStartEditFields}>
+                <Pencil className="mr-2 h-4 w-4" />
+                {t('cases:edit_fields', 'Edit')}
+              </Button>
+              <Button variant="outline" size="sm" onClick={handleExtractFields} disabled={isExtracting}>
+                {isExtracting ? (
+                  <>
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    {t('common:processing', 'Processing')}...
+                  </>
+                ) : (
+                  <>
+                    <Wand2 className="mr-2 h-4 w-4" />
+                    {t('cases:auto_extract', 'Auto-extract')}
+                  </>
+                )}
+              </Button>
+            </>
+          ) : (
+            <>
+              <Button variant="outline" size="sm" onClick={handleCancelEditFields} disabled={isSavingFields}>
+                <X className="mr-2 h-4 w-4" />
+                {t('cases:cancel_edit', 'Cancel')}
+              </Button>
+              <Button size="sm" onClick={handleSaveFields} disabled={isSavingFields}>
+                {isSavingFields ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save className="mr-2 h-4 w-4" />}
+                {t('cases:save_fields', 'Save')}
+              </Button>
+            </>
+          )}
+        </div>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        {aiCreditsExhausted && (
+          <Alert variant="destructive">
+            <AlertTriangle className="h-4 w-4" />
+            <AlertDescription>{t('cases:ai_credits_exhausted')}</AlertDescription>
+          </Alert>
+        )}
+        
+        {isEditingFields ? (
+          <>
+            <div>
+              <label className="text-xs font-semibold text-muted-foreground mb-1 block">
+                {t('cases:facts', 'Facts')} ({t('cases:facts_hy', '\u0553\u0561\u057D\u057F\u0565\u0580')})
+              </label>
+              <Textarea
+                value={editFacts}
+                onChange={(e) => setEditFacts(e.target.value)}
+                placeholder={t('cases:no_facts')}
+                className="min-h-[100px]"
+              />
+            </div>
+            <div>
+              <label className="text-xs font-semibold text-muted-foreground mb-1 block">
+                {t('cases:legal_question', 'Legal Question')} ({t('cases:legal_question_hy', '\u053b\u0580\u0561\u057e\u0561\u056f\u0561\u0576 \u0570\u0561\u0580\u0581')})
+              </label>
+              <Textarea
+                value={editLegalQuestion}
+                onChange={(e) => setEditLegalQuestion(e.target.value)}
+                placeholder={t('cases:no_legal_question')}
+                className="min-h-[100px]"
+              />
+            </div>
+          </>
+        ) : (
+          <>
+            <div>
+              <p className="text-xs font-semibold text-muted-foreground mb-1">
+                {t('cases:facts', 'Facts')} ({t('cases:facts_hy', '\u0553\u0561\u057D\u057F\u0565\u0580')})
+              </p>
+              <p className="whitespace-pre-wrap text-sm border rounded-md p-3 bg-muted/50 min-h-[60px]">
+                {facts || t('cases:no_facts')}
+              </p>
+            </div>
+            <div>
+              <p className="text-xs font-semibold text-muted-foreground mb-1">
+                {t('cases:legal_question', 'Legal Question')} ({t('cases:legal_question_hy', '\u053b\u0580\u0561\u057e\u0561\u056f\u0561\u0576 \u0570\u0561\u0580\u0581')})
+              </p>
+              <p className="whitespace-pre-wrap text-sm border rounded-md p-3 bg-muted/50 min-h-[60px]">
+                {legalQuestion || t('cases:no_legal_question')}
+              </p>
+            </div>
+          </>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
