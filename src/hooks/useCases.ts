@@ -127,8 +127,7 @@ export function useCases(filters: CaseFilters = {}) {
   const deleteCase = useMutation({
     mutationFn: async (id: string) => {
       // Soft delete via backend RPC (avoids RLS edge-cases on direct UPDATE)
-      // `rpc` names are type-checked against generated DB types; cast to avoid build break.
-      const { error } = await (supabase as any).rpc('soft_delete_case', { p_case_id: id });
+      const { error } = await supabase.rpc('soft_delete_case', { p_case_id: id });
       if (error) throw error;
     },
     onSuccess: () => {
