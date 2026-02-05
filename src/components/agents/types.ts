@@ -2,6 +2,7 @@
 // MULTI-AGENT SYSTEM TYPES
 // =============================================================================
 
+// Frontend AgentType (used in multi-agent UI)
 export type AgentType = 
   | 'evidence_collector'
   | 'evidence_admissibility'
@@ -12,6 +13,32 @@ export type AgentType =
   | 'prosecution_weaknesses'
   | 'rights_violations'
   | 'aggregator';
+
+// Backend AnalysisType (used in ai-analyze edge function)
+// Maps to supabase/functions/ai-analyze/system.ts ANALYSIS_TYPES
+export type AnalysisType = 
+  | 'defense_analysis'
+  | 'prosecution_analysis'
+  | 'judge_analysis'
+  | 'aggregator'
+  | 'evidence_admissibility'
+  | 'charge_qualification'
+  | 'procedural_violations'
+  | 'substantive_law_violations'
+  | 'fair_trial_and_rights';
+
+// Mapping from frontend AgentType to backend AnalysisType
+export const AGENT_TO_ANALYSIS_TYPE: Record<AgentType, AnalysisType> = {
+  evidence_collector: 'evidence_admissibility',
+  evidence_admissibility: 'evidence_admissibility',
+  charge_qualification: 'charge_qualification',
+  procedural_violations: 'procedural_violations',
+  substantive_violations: 'substantive_law_violations',
+  defense_strategy: 'defense_analysis',
+  prosecution_weaknesses: 'prosecution_analysis',
+  rights_violations: 'fair_trial_and_rights',
+  aggregator: 'aggregator',
+};
 
 export type EvidenceType = 
   | 'document'

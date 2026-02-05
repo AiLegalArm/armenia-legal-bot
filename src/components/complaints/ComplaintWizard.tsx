@@ -1,5 +1,6 @@
 import { useState, useCallback } from "react";
 import { useTranslation } from "react-i18next";
+import { getText } from "@/lib/i18n-utils";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
@@ -49,12 +50,7 @@ export function ComplaintWizard({ open, onOpenChange }: ComplaintWizardProps) {
 
   const [state, setState] = useState<WizardState>(INITIAL_STATE);
 
-  // Utility function for trilingual text
-  const getText = useCallback((hy: string, ru: string, en: string) => {
-    if (lang === "hy") return hy;
-    if (lang === "ru") return ru;
-    return en;
-  }, [lang]);
+  // Using centralized getText from @/lib/i18n-utils
 
   // File handling hook
   const { handleFileUpload, removeFile } = useComplaintFiles({

@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
 import { supabase } from '@/integrations/supabase/client';
+import { getText } from '@/lib/i18n-utils';
 import { useToast } from '@/hooks/use-toast';
 import { useAuth } from '@/hooks/useAuth';
 import { Button } from '@/components/ui/button';
@@ -39,11 +40,7 @@ export const TelegramUploads = () => {
   const { user } = useAuth();
   const queryClient = useQueryClient();
 
-  const getText = (hy: string, ru: string, en: string) => {
-    if (i18n.language === 'hy') return hy;
-    if (i18n.language === 'ru') return ru;
-    return en;
-  };
+  // Using centralized getText from @/lib/i18n-utils
 
   const { data: uploads, isLoading } = useQuery({
     queryKey: ['telegram-uploads', user?.id],

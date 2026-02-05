@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useNavigate } from 'react-router-dom';
 import { supabase } from '@/integrations/supabase/client';
+import { getText } from '@/lib/i18n-utils';
 import { useToast } from '@/hooks/use-toast';
 import { useAuth } from '@/hooks/useAuth';
 import { Button } from '@/components/ui/button';
@@ -251,11 +252,7 @@ const MyDocuments = () => {
     }
   };
 
-  const getText = (hy: string, ru: string, en: string) => {
-    if (i18n.language === 'hy') return hy;
-    if (i18n.language === 'ru') return ru;
-    return en;
-  };
+  // Using centralized getText from @/lib/i18n-utils
 
   return (
     <div className="min-h-screen bg-background">

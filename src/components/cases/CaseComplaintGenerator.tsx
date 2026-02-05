@@ -1,5 +1,6 @@
 import { useState, useCallback } from "react";
 import { useTranslation } from "react-i18next";
+import { getText } from "@/lib/i18n-utils";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -86,11 +87,7 @@ export function CaseComplaintGenerator({
     progress: 0,
   });
 
-  const getText = (hy: string, ru: string, en: string) => {
-    if (lang === "hy") return hy;
-    if (lang === "ru") return ru;
-    return en;
-  };
+  // Using centralized getText from @/lib/i18n-utils
 
   // Determine case category from case_type
   const getCaseCategory = (): CaseCategory => {

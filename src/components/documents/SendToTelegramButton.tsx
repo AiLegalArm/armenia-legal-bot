@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { supabase } from '@/integrations/supabase/client';
+import { getText } from '@/lib/i18n-utils';
 import { useToast } from '@/hooks/use-toast';
 import { useAuth } from '@/hooks/useAuth';
 import { Button } from '@/components/ui/button';
@@ -38,11 +39,7 @@ export const SendToTelegramButton = ({
   const [chatId, setChatId] = useState<string | null>(null);
   const [isChecking, setIsChecking] = useState(false);
 
-  const getText = (hy: string, ru: string, en: string) => {
-    if (i18n.language === 'hy') return hy;
-    if (i18n.language === 'ru') return ru;
-    return en;
-  };
+  // Using centralized getText from @/lib/i18n-utils
 
   const checkTelegramSettings = async () => {
     if (!user) return;

@@ -1,5 +1,6 @@
 import { useEffect, useState, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
+import { getText } from '@/lib/i18n-utils';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
@@ -119,11 +120,7 @@ export const PromptFilesEditor = () => {
 
   const selectedRawContent = selectedFile ? PROMPT_FILE_CONTENTS[selectedFile.path] : undefined;
 
-  const getText = (hy: string, ru: string, en: string) => {
-    if (i18n.language === 'hy') return hy;
-    if (i18n.language === 'ru') return ru;
-    return en;
-  };
+  // Using centralized getText from @/lib/i18n-utils
 
   const handleConvert = useCallback(() => {
     const converted = armenianToUnicode(inputText);
