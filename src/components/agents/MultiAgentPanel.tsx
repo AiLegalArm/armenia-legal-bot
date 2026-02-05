@@ -96,7 +96,7 @@ export function MultiAgentPanel({ caseId, caseFacts }: MultiAgentPanelProps) {
               <Button
                 onClick={() => runAllAgents(caseId)}
                 disabled={isLoading || volumes.length === 0}
-                className="h-11 w-full rounded-xl text-xs sm:text-sm font-medium justify-center"
+                className="h-11 w-full rounded-xl text-xs sm:text-sm font-medium justify-center whitespace-normal text-center"
               >
                 {isLoading ? (
                   <>
@@ -108,7 +108,7 @@ export function MultiAgentPanel({ caseId, caseFacts }: MultiAgentPanelProps) {
                 ) : (
                   <>
                     <Play className="mr-2 h-4 w-4 shrink-0" />
-                    <span>{t("ai:run_all_agents")}</span>
+                    <span className="leading-tight">{t("ai:run_all_agents")}</span>
                   </>
                 )}
               </Button>

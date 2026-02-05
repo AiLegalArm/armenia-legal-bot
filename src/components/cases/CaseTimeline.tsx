@@ -295,10 +295,10 @@ export function CaseTimeline({ caseId }: CaseTimelineProps) {
         variant="outline"
         size="sm"
         onClick={() => setShowFilters(!showFilters)}
-        className="w-full justify-center"
+        className="w-full justify-center whitespace-normal text-center"
       >
         <Filter className="mr-2 h-4 w-4 shrink-0" />
-        <span className="truncate">{t('cases:filter_timeline')}</span>
+        <span className="leading-tight">{t('cases:filter_timeline')}</span>
       </Button>
       
       {showFilters && (

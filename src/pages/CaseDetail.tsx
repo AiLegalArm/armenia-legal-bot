@@ -195,7 +195,7 @@ const CaseDetail = () => {
   }
 
   return (
-    <div className="min-h-screen bg-background overflow-x-hidden">
+    <div className="min-h-screen bg-background">
       <CaseDetailHeader userEmail={user?.email} onSignOut={signOut} />
 
       {/* Main Content - Mobile-first with safe areas */}

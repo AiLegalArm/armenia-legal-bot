@@ -157,10 +157,10 @@ ${aggregatedReport.recommendations || ""}
         onClick={() => setIsDialogOpen(true)}
         disabled={!hasEnoughData}
         variant="outline"
-        className="h-11 w-full rounded-xl text-xs sm:text-sm font-medium justify-center"
+        className="h-11 w-full rounded-xl text-xs sm:text-sm font-medium justify-center whitespace-normal text-center"
       >
         <FileText className="h-4 w-4 mr-2 shrink-0" />
-        <span>{t("ai:generate_complaint_from_analysis")}</span>
+        <span className="leading-tight">{t("ai:generate_complaint_from_analysis")}</span>
       </Button>
 
       <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
