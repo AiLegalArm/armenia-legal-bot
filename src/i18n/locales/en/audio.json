@@ -1,10 +1,12 @@
 {
   "audio": "Audio",
-  "audio_title": "Audio to Text Transcription",
+   "audio_title": "Audio & Video Transcription",
   "audio_transcription": "Audio Transcription",
   "upload_audio": "Upload Audio File",
+   "upload_audio_video": "Upload Audio or Video File",
   "upload_description": "Upload audio files to transcribe them automatically",
   "supported_formats": "Supported formats: MP3, WAV, M4A, OGG, WebM, FLAC",
+   "supported_formats_video": "Supported: MP3, WAV, M4A, OGG, FLAC, MP4, MOV, WebM, AVI",
   "processing": "Transcribing audio...",
   "processing_complete": "Transcription complete!",
   "processing_failed": "Transcription failed",

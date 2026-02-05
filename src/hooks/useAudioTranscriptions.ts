@@ -22,6 +22,16 @@ const SUPPORTED_AUDIO_FORMATS = [
   'audio/webm',      // WebM
   'audio/flac',      // FLAC
 ];
+ 
+ const SUPPORTED_VIDEO_FORMATS = [
+   'video/mp4',       // MP4
+   'video/quicktime', // MOV
+   'video/webm',      // WebM
+   'video/x-msvideo', // AVI
+   'video/x-matroska',// MKV
+ ];
+ 
+ const ALL_SUPPORTED_FORMATS = [...SUPPORTED_AUDIO_FORMATS, ...SUPPORTED_VIDEO_FORMATS];
 
 const MAX_FILE_SIZE = 100 * 1024 * 1024; // 100MB
 
@@ -59,7 +69,7 @@ export function useAudioTranscriptions(caseId: string | undefined) {
   const uploadAndTranscribe = useMutation({
     mutationFn: async ({ file, caseId }: { file: File; caseId: string }) => {
       // Validate file type
-      if (!SUPPORTED_AUDIO_FORMATS.includes(file.type)) {
+       if (!ALL_SUPPORTED_FORMATS.includes(file.type)) {
         throw new Error(t('audio:unsupported_format'));
       }
 
