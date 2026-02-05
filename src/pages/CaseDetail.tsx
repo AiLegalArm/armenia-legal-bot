@@ -195,11 +195,11 @@ const CaseDetail = () => {
   }
 
   return (
-    <div className="min-h-screen bg-background no-overflow-x">
+    <div className="min-h-screen bg-background overflow-x-hidden">
       <CaseDetailHeader userEmail={user?.email} onSignOut={signOut} />
 
       {/* Main Content - Mobile-first with safe areas */}
-      <main className="container-mobile mx-auto py-4 sm:py-6 lg:py-8 safe-bottom">
+      <main className="container mx-auto px-4 sm:px-6 lg:px-8 py-4 sm:py-6 lg:py-8 pb-safe">
         {/* Case Header - Premium mobile card */}
         <div className="card-premium p-4 sm:p-6 mb-4 sm:mb-6">
           <div className="space-y-4">
