@@ -1,57 +1,39 @@
-import { useState, useCallback, useEffect } from 'react';
+import { useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import type { Database } from '@/integrations/supabase/types';
 import { supabase } from '@/integrations/supabase/client';
 import { useCase, useCases } from '@/hooks/useCases';
 import { useAuth } from '@/hooks/useAuth';
-import { useAIAnalysis, type AIRole } from '@/hooks/useAIAnalysis';
 import { useToast } from '@/hooks/use-toast';
-import { useQueryClient } from '@tanstack/react-query';
-import { LanguageSwitcher } from '@/components/LanguageSwitcher';
+import { CaseDetailHeader } from '@/components/cases/CaseDetailHeader';
+import { CaseDetailInfo } from '@/components/cases/CaseDetailInfo';
+import { CaseFactsEditor } from '@/components/cases/CaseFactsEditor';
+import { CaseAIAnalysisPanel } from '@/components/cases/CaseAIAnalysisPanel';
 import { CaseForm } from '@/components/cases/CaseForm';
 import { CaseTimeline } from '@/components/cases/CaseTimeline';
 import { CaseFileUpload } from '@/components/cases/CaseFileUpload';
 import { CasePdfUpload } from '@/components/cases/CasePdfUpload';
 import { CaseComments } from '@/components/cases/CaseComments';
-import { FeedbackStars } from '@/components/FeedbackStars';
 import { DocumentGeneratorDialog } from '@/components/documents/DocumentGeneratorDialog';
 import { CaseComplaintGenerator } from '@/components/cases/CaseComplaintGenerator';
-import { CaseReminders, CourtDateReminderSuggestion, NotificationBell } from '@/components/reminders';
+import { CaseReminders, CourtDateReminderSuggestion } from '@/components/reminders';
 import { MultiAgentPanel } from '@/components/agents/MultiAgentPanel';
 import { Button } from '@/components/ui/button';
-import { Textarea } from '@/components/ui/textarea';
-import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Switch } from '@/components/ui/switch';
-import { Label } from '@/components/ui/label';
-import { exportAnalysisToPDF, exportMultipleAnalysesToPDF, exportCaseDetailToPDF } from '@/lib/pdfExport';
 import { PdfExportButton } from '@/components/PdfExportButton';
+import { exportCaseDetailToPDF } from '@/lib/pdfExport';
 import { format } from 'date-fns';
-import { getFunctionsInvokeErrorMessage, isNoDataForExtractionMessage } from '@/lib/functionsInvokeError';
 import { 
-  Scale, 
-  ArrowLeft, 
   Edit, 
   Trash2,
-  Calendar,
-  FileText,
   Loader2,
-  LogOut,
   Brain,
-  Download,
   FilePlus,
   Music,
-  Wand2,
-  Pencil,
-  Save,
-  X,
-  AlertTriangle,
-  FileSignature,
   Bell,
-  Check,
   Bot
 } from 'lucide-react';
 import {
@@ -64,14 +46,6 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-  DropdownMenuSeparator,
-} from '@/components/ui/dropdown-menu';
-import { ChevronDown, Gavel } from 'lucide-react';
 
 const statusColors: Record<string, string> = {
   open: 'bg-green-500/10 text-green-700 dark:text-green-400',
@@ -91,12 +65,11 @@ const priorityColors: Record<string, string> = {
 const CaseDetail = () => {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
-  const { t, i18n } = useTranslation(['cases', 'common', 'ai', 'disclaimer', 'reminders', 'errors']);
+  const { t, i18n } = useTranslation(['cases', 'common', 'ai', 'disclaimer', 'reminders']);
   const { user, signOut, isClient, isAdmin } = useAuth();
   
   const { data: caseData, isLoading } = useCase(id);
   const { updateCase, deleteCase } = useCases();
-  const { isLoading: isAnalyzing, currentRole, results, creditsExhausted: aiCreditsFromHook, analyzeCase, runAllRoles, clearResults, loadResults } = useAIAnalysis();
   
   const [editFormOpen, setEditFormOpen] = useState(false);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
@@ -104,234 +77,9 @@ const CaseDetail = () => {
   const [documentGeneratorOpen, setDocumentGeneratorOpen] = useState(false);
   const [complaintGeneratorOpen, setComplaintGeneratorOpen] = useState(false);
   const [preselectedDocumentType, setPreselectedDocumentType] = useState<'appeal' | 'cassation' | null>(null);
-  const [isExtracting, setIsExtracting] = useState(false);
-  
-  // Role toggles for analysis
-  const [enabledRoles, setEnabledRoles] = useState({
-    advocate: true,
-    prosecutor: true,
-    judge: true,
-  });
-  const [aiCreditsExhaustedLocal, setAiCreditsExhaustedLocal] = useState(false);
-  
-  // Combine both sources of credits exhausted state
-  const aiCreditsExhausted = aiCreditsFromHook || aiCreditsExhaustedLocal;
-  
-  // Manual edit state for Facts & Legal Question
-  const [isEditingFields, setIsEditingFields] = useState(false);
-  const [editFacts, setEditFacts] = useState('');
-  const [editLegalQuestion, setEditLegalQuestion] = useState('');
-  const [isSavingFields, setIsSavingFields] = useState(false);
-  
-  // State for saving AI analysis
-  const [savingAnalysisRole, setSavingAnalysisRole] = useState<AIRole | null>(null);
-  const [savedAnalysisRoles, setSavedAnalysisRoles] = useState<Set<AIRole>>(new Set());
-  const [loadingSavedAnalyses, setLoadingSavedAnalyses] = useState(false);
+  const [aiCreditsExhausted, setAiCreditsExhausted] = useState(false);
   
   const { toast } = useToast();
-  const queryClient = useQueryClient();
-
-  // Load previously saved analyses from database
-  useEffect(() => {
-    const loadSavedAnalyses = async () => {
-      if (!id) return;
-      
-      setLoadingSavedAnalyses(true);
-      try {
-        const { data, error } = await supabase
-          .from('ai_analysis')
-          .select('id, role, response_text, sources_used, created_at')
-          .eq('case_id', id)
-          .order('created_at', { ascending: false });
-
-        if (error) throw error;
-
-        if (data && data.length > 0) {
-          // Group by role and take the latest for each
-          const latestByRole = new Map<string, typeof data[0]>();
-          for (const item of data) {
-            if (!latestByRole.has(item.role)) {
-              latestByRole.set(item.role, item);
-            }
-          }
-
-          // Load results into the AI analysis hook state
-          const savedRolesSet = new Set<AIRole>();
-          const loadedResults: Partial<Record<AIRole, { role: AIRole; analysis: string; sources: Array<{ title: string; category: string; source_name: string }>; model: string } | null>> = {};
-          
-          latestByRole.forEach((item, role) => {
-            const validRoles: AIRole[] = ['advocate', 'prosecutor', 'judge', 'aggregator'];
-            if (validRoles.includes(role as AIRole)) {
-              savedRolesSet.add(role as AIRole);
-              const sources = Array.isArray(item.sources_used)
-                ? (item.sources_used as Array<{ title: string; category: string; source_name: string }>)
-                : [];
-              loadedResults[role as AIRole] = {
-                role: role as AIRole,
-                analysis: item.response_text,
-                sources,
-                model: 'loaded'
-              };
-            }
-          });
-
-          loadResults(loadedResults);
-          setSavedAnalysisRoles(savedRolesSet);
-        }
-      } catch (error) {
-        console.error('Failed to load saved analyses:', error);
-      } finally {
-        setLoadingSavedAnalyses(false);
-      }
-    };
-
-    loadSavedAnalyses();
-  }, [id, loadResults]);
-
-  // Save analysis to database
-  const handleSaveAnalysis = useCallback(async (role: AIRole) => {
-    if (!caseData || !results[role]) return;
-    
-    setSavingAnalysisRole(role);
-    try {
-      const { error } = await supabase.from('ai_analysis').insert({
-        case_id: caseData.id,
-        role,
-        response_text: results[role]!.analysis,
-        sources_used: results[role]!.sources as unknown as Database['public']['Tables']['ai_analysis']['Insert']['sources_used'],
-        created_by: user?.id,
-      });
-      
-      if (error) throw error;
-      
-      setSavedAnalysisRoles(prev => new Set(prev).add(role));
-      toast({ title: t('ai:feedback_submit_success') });
-    } catch (error) {
-      console.error('Save analysis error:', error);
-      toast({
-        title: t('errors:operation_failed'),
-        variant: 'destructive',
-      });
-    } finally {
-      setSavingAnalysisRole(null);
-    }
-  }, [caseData, results, user?.id, toast, t]);
-
-  const handleExtractFields = async () => {
-    if (!caseData) return;
-    
-    setIsExtracting(true);
-    setAiCreditsExhaustedLocal(false);
-    try {
-      const { data, error } = await supabase.functions.invoke('extract-case-fields', {
-        body: { caseId: caseData.id }
-      });
-      
-        if (error) {
-         const parsedMsg = getFunctionsInvokeErrorMessage(error);
-        // Check for 402 Payment Required error
-         if (parsedMsg.includes('402') || parsedMsg.includes('Payment required') || parsedMsg.includes('credits')) {
-          setAiCreditsExhaustedLocal(true);
-          toast({
-            title: t('cases:ai_credits_exhausted'),
-            variant: 'destructive',
-          });
-          return;
-        }
-         throw new Error(parsedMsg);
-      }
-      
-      if (data.success) {
-        toast({
-          title: t('common:success', 'Success'),
-          description: t('cases:fields_extracted', 'Facts and legal question extracted successfully'),
-        });
-        // Refresh case data
-        queryClient.invalidateQueries({ queryKey: ['case', caseData.id] });
-      } else {
-        // Check for 402 in response data
-        if (data.error?.includes('402') || data.error?.includes('Payment required') || data.error?.includes('credits')) {
-          setAiCreditsExhaustedLocal(true);
-          toast({
-            title: t('cases:ai_credits_exhausted'),
-            variant: 'destructive',
-          });
-          return;
-        }
-        throw new Error(data.error || 'Extraction failed');
-      }
-    } catch (error) {
-      console.error('Extraction error:', error);
-      const rawMsg = error instanceof Error ? error.message : getFunctionsInvokeErrorMessage(error);
-      const errorMsg = isNoDataForExtractionMessage(rawMsg)
-        ? t('cases:extraction_no_data')
-        : rawMsg;
-      
-      // Check for 402 in catch block
-      if (rawMsg.includes('402') || rawMsg.includes('Payment required') || rawMsg.includes('credits')) {
-        setAiCreditsExhaustedLocal(true);
-        toast({
-          title: t('cases:ai_credits_exhausted'),
-          variant: 'destructive',
-        });
-        return;
-      }
-      
-      toast({
-        title: t('errors:operation_failed', 'Operation failed'),
-        description: errorMsg,
-        variant: 'destructive',
-      });
-    } finally {
-      setIsExtracting(false);
-    }
-  };
-
-  const handleStartEditFields = () => {
-    setEditFacts(caseData?.facts || '');
-    setEditLegalQuestion(caseData?.legal_question || '');
-    setIsEditingFields(true);
-  };
-
-  const handleCancelEditFields = () => {
-    setIsEditingFields(false);
-    setEditFacts('');
-    setEditLegalQuestion('');
-  };
-
-  const handleSaveFields = async () => {
-    if (!caseData) return;
-    
-    setIsSavingFields(true);
-    try {
-      const { error } = await supabase
-        .from('cases')
-        .update({
-          facts: editFacts,
-          legal_question: editLegalQuestion,
-          updated_at: new Date().toISOString()
-        })
-        .eq('id', caseData.id);
-      
-      if (error) throw error;
-      
-      toast({
-        title: t('cases:fields_saved', 'Fields saved successfully'),
-      });
-      
-      queryClient.invalidateQueries({ queryKey: ['case', caseData.id] });
-      setIsEditingFields(false);
-    } catch (error) {
-      console.error('Save fields error:', error);
-      toast({
-        title: t('errors:operation_failed', 'Operation failed'),
-        description: error instanceof Error ? error.message : 'Unknown error',
-        variant: 'destructive',
-      });
-    } finally {
-      setIsSavingFields(false);
-    }
-  };
 
   const handleUpdate = (data: Database['public']['Tables']['cases']['Update']) => {
     if (id) {
@@ -350,79 +98,9 @@ const CaseDetail = () => {
     }
   };
 
-  const handleStartAnalysis = async () => {
-    if (!caseData) return;
-    
-    // Check if aggregator can be enabled (all other roles must be enabled)
-    const canRunAggregator = enabledRoles.advocate && enabledRoles.prosecutor && enabledRoles.judge;
-    
-    // Run only enabled roles
-    const rolesToRun: AIRole[] = [];
-    if (enabledRoles.advocate) rolesToRun.push('advocate');
-    if (enabledRoles.prosecutor) rolesToRun.push('prosecutor');
-    if (enabledRoles.judge) rolesToRun.push('judge');
-    
-    if (rolesToRun.length === 0) {
-      toast({
-        title: i18n.language === 'hy' ? '\u0538\u0576\u057F\u0580\u0565\u0584 \u0563\u0578\u0576\u0565 \u0574\u0565\u056F \u0564\u0565\u0580' : i18n.language === 'en' ? 'Select at least one role' : '\u0412\u044B\u0431\u0435\u0440\u0438\u0442\u0435 \u0445\u043E\u0442\u044F \u0431\u044B \u043E\u0434\u043D\u0443 \u0440\u043E\u043B\u044C',
-        variant: 'destructive'
-      });
-      return;
-    }
-    
-    // Run selected roles in parallel
-    for (const role of rolesToRun) {
-      await analyzeCase(role, caseData.id, caseData.facts, caseData.legal_question || '');
-    }
-    
-    // Run aggregator only if all roles were enabled
-    if (canRunAggregator) {
-      await analyzeCase('aggregator', caseData.id, caseData.facts, caseData.legal_question || '');
-    }
-  };
-  
-  // Helper to check if aggregator can be enabled
-  const canEnableAggregator = enabledRoles.advocate && enabledRoles.prosecutor && enabledRoles.judge;
-
-  const handleExportSingleAnalysis = async (role: AIRole) => {
-    if (!caseData || !results[role]) return;
-    
-    await exportAnalysisToPDF({
-      caseNumber: caseData.case_number,
-      caseTitle: caseData.title,
-      role,
-      analysisText: results[role]!.analysis,
-      sources: results[role]!.sources,
-      createdAt: new Date(),
-      language: 'hy'
-    });
-  };
-
-  const handleExportAllAnalyses = async () => {
-    if (!caseData) return;
-    
-    const analyses = Object.entries(results)
-      .filter((entry): entry is [string, NonNullable<typeof results[keyof typeof results]>] => entry[1] !== null)
-      .map(([role, result]) => ({
-        role,
-        text: result.analysis,
-        sources: result.sources
-      }));
-    
-    if (analyses.length === 0) return;
-    
-    await exportMultipleAnalysesToPDF(
-      caseData.case_number,
-      caseData.title,
-      analyses,
-      'hy'
-    );
-  };
-
   const handleExportCaseDetails = async () => {
     if (!caseData) return;
     
-    // Fetch timeline data
     const { data: files } = await supabase
       .from('case_files')
       .select('id, original_filename, created_at, file_size')
@@ -436,17 +114,14 @@ const CaseDetail = () => {
       .eq('case_id', caseData.id)
       .order('created_at', { ascending: false });
     
-    // Build timeline events
     const timeline: Array<{ type: string; title: string; description?: string; timestamp: string }> = [];
     
-    // Case created
     timeline.push({
       type: 'created',
       title: '\u0533\u0578\u0580\u056E\u0568 \u057D\u057F\u0565\u0572\u056E\u057E\u0565\u056C \u0567',
       timestamp: caseData.created_at,
     });
     
-    // Files uploaded
     files?.forEach(file => {
       timeline.push({
         type: 'file',
@@ -456,7 +131,6 @@ const CaseDetail = () => {
       });
     });
     
-    // AI analyses
     const roleLabels: Record<string, string> = {
       advocate: '\u0553\u0561\u057D\u057F\u0561\u0562\u0561\u0576 (\u054A\u0561\u0577\u057F\u057A\u0561\u0576)',
       prosecutor: '\u0544\u0565\u0572\u0561\u0564\u0580\u0578\u0572',
@@ -473,7 +147,6 @@ const CaseDetail = () => {
       });
     });
     
-    // Sort by timestamp descending
     timeline.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
     
     await exportCaseDetailToPDF({
@@ -515,7 +188,6 @@ const CaseDetail = () => {
       <div className="flex min-h-screen flex-col items-center justify-center">
         <p className="text-lg text-muted-foreground">{t('cases:case_not_found', 'Case not found')}</p>
         <Button className="mt-4" onClick={() => navigate('/dashboard')}>
-          <ArrowLeft className="mr-2 h-4 w-4" />
           {t('common:back', 'Back')}
         </Button>
       </div>
@@ -524,32 +196,10 @@ const CaseDetail = () => {
 
   return (
     <div className="min-h-screen bg-background">
-      {/* Header */}
-      <header className="sticky top-0 z-10 border-b bg-card">
-        <div className="container mx-auto flex h-14 sm:h-16 items-center justify-between px-3 sm:px-4">
-          <div className="flex items-center gap-2">
-            <Scale className="h-5 w-5 sm:h-6 sm:w-6 text-primary" />
-            <h1 className="text-lg sm:text-xl font-bold hidden sm:block">{t('common:app_name')}</h1>
-          </div>
-          <div className="flex items-center gap-2 sm:gap-4">
-            <span className="hidden sm:block text-sm text-muted-foreground truncate max-w-[120px]">{user?.email}</span>
-            <NotificationBell />
-            <LanguageSwitcher />
-            <Button variant="ghost" size="icon" onClick={() => signOut()}>
-              <LogOut className="h-5 w-5" />
-            </Button>
-          </div>
-        </div>
-      </header>
+      <CaseDetailHeader userEmail={user?.email} onSignOut={signOut} />
 
       {/* Main Content */}
       <main className="container mx-auto px-4 py-6">
-        {/* Back Button */}
-        <Button variant="ghost" className="mb-4" onClick={() => navigate('/dashboard')}>
-          <ArrowLeft className="mr-2 h-4 w-4" />
-          {t('common:back', 'Back')}
-        </Button>
-
         {/* Case Header */}
         <div className="mb-6 flex flex-col gap-4">
           <div>
@@ -640,128 +290,13 @@ const CaseDetail = () => {
                   </CardContent>
                 </Card>
 
-                {/* Facts and Legal Question Section */}
-                <Card className="mt-4">
-                  <CardHeader className="flex flex-row items-center justify-between">
-                    <CardTitle>{t('cases:facts_and_question', 'Facts & Legal Question')}</CardTitle>
-                    <div className="flex gap-2">
-                      {!isEditingFields && (
-                        <>
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            onClick={handleStartEditFields}
-                          >
-                            <Pencil className="mr-2 h-4 w-4" />
-                            {t('cases:edit_fields', 'Edit')}
-                          </Button>
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            onClick={handleExtractFields}
-                            disabled={isExtracting}
-                          >
-                            {isExtracting ? (
-                              <>
-                                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                                {t('common:processing', 'Processing')}...
-                              </>
-                            ) : (
-                              <>
-                                <Wand2 className="mr-2 h-4 w-4" />
-                                {t('cases:auto_extract', 'Auto-extract')}
-                              </>
-                            )}
-                          </Button>
-                        </>
-                      )}
-                      {isEditingFields && (
-                        <>
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            onClick={handleCancelEditFields}
-                            disabled={isSavingFields}
-                          >
-                            <X className="mr-2 h-4 w-4" />
-                            {t('cases:cancel_edit', 'Cancel')}
-                          </Button>
-                          <Button
-                            size="sm"
-                            onClick={handleSaveFields}
-                            disabled={isSavingFields}
-                          >
-                            {isSavingFields ? (
-                              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                            ) : (
-                              <Save className="mr-2 h-4 w-4" />
-                            )}
-                            {t('cases:save_fields', 'Save')}
-                          </Button>
-                        </>
-                      )}
-                    </div>
-                  </CardHeader>
-                  <CardContent className="space-y-4">
-                    {/* AI Credits Exhausted Warning */}
-                    {aiCreditsExhausted && (
-                      <Alert variant="destructive">
-                        <AlertTriangle className="h-4 w-4" />
-                        <AlertDescription>
-                          {t('cases:ai_credits_exhausted')}
-                        </AlertDescription>
-                      </Alert>
-                    )}
-                    
-                    {isEditingFields ? (
-                      <>
-                        {/* Edit Mode */}
-                        <div>
-                          <label className="text-xs font-semibold text-muted-foreground mb-1 block">
-                            {t('cases:facts', 'Facts')} ({t('cases:facts_hy', '\u0553\u0561\u057D\u057F\u0565\u0580')})
-                          </label>
-                          <Textarea
-                            value={editFacts}
-                            onChange={(e) => setEditFacts(e.target.value)}
-                            placeholder={t('cases:no_facts')}
-                            className="min-h-[100px]"
-                          />
-                        </div>
-                        <div>
-                          <label className="text-xs font-semibold text-muted-foreground mb-1 block">
-                            {t('cases:legal_question', 'Legal Question')} ({t('cases:legal_question_hy', '\u053b\u0580\u0561\u057e\u0561\u056f\u0561\u0576 \u0570\u0561\u0580\u0581')})
-                          </label>
-                          <Textarea
-                            value={editLegalQuestion}
-                            onChange={(e) => setEditLegalQuestion(e.target.value)}
-                            placeholder={t('cases:no_legal_question')}
-                            className="min-h-[100px]"
-                          />
-                        </div>
-                      </>
-                    ) : (
-                      <>
-                        {/* View Mode */}
-                        <div>
-                          <p className="text-xs font-semibold text-muted-foreground mb-1">
-                            {t('cases:facts', 'Facts')} ({t('cases:facts_hy', '\u0553\u0561\u057D\u057F\u0565\u0580')})
-                          </p>
-                          <p className="whitespace-pre-wrap text-sm border rounded-md p-3 bg-muted/50 min-h-[60px]">
-                            {caseData.facts || t('cases:no_facts')}
-                          </p>
-                        </div>
-                        <div>
-                          <p className="text-xs font-semibold text-muted-foreground mb-1">
-                            {t('cases:legal_question', 'Legal Question')} ({t('cases:legal_question_hy', '\u053b\u0580\u0561\u057e\u0561\u056f\u0561\u0576 \u0570\u0561\u0580\u0581')})
-                          </p>
-                          <p className="whitespace-pre-wrap text-sm border rounded-md p-3 bg-muted/50 min-h-[60px]">
-                            {caseData.legal_question || t('cases:no_legal_question')}
-                          </p>
-                        </div>
-                      </>
-                    )}
-                  </CardContent>
-                </Card>
+                <CaseFactsEditor
+                  caseId={caseData.id}
+                  facts={caseData.facts}
+                  legalQuestion={caseData.legal_question}
+                  aiCreditsExhausted={aiCreditsExhausted}
+                  onCreditsExhausted={() => setAiCreditsExhausted(true)}
+                />
 
                 {caseData.notes && (
                   <Card className="mt-4">
@@ -811,204 +346,15 @@ const CaseDetail = () => {
               </TabsContent>
 
               <TabsContent value="analysis" className="mt-4">
-                <div className="space-y-4">
-                  {/* AI Credits Exhausted Warning */}
-                  {aiCreditsExhausted && (
-                    <Alert variant="destructive">
-                      <AlertTriangle className="h-4 w-4" />
-                      <AlertDescription>
-                        {t('cases:ai_credits_exhausted_analysis')}
-                      </AlertDescription>
-                    </Alert>
-                  )}
-                  
-                  {/* AI Warning */}
-                  <div className="rounded-lg border border-amber-500/50 bg-amber-500/10 p-4">
-                    <p className="text-sm text-amber-700 dark:text-amber-400">
-                      ⚠️ {t('disclaimer:ai_warning')}
-                    </p>
-                  </div>
-                  
-                  <Card>
-                    <CardHeader>
-                      <CardTitle className="flex items-center justify-between flex-wrap gap-2">
-                        <span>{t('ai:analyze')}</span>
-                        <div className="flex gap-2 flex-wrap">
-                          {/* Generate Complaint Button - always visible */}
-                          <Button 
-                            variant="outline" 
-                            size="sm"
-                            onClick={() => setComplaintGeneratorOpen(true)}
-                          >
-                            <FileSignature className="mr-2 h-4 w-4" />
-                            {i18n.language === 'hy' ? '\u0532\u0578\u0572\u0578\u0584' : i18n.language === 'en' ? 'Complaint' : '\u0416\u0430\u043B\u043E\u0431\u0430'}
-                          </Button>
-                          {Object.values(results).some(r => r !== null) && (
-                            <>
-                              <Button 
-                                variant="outline" 
-                                size="sm"
-                                onClick={clearResults}
-                              >
-                                {t('common:clear', 'Clear')}
-                              </Button>
-                              <PdfExportButton onClick={handleExportAllAnalyses} />
-                            </>
-                          )}
-                        </div>
-                      </CardTitle>
-                    </CardHeader>
-                    <CardContent>
-                      {!Object.values(results).some(r => r !== null) ? (
-                        <>
-                          <p className="text-sm text-muted-foreground mb-4">
-                            {t('ai:analysis_placeholder', 'AI analysis will appear here')}
-                          </p>
-                          
-                          {/* Role Toggle Switches */}
-                          <div className="mb-6 p-4 rounded-lg border bg-muted/30">
-                            <p className="text-sm font-medium mb-3">
-                              {i18n.language === 'hy' ? '\u054E\u0565\u0580\u056C\u0578\u0582\u056E\u0578\u0582\u0569\u0575\u0561\u0576 \u0564\u0565\u0580\u0565\u0580' : i18n.language === 'en' ? 'Analysis Roles' : '\u0420\u043E\u043B\u0438 \u0430\u043D\u0430\u043B\u0438\u0437\u0430'}
-                            </p>
-                            <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
-                              {/* Prosecutor Toggle */}
-                              <div className="flex items-center space-x-2">
-                                <Switch
-                                  id="role-prosecutor"
-                                  checked={enabledRoles.prosecutor}
-                                  onCheckedChange={(checked) => setEnabledRoles(prev => ({ ...prev, prosecutor: checked }))}
-                                />
-                                <Label htmlFor="role-prosecutor" className="text-sm cursor-pointer">
-                                  {i18n.language === 'hy' ? '\u0544\u0565\u0572\u0561\u0564\u0580\u0578\u0572' : i18n.language === 'en' ? 'Prosecutor' : '\u041F\u0440\u043E\u043A\u0443\u0440\u043E\u0440'}
-                                </Label>
-                              </div>
-                              
-                              {/* Judge Toggle */}
-                              <div className="flex items-center space-x-2">
-                                <Switch
-                                  id="role-judge"
-                                  checked={enabledRoles.judge}
-                                  onCheckedChange={(checked) => setEnabledRoles(prev => ({ ...prev, judge: checked }))}
-                                />
-                                <Label htmlFor="role-judge" className="text-sm cursor-pointer">
-                                  {i18n.language === 'hy' ? '\u0534\u0561\u057F\u0561\u057E\u0578\u0580' : i18n.language === 'en' ? 'Judge' : '\u0421\u0443\u0434\u044C\u044F'}
-                                </Label>
-                              </div>
-                              
-                              {/* Aggregator Toggle - disabled if any other role is off */}
-                              <div className="flex items-center space-x-2">
-                                <Switch
-                                  id="role-aggregator"
-                                  checked={canEnableAggregator}
-                                  disabled={true}
-                                  className={!canEnableAggregator ? 'opacity-50' : ''}
-                                />
-                                <Label 
-                                  htmlFor="role-aggregator" 
-                                  className={`text-sm ${!canEnableAggregator ? 'text-muted-foreground' : 'cursor-pointer'}`}
-                                >
-                                  {i18n.language === 'hy' ? '\u0531\u0563\u0580\u0565\u0563\u0561\u057F\u0578\u0580' : i18n.language === 'en' ? 'Aggregator' : '\u0410\u0433\u0440\u0435\u0433\u0430\u0442\u043E\u0440'}
-                                </Label>
-                              </div>
-                            </div>
-                            
-                            {!canEnableAggregator && (
-                              <p className="text-xs text-amber-600 dark:text-amber-400 mt-2">
-                                {i18n.language === 'hy' 
-                                  ? '\u0531\u0563\u0580\u0565\u0563\u0561\u057F\u0578\u0580\u0568 \u0570\u0561\u057D\u0561\u0576\u0565\u056C\u056B \u0567 \u0574\u056B\u0561\u0575\u0576 \u0561\u0575\u0576 \u0564\u0565\u057A\u0584\u0578\u0582\u0574, \u0565\u0580\u0562 \u0562\u0578\u056C\u0578\u0580 \u0564\u0565\u0580\u0565\u0580\u0568 \u0574\u056B\u0561\u0581\u057E\u0561\u056E \u0565\u0576' 
-                                  : i18n.language === 'en' 
-                                    ? 'Aggregator is only available when all roles are enabled' 
-                                    : '\u0410\u0433\u0440\u0435\u0433\u0430\u0442\u043E\u0440 \u0434\u043E\u0441\u0442\u0443\u043F\u0435\u043D \u0442\u043E\u043B\u044C\u043A\u043E \u043A\u043E\u0433\u0434\u0430 \u0432\u043A\u043B\u044E\u0447\u0435\u043D\u044B \u0432\u0441\u0435 \u0440\u043E\u043B\u0438'}
-                              </p>
-                            )}
-                          </div>
-                          
-                          <Button 
-                            className="w-full" 
-                            onClick={handleStartAnalysis}
-                            disabled={isAnalyzing}
-                          >
-                            {isAnalyzing ? (
-                              <>
-                                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                                {t('ai:analyzing', 'Analyzing')} {currentRole ? `(${currentRole})` : ''}...
-                              </>
-                            ) : (
-                              <>
-                                <Brain className="mr-2 h-4 w-4" />
-                                {t('ai:start_analysis', 'Start Analysis')}
-                              </>
-                            )}
-                          </Button>
-                        </>
-                      ) : (
-                        <div className="space-y-6">
-                          {(['advocate', 'prosecutor', 'judge', 'aggregator'] as AIRole[]).map((role) => {
-                            const result = results[role];
-                            if (!result) return null;
-                            
-                            return (
-                              <div key={role} className="border rounded-lg p-4">
-                                <div className="flex items-center justify-between mb-3 flex-wrap gap-2">
-                                  <h3 className="font-semibold text-lg capitalize">{role}</h3>
-                                  <div className="flex gap-2">
-                                    <Button 
-                                      variant={savedAnalysisRoles.has(role) ? "secondary" : "default"}
-                                      size="sm"
-                                      onClick={() => handleSaveAnalysis(role)}
-                                      disabled={savingAnalysisRole === role || savedAnalysisRoles.has(role)}
-                                    >
-                                      {savingAnalysisRole === role ? (
-                                        <Loader2 className="mr-2 h-3 w-3 animate-spin" />
-                                      ) : savedAnalysisRoles.has(role) ? (
-                                        <Check className="mr-2 h-3 w-3" />
-                                      ) : (
-                                        <Save className="mr-2 h-3 w-3" />
-                                      )}
-                                      {savedAnalysisRoles.has(role) 
-                                        ? t('common:saved', 'Saved') 
-                                        : t('ai:save_analysis')}
-                                    </Button>
-                                    <Button 
-                                      variant="outline" 
-                                      size="sm"
-                                      onClick={() => handleExportSingleAnalysis(role)}
-                                    >
-                                      <Download className="mr-2 h-3 w-3" />
-                                      PDF
-                                    </Button>
-                                  </div>
-                                </div>
-                                <div className="text-sm whitespace-pre-wrap mb-3">{result.analysis}</div>
-                                {result.sources && result.sources.length > 0 && (
-                                  <div className="mt-3 pt-3 border-t">
-                                    <p className="text-xs font-semibold text-muted-foreground mb-2">
-                                      {t('ai:sources', 'Sources')}:
-                                    </p>
-                                    <ul className="text-xs space-y-1">
-                                      {result.sources.map((source, idx) => (
-                                        <li key={idx} className="text-muted-foreground">
-                                          • {source.title} ({source.category})
-                                        </li>
-                                      ))}
-                                    </ul>
-                                  </div>
-                                )}
-                              </div>
-                            );
-                          })}
-                        </div>
-                      )}
-                      
-                      {/* Feedback Component - shown after analysis is complete */}
-                      {Object.values(results).some(r => r !== null) && (
-                        <div className="mt-6 pt-6 border-t">
-                          <FeedbackStars caseId={caseData.id} />
-                        </div>
-                      )}
-                    </CardContent>
-                  </Card>
-                </div>
+                <CaseAIAnalysisPanel
+                  caseId={caseData.id}
+                  facts={caseData.facts}
+                  legalQuestion={caseData.legal_question}
+                  caseNumber={caseData.case_number}
+                  caseTitle={caseData.title}
+                  aiCreditsExhausted={aiCreditsExhausted}
+                  onOpenComplaintGenerator={() => setComplaintGeneratorOpen(true)}
+                />
               </TabsContent>
 
               <TabsContent value="agents" className="mt-4">
@@ -1018,61 +364,20 @@ const CaseDetail = () => {
           </div>
 
           {/* Sidebar */}
-          <div className="space-y-6">
-            {/* Case Info */}
-            <Card>
-              <CardHeader>
-                <CardTitle>{t('common:information', 'Information')}</CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                {caseData.court_name && (
-                  <div className="flex items-center gap-2">
-                    <FileText className="h-4 w-4 text-muted-foreground" />
-                    <div>
-                      <p className="text-xs text-muted-foreground">{t('court_name')}</p>
-                      <p className="text-sm">{caseData.court_name}</p>
-                    </div>
-                  </div>
-                )}
-                {caseData.court_date && (
-                  <div className="flex items-center gap-2">
-                    <Calendar className="h-4 w-4 text-muted-foreground" />
-                    <div>
-                      <p className="text-xs text-muted-foreground">{t('court_date')}</p>
-                      <p className="text-sm">{format(new Date(caseData.court_date), 'dd.MM.yyyy')}</p>
-                    </div>
-                  </div>
-                )}
-                <div>
-                  <p className="text-xs text-muted-foreground">{t('created_at')}</p>
-                  <p className="text-sm">{format(new Date(caseData.created_at), 'dd.MM.yyyy HH:mm')}</p>
-                </div>
-                <div>
-                  <p className="text-xs text-muted-foreground">{t('updated_at')}</p>
-                  <p className="text-sm">{format(new Date(caseData.updated_at), 'dd.MM.yyyy HH:mm')}</p>
-                </div>
-              </CardContent>
-            </Card>
-
-            {/* Timeline */}
-            <Card>
-              <CardHeader>
-                <CardTitle>{t('case_timeline')}</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <CaseTimeline caseId={caseData.id} />
-              </CardContent>
-            </Card>
-
-            {/* Team Leader Comments - only visible to admins and team leaders */}
-            {isAdmin && <CaseComments caseId={caseData.id} />}
-          </div>
+          <CaseDetailInfo
+            caseId={caseData.id}
+            courtName={caseData.court_name}
+            courtDate={caseData.court_date}
+            createdAt={caseData.created_at}
+            updatedAt={caseData.updated_at}
+            isAdmin={isAdmin}
+          />
         </div>
 
         {/* Legal Disclaimer */}
         <div className="mt-8 rounded-lg border border-amber-500/50 bg-amber-500/10 p-4">
           <p className="text-sm text-amber-700 dark:text-amber-400">
-            ⚠️ {t('disclaimer:main')}
+            \u26A0\uFE0F {t('disclaimer:main')}
           </p>
         </div>
       </main>
@@ -1091,9 +396,7 @@ const CaseDetail = () => {
         open={pdfUploadOpen}
         onOpenChange={setPdfUploadOpen}
         caseId={caseData.id}
-        onSuccess={() => {
-          setPdfUploadOpen(false);
-        }}
+        onSuccess={() => setPdfUploadOpen(false)}
       />
 
       {/* Delete Confirmation */}
