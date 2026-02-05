@@ -124,18 +124,22 @@ export function DocumentGenerator({ caseData, preselectedType, onClose }: Docume
   }
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 w-full max-w-full overflow-hidden">
       <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-        <TabsList className="grid w-full grid-cols-3">
-          <TabsTrigger value="template">{t("cases:template_select_tab")}</TabsTrigger>
-          <TabsTrigger value="result" disabled={!generatedContent}>
-            {t("cases:result_tab")}
-          </TabsTrigger>
-          <TabsTrigger value="history" className="flex items-center gap-1">
-            <History className="h-3 w-3" />
-            {labels.history}
-          </TabsTrigger>
-        </TabsList>
+        <div className="-mx-4 px-4 sm:mx-0 sm:px-0 overflow-x-auto">
+          <TabsList className="inline-flex w-max gap-1 sm:grid sm:w-full sm:grid-cols-3 min-h-[44px]">
+            <TabsTrigger value="template" className="min-h-[44px] px-3 sm:px-4 text-mobile-sm sm:text-sm whitespace-nowrap">
+              {t("cases:template_select_tab")}
+            </TabsTrigger>
+            <TabsTrigger value="result" disabled={!generatedContent} className="min-h-[44px] px-3 sm:px-4 text-mobile-sm sm:text-sm whitespace-nowrap">
+              {t("cases:result_tab")}
+            </TabsTrigger>
+            <TabsTrigger value="history" className="min-h-[44px] px-3 sm:px-4 text-mobile-sm sm:text-sm whitespace-nowrap flex items-center gap-1">
+              <History className="h-3 w-3 shrink-0" />
+              <span className="truncate">{labels.history}</span>
+            </TabsTrigger>
+          </TabsList>
+        </div>
 
         <TabsContent value="template" className="space-y-6">
           <div className="grid gap-6 lg:grid-cols-2">

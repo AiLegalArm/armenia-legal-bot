@@ -193,33 +193,35 @@ export function CaseAIAnalysisPanel({
   const canEnableAggregator = enabledRoles.advocate && enabledRoles.prosecutor && enabledRoles.judge;
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-4 w-full max-w-full overflow-hidden">
       {aiCreditsExhausted && (
         <Alert variant="destructive">
-          <AlertTriangle className="h-4 w-4" />
-          <AlertDescription>{t('cases:ai_credits_exhausted_analysis')}</AlertDescription>
+          <AlertTriangle className="h-4 w-4 shrink-0" />
+          <AlertDescription className="break-words">{t('cases:ai_credits_exhausted_analysis')}</AlertDescription>
         </Alert>
       )}
       
       {/* AI Warning */}
       <div className="rounded-lg border border-amber-500/50 bg-amber-500/10 p-4">
-        <p className="text-sm text-amber-700 dark:text-amber-400">
-          \u26A0\uFE0F {t('disclaimer:ai_warning')}
+        <p className="text-sm text-amber-700 dark:text-amber-400 break-words">
+          ⚠️ {t('disclaimer:ai_warning')}
         </p>
       </div>
       
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center justify-between flex-wrap gap-2">
-            <span>{t('ai:analyze')}</span>
-            <div className="flex gap-2 flex-wrap">
-              <Button variant="outline" size="sm" onClick={onOpenComplaintGenerator}>
-                <FileSignature className="mr-2 h-4 w-4" />
-                {i18n.language === 'hy' ? '\u0532\u0578\u0572\u0578\u0584' : i18n.language === 'en' ? 'Complaint' : '\u0416\u0430\u043B\u043E\u0431\u0430'}
+      <Card className="overflow-hidden">
+        <CardHeader className="p-4 sm:p-6">
+          <CardTitle className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+            <span className="text-base sm:text-lg">{t('ai:analyze')}</span>
+            <div className="grid grid-cols-2 gap-2 sm:flex sm:gap-2">
+              <Button variant="outline" size="sm" onClick={onOpenComplaintGenerator} className="h-10 rounded-xl text-mobile-sm sm:text-sm">
+                <FileSignature className="mr-2 h-4 w-4 shrink-0" />
+                <span className="truncate">
+                  {i18n.language === 'hy' ? '\u0532\u0578\u0572\u0578\u0584' : i18n.language === 'en' ? 'Complaint' : '\u0416\u0430\u043B\u043E\u0431\u0430'}
+                </span>
               </Button>
               {Object.values(results).some(r => r !== null) && (
                 <>
-                  <Button variant="outline" size="sm" onClick={clearResults}>
+                  <Button variant="outline" size="sm" onClick={clearResults} className="h-10 rounded-xl text-mobile-sm sm:text-sm">
                     {t('common:clear', 'Clear')}
                   </Button>
                   <PdfExportButton onClick={handleExportAllAnalyses} />
