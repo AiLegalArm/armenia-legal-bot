@@ -1,10 +1,12 @@
 {
   "audio": "Аудио",
-  "audio_title": "Преобразование аудио в текст",
+   "audio_title": "Транскрипция аудио и видео",
   "audio_transcription": "Транскрипция аудио",
   "upload_audio": "Загрузить аудиофайл",
+   "upload_audio_video": "Загрузить аудио или видео",
   "upload_description": "Загрузите аудиофайлы для автоматической транскрипции",
   "supported_formats": "Поддерживаемые форматы: MP3, WAV, M4A, OGG, WebM, FLAC",
+   "supported_formats_video": "Поддерживаемые: MP3, WAV, M4A, OGG, FLAC, MP4, MOV, WebM, AVI",
   "processing": "Транскрипция аудио...",
   "processing_complete": "Транскрипция завершена!",
   "processing_failed": "Ошибка транскрипции",

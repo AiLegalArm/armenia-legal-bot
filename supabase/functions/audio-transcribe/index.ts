@@ -97,9 +97,16 @@ serve(async (req) => {
       'm4a': 'audio/mp4',
       'ogg': 'audio/ogg',
       'webm': 'audio/webm',
-      'flac': 'audio/flac'
+       'flac': 'audio/flac',
+       'mp4': 'video/mp4',
+       'mov': 'video/quicktime',
+       'avi': 'video/x-msvideo',
+       'mkv': 'video/x-matroska'
     };
     const mimeType = mimeTypes[ext] || 'audio/mpeg';
+ 
+     // Determine if this is a video file
+     const isVideo = ['mp4', 'mov', 'avi', 'mkv', 'webm'].includes(ext) && mimeType.startsWith('video');
 
     // Call Gemini for audio transcription via Lovable AI Gateway
     const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
@@ -117,13 +124,13 @@ serve(async (req) => {
             content: [
               { 
                 type: "text", 
-                text: `Please transcribe this audio file. File name: ${fileName}. Focus on accurate Armenian legal terminology if applicable.` 
+                 text: `Please transcribe this ${isVideo ? 'video' : 'audio'} file. File name: ${fileName}. Focus on accurate Armenian legal terminology if applicable. Extract and transcribe all spoken content.` 
               },
               { 
-                type: "input_audio",
-                input_audio: {
+                 type: isVideo ? "input_video" : "input_audio",
+                 [isVideo ? "input_video" : "input_audio"]: {
                   data: audioBase64,
-                  format: ext === 'wav' ? 'wav' : 'mp3'
+                   format: isVideo ? ext : (ext === 'wav' ? 'wav' : 'mp3')
                 }
               }
             ]
