@@ -82,32 +82,32 @@ export function MultiAgentPanel({ caseId, caseFacts }: MultiAgentPanelProps) {
         <CardHeader className="pb-4">
           <div className="space-y-4">
             <div className="min-w-0">
-              <CardTitle className="flex items-center gap-3 text-mobile-lg sm:text-xl">
-                <span className="text-2xl shrink-0">🤖</span>
-                <span className="break-words">{t("ai:multi_agent_analysis")}</span>
+              <CardTitle className="flex items-start gap-2 text-base sm:text-xl flex-wrap">
+                <span className="text-xl sm:text-2xl shrink-0">🤖</span>
+                <span className="break-words min-w-0">{t("ai:multi_agent_analysis")}</span>
               </CardTitle>
-              <CardDescription className="text-mobile-sm sm:text-sm mt-2 leading-relaxed">
+              <CardDescription className="text-xs sm:text-sm mt-2 leading-relaxed">
                 {t("ai:multi_agent_description")}
               </CardDescription>
             </div>
             
             {/* Action Buttons - Full width stack on mobile */}
-            <div className="flex flex-col gap-3 w-full">
+            <div className="flex flex-col gap-2 w-full">
               <Button
                 onClick={() => runAllAgents(caseId)}
                 disabled={isLoading || volumes.length === 0}
-                className="h-12 sm:h-11 w-full rounded-xl text-mobile-sm sm:text-sm font-medium"
+                className="h-11 sm:h-11 w-full rounded-xl text-xs sm:text-sm font-medium"
               >
                 {isLoading ? (
                   <>
-                    <Loader2 className="mr-2 h-5 w-5 animate-spin shrink-0" />
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin shrink-0" />
                     <span className="truncate">
                       {currentAgent && AGENT_CONFIGS.find(a => a.type === currentAgent)?.nameHy}
                     </span>
                   </>
                 ) : (
                   <>
-                    <Play className="mr-2 h-5 w-5 shrink-0" />
+                    <Play className="mr-2 h-4 w-4 shrink-0" />
                     <span className="truncate">{t("ai:run_all_agents")}</span>
                   </>
                 )}
@@ -124,19 +124,19 @@ export function MultiAgentPanel({ caseId, caseFacts }: MultiAgentPanelProps) {
           {/* Progress bar */}
           {completedAgents > 0 && (
             <div className="mt-4 pt-4 border-t border-border/50 space-y-2">
-              <div className="flex justify-between text-mobile-sm sm:text-sm text-muted-foreground">
+              <div className="flex justify-between text-xs sm:text-sm text-muted-foreground">
                 <span>{t("ai:agents_completed")}</span>
                 <span className="font-medium">{completedAgents}/{totalAgents}</span>
               </div>
-              <Progress value={progress} className="h-2.5 rounded-full" />
+              <Progress value={progress} className="h-2 sm:h-2.5 rounded-full" />
             </div>
           )}
         </CardHeader>
       </Card>
 
-      {/* Agent Status Grid - Touch-friendly cards */}
+      {/* Agent Status Grid - Horizontal scroll on mobile */}
       <div className="overflow-x-auto -mx-4 px-4 sm:mx-0 sm:px-0 pb-2">
-        <div className="grid grid-cols-3 sm:grid-cols-5 lg:grid-cols-9 gap-2.5 sm:gap-3 min-w-[340px]">
+        <div className="flex gap-2 sm:grid sm:grid-cols-5 lg:grid-cols-9 sm:gap-3 min-w-max sm:min-w-0">
           {AGENT_CONFIGS.map((agent) => {
             const status = getAgentRunStatus(agent.type);
             const isCurrentAgent = currentAgent === agent.type;
@@ -144,19 +144,19 @@ export function MultiAgentPanel({ caseId, caseFacts }: MultiAgentPanelProps) {
             return (
               <Card 
                 key={agent.type}
-                className={`cursor-pointer transition-all duration-200 active:scale-[0.96] min-h-[80px] ${
+                className={`cursor-pointer transition-all duration-200 active:scale-[0.96] w-20 sm:w-auto shrink-0 ${
                   isCurrentAgent ? "ring-2 ring-primary shadow-medium" : ""
                 } ${status === "completed" ? "bg-accent/50" : ""}`}
                 onClick={() => !isLoading && runAgent(caseId, agent.type)}
               >
-                <CardContent className="p-3 sm:p-4 text-center flex flex-col items-center justify-center h-full">
-                  <div className="text-xl sm:text-2xl mb-1.5">{agent.icon}</div>
-                  <div className="text-[11px] sm:text-xs font-medium truncate w-full" title={agent.nameHy}>
+                <CardContent className="p-2 sm:p-4 text-center flex flex-col items-center justify-center h-full min-h-[72px]">
+                  <div className="text-lg sm:text-2xl mb-1">{agent.icon}</div>
+                  <div className="text-[10px] sm:text-xs font-medium truncate w-full" title={agent.nameHy}>
                     {agent.nameHy.split(" ")[0]}
                   </div>
-                  <div className="mt-1.5 flex justify-center">
+                  <div className="mt-1 flex justify-center">
                     {status ? getStatusIcon(status) : (
-                      <div className="h-4 w-4 rounded-full bg-muted" />
+                      <div className="h-3 w-3 sm:h-4 sm:w-4 rounded-full bg-muted" />
                     )}
                   </div>
                 </CardContent>
@@ -169,25 +169,25 @@ export function MultiAgentPanel({ caseId, caseFacts }: MultiAgentPanelProps) {
       {/* Main Content Tabs - Touch-friendly */}
       <Tabs value={activeTab} onValueChange={setActiveTab}>
         <div className="-mx-4 px-4 sm:mx-0 sm:px-0 overflow-x-auto">
-          <TabsList className="inline-flex w-max min-w-full sm:w-full sm:grid sm:grid-cols-4 h-auto p-1.5 gap-1 rounded-xl bg-muted/50">
-            <TabsTrigger value="volumes" className="min-h-[44px] flex items-center gap-2 px-4 rounded-lg text-mobile-sm sm:text-sm data-[state=active]:shadow-soft">
-              <FileStack className="h-4 w-4 flex-shrink-0" />
-              <span className="hidden xs:inline truncate">{t("ai:volumes")}</span>
-              <Badge variant="secondary" className="ml-1 text-[10px] sm:text-xs px-2">{volumes.length}</Badge>
+          <TabsList className="inline-flex w-max sm:w-full sm:grid sm:grid-cols-4 h-auto p-1 gap-1 rounded-xl bg-muted/50">
+            <TabsTrigger value="volumes" className="min-h-[40px] flex items-center gap-1.5 px-3 rounded-lg text-xs sm:text-sm whitespace-nowrap data-[state=active]:shadow-soft">
+              <FileStack className="h-4 w-4 shrink-0" />
+              <span className="hidden sm:inline">{t("ai:volumes")}</span>
+              <Badge variant="secondary" className="text-[10px] px-1.5">{volumes.length}</Badge>
             </TabsTrigger>
-            <TabsTrigger value="agents" className="min-h-[44px] flex items-center gap-2 px-4 rounded-lg text-mobile-sm sm:text-sm data-[state=active]:shadow-soft">
-              <Play className="h-4 w-4 flex-shrink-0" />
-              <span className="hidden xs:inline truncate">{t("ai:agents")}</span>
-              <Badge variant="secondary" className="ml-1 text-[10px] sm:text-xs px-2">{runs.length}</Badge>
+            <TabsTrigger value="agents" className="min-h-[40px] flex items-center gap-1.5 px-3 rounded-lg text-xs sm:text-sm whitespace-nowrap data-[state=active]:shadow-soft">
+              <Play className="h-4 w-4 shrink-0" />
+              <span className="hidden sm:inline">{t("ai:agents")}</span>
+              <Badge variant="secondary" className="text-[10px] px-1.5">{runs.length}</Badge>
             </TabsTrigger>
-            <TabsTrigger value="evidence" className="min-h-[44px] flex items-center gap-2 px-4 rounded-lg text-mobile-sm sm:text-sm data-[state=active]:shadow-soft">
-              <ClipboardList className="h-4 w-4 flex-shrink-0" />
-              <span className="hidden xs:inline truncate">{t("ai:evidence_registry")}</span>
-              <Badge variant="secondary" className="ml-1 text-[10px] sm:text-xs px-2">{evidenceRegistry.length}</Badge>
+            <TabsTrigger value="evidence" className="min-h-[40px] flex items-center gap-1.5 px-3 rounded-lg text-xs sm:text-sm whitespace-nowrap data-[state=active]:shadow-soft">
+              <ClipboardList className="h-4 w-4 shrink-0" />
+              <span className="hidden sm:inline">{t("ai:evidence_registry")}</span>
+              <Badge variant="secondary" className="text-[10px] px-1.5">{evidenceRegistry.length}</Badge>
             </TabsTrigger>
-            <TabsTrigger value="report" className="min-h-[44px] flex items-center gap-2 px-4 rounded-lg text-mobile-sm sm:text-sm data-[state=active]:shadow-soft">
-              <FileText className="h-4 w-4 flex-shrink-0" />
-              <span className="hidden xs:inline truncate">{t("ai:report")}</span>
+            <TabsTrigger value="report" className="min-h-[40px] flex items-center gap-1.5 px-3 rounded-lg text-xs sm:text-sm whitespace-nowrap data-[state=active]:shadow-soft">
+              <FileText className="h-4 w-4 shrink-0" />
+              <span className="hidden sm:inline">{t("ai:report")}</span>
             </TabsTrigger>
           </TabsList>
         </div>
