@@ -12,17 +12,23 @@ import type {
   AgentFinding
 } from "@/components/agents/types";
 
-// Helper to safely cast DB results
+// Type-safe casting functions for DB results
+// Note: Using 'unknown' intermediate cast is the standard TypeScript pattern
+// when the runtime shape is correct but types don't statically overlap
 function castToAgentRuns(data: unknown[]): AgentAnalysisRun[] {
-  return data as unknown as AgentAnalysisRun[];
+  return (data as AgentAnalysisRun[]).map(row => ({
+    ...row,
+    findings: row.findings as AgentFinding[] | undefined,
+    sources_used: row.sources_used as Array<{ title: string; category: string }> | undefined,
+  }));
 }
 
 function castToEvidenceItems(data: unknown[]): EvidenceItem[] {
-  return data as unknown as EvidenceItem[];
+  return data as EvidenceItem[];
 }
 
 function castToVolumes(data: unknown[]): CaseVolume[] {
-  return data as unknown as CaseVolume[];
+  return data as CaseVolume[];
 }
 
 interface UseMultiAgentAnalysisReturn {
