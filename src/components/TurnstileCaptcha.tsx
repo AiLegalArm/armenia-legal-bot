@@ -29,9 +29,9 @@ interface TurnstileCaptchaProps {
   className?: string;
 }
 
-// Using Cloudflare's test sitekey for development
-// Replace with your own sitekey in production
-const TURNSTILE_SITEKEY = '1x00000000000000000000AA'; // Test key - always passes
+// Use production sitekey from environment variable, fallback to test key only in development
+const TURNSTILE_SITEKEY = import.meta.env.VITE_TURNSTILE_SITEKEY || 
+  (import.meta.env.DEV ? '1x00000000000000000000AA' : '');
 
 export function TurnstileCaptcha({
   onVerify,

@@ -17,12 +17,6 @@ interface TelegramUpdate {
   };
 }
 
-interface TelegramFile {
-  file_id: string;
-  file_path?: string;
-  file_size?: number;
-}
-
 serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
@@ -80,10 +74,13 @@ serve(async (req) => {
 
 <b>Ваш Chat ID:</b> <code>${chatId}</code>
 
-Скопируйте этот ID и вставьте его в настройках профиля в приложении.
+Для привязки аккаунта:
+1. Получите код в настройках профиля приложения
+2. Отправьте: /verify XXXXXX
 
 <b>Команды:</b>
 /start - Показать Chat ID
+/verify XXXXXX - Привязать аккаунт (код из приложения)
 /status - Проверить статус
 /help - Помощь по загрузке файлов`;
 
@@ -98,7 +95,7 @@ serve(async (req) => {
       const helpMessage = `📁 <b>Загрузка файлов</b>
 
 Чтобы загрузить файл в систему:
-1. Привяжите аккаунт через /link email@example.com
+1. Привяжите аккаунт через /verify XXXXXX (код из приложения)
 2. Отправьте фото или документ в этот чат
 3. Файл автоматически сохранится в вашей папке
 
@@ -143,7 +140,9 @@ serve(async (req) => {
 
 Ваш Chat ID: <code>${chatId}</code>
 
-Используйте /link email@example.com для привязки аккаунта.`;
+Для привязки:
+1. Получите код в настройках профиля приложения
+2. Отправьте: /verify XXXXXX`;
       }
 
       await sendTelegramMessage(TELEGRAM_BOT_TOKEN, chatId, statusMessage);
@@ -152,28 +151,59 @@ serve(async (req) => {
       });
     }
 
-    // Handle /link command with email
-    if (text.startsWith("/link ")) {
-      const email = text.slice(6).trim().toLowerCase();
+    // Handle /verify command with verification code (SECURE method)
+    if (text.startsWith("/verify ")) {
+      const code = text.slice(8).trim().toUpperCase();
       
-      if (!email.includes("@")) {
-        await sendTelegramMessage(TELEGRAM_BOT_TOKEN, chatId, "❌ Неверный формат email. Используйте: /link your@email.com");
+      if (!code || code.length !== 6) {
+        await sendTelegramMessage(TELEGRAM_BOT_TOKEN, chatId, 
+          "❌ Неверный формат кода. Используйте: /verify XXXXXX (6 символов)");
         return new Response(JSON.stringify({ ok: true }), {
           headers: { ...corsHeaders, "Content-Type": "application/json" },
         });
       }
 
+      // Find valid verification code
+      const { data: verificationCode, error: findError } = await supabase
+        .from("telegram_verification_codes")
+        .select("id, user_id, expires_at")
+        .eq("code", code)
+        .is("used_at", null)
+        .gt("expires_at", new Date().toISOString())
+        .single();
+
+      if (findError || !verificationCode) {
+        await sendTelegramMessage(TELEGRAM_BOT_TOKEN, chatId, 
+          `❌ Неверный или просроченный код.
+
+Получите новый код в настройках профиля приложения.`);
+        return new Response(JSON.stringify({ ok: true }), {
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+
+      // Mark code as used
+      await supabase
+        .from("telegram_verification_codes")
+        .update({ used_at: new Date().toISOString() })
+        .eq("id", verificationCode.id);
+
+      // Link Telegram account to user profile
       const { data: profile, error: updateError } = await supabase
         .from("profiles")
         .update({ telegram_chat_id: chatId.toString() })
-        .eq("email", email)
-        .select("id, full_name")
+        .eq("id", verificationCode.user_id)
+        .select("id, full_name, email")
         .single();
 
       if (updateError || !profile) {
-        await sendTelegramMessage(TELEGRAM_BOT_TOKEN, chatId, `❌ Пользователь с email ${email} не найден в системе.`);
+        await sendTelegramMessage(TELEGRAM_BOT_TOKEN, chatId, 
+          "❌ Ошибка при привязке аккаунта. Попробуйте позже.");
       } else {
-        await sendTelegramMessage(TELEGRAM_BOT_TOKEN, chatId, `✅ Аккаунт успешно привязан!
+        await sendTelegramMessage(TELEGRAM_BOT_TOKEN, chatId, 
+          `✅ <b>Аккаунт успешно привязан!</b>
+
+👤 ${profile.full_name || profile.email}
 
 Теперь вы можете:
 • Получать уведомления о судебных заседаниях
@@ -182,6 +212,20 @@ serve(async (req) => {
 Используйте /help для подробной информации.`);
       }
 
+      return new Response(JSON.stringify({ ok: true }), {
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
+    // Handle legacy /link command - inform about new secure method
+    if (text.startsWith("/link ")) {
+      await sendTelegramMessage(TELEGRAM_BOT_TOKEN, chatId, 
+        `⚠️ <b>Метод привязки изменен</b>
+
+Для безопасности теперь используется код подтверждения:
+1. Откройте настройки профиля в приложении
+2. Нажмите "Получить код"
+3. Отправьте сюда: /verify XXXXXX`);
       return new Response(JSON.stringify({ ok: true }), {
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
@@ -223,8 +267,9 @@ async function handleFileUpload(
     await sendTelegramMessage(botToken, chatId, 
       `❌ Аккаунт не привязан.
 
-Сначала привяжите аккаунт командой:
-/link ваш@email.com`
+Для привязки:
+1. Получите код в настройках профиля приложения
+2. Отправьте: /verify XXXXXX`
     );
     return;
   }
