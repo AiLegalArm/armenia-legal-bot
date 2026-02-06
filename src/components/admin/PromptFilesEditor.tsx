@@ -183,9 +183,12 @@ export const PromptFilesEditor = () => {
     setPreviewContent(previewMode === 'text' ? decodeUnicodeEscapes(raw) : raw);
   };
 
-  // Reload from the actual file content (static import), always in TEXT mode (decoded)
+  // Reset to original file content (static import), always in TEXT mode (decoded)
+  // NOTE: This resets to the original imported content, NOT a database update
   const reloadSelectedFile = useCallback(() => {
     if (!selectedFile) return;
+    
+    // Force re-read from the static import (this won't change unless the file is modified on disk and HMR triggers)
     const raw = PROMPT_FILE_CONTENTS[selectedFile.path];
     if (!raw) {
       toast.error("\u0556\u0561\u0575\u056C\u0568 \u0579\u056B \u0563\u057F\u0576\u057E\u0565\u056C");
@@ -197,7 +200,7 @@ export const PromptFilesEditor = () => {
     setPreviewContent(decoded);
     setPreviewMode('text');
     setPreviewDirty(false);
-    toast.success("\u0546\u0565\u0580\u0562\u0565\u057C\u0576\u057E\u0565\u0581 \u0586\u0561\u0575\u056C\u056B\u0581 (\u057F\u0565\u0584\u057D\u057F\u0561\u0575\u056B\u0576 \u057C\u0565\u056A\u056B\u0574)");
+    toast.info("\u054E\u0565\u0580\u0561\u056F\u0561\u0576\u0563\u0576\u057E\u0565\u0581 \u057D\u056F\u0566\u0562\u0576\u0561\u056F\u0561\u0576 \u0562\u0578\u057E\u0561\u0576\u0564\u0561\u056F\u0578\u0582\u0569\u0575\u0561\u0576\u0568");
   }, [selectedFile]);
 
   // Auto-refresh: if the underlying file changes (HMR) and the user hasn't edited manually.
@@ -351,6 +354,16 @@ export const PromptFilesEditor = () => {
           )}
         </CardHeader>
         <CardContent className="pt-0 space-y-3">
+          {/* Important notice */}
+          <div className="rounded-lg border border-amber-500/30 bg-amber-500/10 p-3">
+            <p className="text-xs font-medium mb-1 text-amber-700 dark:text-amber-400">
+              {"\u053F\u0561\u0580\u0587\u0578\u0580\u055D"} {"\u054D\u0561 \u0586\u0561\u0575\u056C\u0565\u0580\u056B \u0576\u0561\u056D\u0561\u0564\u056B\u057F\u0578\u0582\u0574\u0576 \u0567 (read-only preview)"}
+            </p>
+            <p className="text-[10px] text-muted-foreground">
+              {"\u053D\u0574\u0562\u0561\u0563\u0580\u0565\u056C\u0578\u0582 \u0570\u0561\u0574\u0561\u0580 \u0583\u0578\u056D\u0561\u0580\u056F\u0565\u0584 \u057F\u0565\u0584\u057D\u057F\u0568, \u057A\u0561\u057F\u0573\u0565\u0576\u0565\u0584 \u0587 \u057F\u0565\u0572\u0561\u0564\u0580\u0565\u0584 \u056E\u0580\u0561\u0563\u0580\u056B \u056F\u0578\u0564\u0578\u0582\u0574\u0589"}
+            </p>
+          </div>
+          
           {/* Workflow hint */}
           <div className="rounded-lg border border-primary/20 bg-primary/5 p-3">
             <p className="text-xs font-medium mb-2">{"\u053B\u0576\u0579\u057A\u0565\u057D \u0585\u0563\u057F\u0561\u0563\u0578\u0580\u056E\u0565\u056C\u055D"}</p>
@@ -383,15 +396,15 @@ export const PromptFilesEditor = () => {
                 ? "\\uXXXX"
                 : "\u0531\u0576\u0569\u0565\u0580\u0561\u056E\u0561\u0576\u0581"}
             </Button>
-            {selectedFile && (
+            {selectedFile && previewDirty && (
               <Button
                 variant="outline"
                 size="sm"
                 onClick={reloadSelectedFile}
-                className="text-xs"
+                className="text-xs border-amber-500/50 text-amber-600 hover:bg-amber-500/10"
               >
                 <RefreshCw className="h-3 w-3 mr-1" />
-                {"\u0539\u0561\u0580\u0574\u0561\u0581\u0576\u0565\u056C"}
+                {"\u054E\u0565\u0580\u0561\u056F\u0561\u0576\u0563\u0576\u0565\u056C"}
               </Button>
             )}
             <Button 
