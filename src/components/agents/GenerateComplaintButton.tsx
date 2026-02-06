@@ -63,7 +63,7 @@ export function GenerateComplaintButton({
 
       const { data, error } = await supabase.functions.invoke("generate-complaint", {
         body: {
-          courtType: "appeal",
+          courtType: "appellate",
           category: "criminal",
           complaintType: t("ai:appeal_based_on_analysis"),
           extractedText: `
