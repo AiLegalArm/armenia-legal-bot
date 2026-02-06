@@ -15,6 +15,7 @@ import hyDisclaimer from './locales/hy/disclaimer.json';
 import hyErrors from './locales/hy/errors.json';
 import hyCalendar from './locales/hy/calendar.json';
 import hyReminders from './locales/hy/reminders.json';
+import hyAdmin from './locales/hy/admin.json';
 
 // Import English translations
 import enCommon from './locales/en/common.json';
@@ -30,6 +31,7 @@ import enDisclaimer from './locales/en/disclaimer.json';
 import enErrors from './locales/en/errors.json';
 import enCalendar from './locales/en/calendar.json';
 import enReminders from './locales/en/reminders.json';
+import enAdmin from './locales/en/admin.json';
 
 // Import Russian translations
 import ruCommon from './locales/ru/common.json';
@@ -45,6 +47,7 @@ import ruDisclaimer from './locales/ru/disclaimer.json';
 import ruErrors from './locales/ru/errors.json';
 import ruCalendar from './locales/ru/calendar.json';
 import ruReminders from './locales/ru/reminders.json';
+import ruAdmin from './locales/ru/admin.json';
 
 const resources = {
   hy: {
@@ -61,6 +64,7 @@ const resources = {
     errors: hyErrors,
     calendar: hyCalendar,
     reminders: hyReminders,
+    admin: hyAdmin,
   },
   en: {
     common: enCommon,
@@ -76,6 +80,7 @@ const resources = {
     errors: enErrors,
     calendar: enCalendar,
     reminders: enReminders,
+    admin: enAdmin,
   },
   ru: {
     common: ruCommon,
@@ -91,6 +96,7 @@ const resources = {
     errors: ruErrors,
     calendar: ruCalendar,
     reminders: ruReminders,
+    admin: ruAdmin,
   },
 };
 
@@ -120,7 +126,7 @@ i18n
     lng: getSavedLanguage(),
     fallbackLng: 'en',
     defaultNS: 'common',
-    ns: ['common', 'auth', 'cases', 'ai', 'kb', 'ocr', 'audio', 'usage', 'dashboard', 'disclaimer', 'errors', 'calendar', 'reminders'],
+    ns: ['common', 'auth', 'cases', 'ai', 'kb', 'ocr', 'audio', 'usage', 'dashboard', 'disclaimer', 'errors', 'calendar', 'reminders', 'admin'],
     interpolation: {
       escapeValue: false, // React already escapes
     },
