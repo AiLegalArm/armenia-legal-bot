@@ -2,10 +2,10 @@
    "audio": "Audio/Video",
    "audio_title": "Audio & Video Transcription",
    "audio_transcription": "Audio/Video Transcription",
-  "upload_audio": "Upload Audio File",
-   "upload_audio_video": "Upload Audio or Video File",
-  "upload_description": "Upload audio files to transcribe them automatically",
-  "supported_formats": "Supported formats: MP3, WAV, M4A, OGG, WebM, FLAC",
+  "upload_audio": "Upload Audio/Video",
+  "upload_audio_video": "Upload Audio or Video File",
+  "upload_description": "Upload audio or video files to transcribe them automatically",
+  "supported_formats": "Supported: MP3, WAV, M4A, OGG, FLAC, MP4, MOV, WebM, AVI",
    "supported_formats_video": "Supported: MP3, WAV, M4A, OGG, FLAC, MP4, MOV, WebM, AVI",
   "processing": "Transcribing audio...",
   "processing_complete": "Transcription complete!",
@@ -53,7 +53,7 @@
   "back_to_case": "Back to Case",
   "select_case": "Select Case",
   "select_case_placeholder": "Choose a case...",
-  "audio_file": "Audio File",
+  "audio_file": "Audio/Video File",
   "result": "Result",
-  "no_result": "Upload an audio file to see the transcription result"
+  "no_result": "Upload an audio or video file to see the transcription result"
 }

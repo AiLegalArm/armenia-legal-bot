@@ -35,6 +35,16 @@ const SUPPORTED_AUDIO_FORMATS = [
   'audio/flac',
 ];
 
+const SUPPORTED_VIDEO_FORMATS = [
+  'video/mp4',
+  'video/quicktime',
+  'video/webm',
+  'video/x-msvideo',
+  'video/x-matroska',
+];
+
+const ALL_SUPPORTED_FORMATS = [...SUPPORTED_AUDIO_FORMATS, ...SUPPORTED_VIDEO_FORMATS];
+
 const MAX_FILE_SIZE = 100 * 1024 * 1024; // 100MB
 
 const AudioTranscriptions = () => {
@@ -65,10 +75,10 @@ const AudioTranscriptions = () => {
     const fileExt = file.name.split('.').pop()?.toLowerCase();
     const isM4A = fileExt === 'm4a';
     
-    if (!SUPPORTED_AUDIO_FORMATS.includes(file.type) && !isM4A) {
+    if (!ALL_SUPPORTED_FORMATS.includes(file.type) && !isM4A) {
       toast({
         title: t('audio:unsupported_format'),
-        description: t('audio:supported_formats', 'Supported: MP3, WAV, M4A, OGG, WebM, FLAC'),
+        description: t('audio:supported_formats'),
         variant: 'destructive',
       });
       return;
@@ -275,7 +285,7 @@ const AudioTranscriptions = () => {
                 <Input
                   ref={fileInputRef}
                   type="file"
-                  accept="audio/*,.m4a,.mp3,.wav,.ogg,.webm,.flac,.aac"
+                  accept="audio/*,video/*,.m4a,.mp3,.wav,.ogg,.webm,.flac,.aac,.mp4,.mov,.avi,.mkv"
                   onChange={handleFileSelect}
                   disabled={isUploading}
                 />

@@ -2,10 +2,10 @@
    "audio": "Аудио/Видео",
    "audio_title": "Транскрипция аудио и видео",
    "audio_transcription": "Транскрипция аудио/видео",
-  "upload_audio": "Загрузить аудиофайл",
-   "upload_audio_video": "Загрузить аудио или видео",
-  "upload_description": "Загрузите аудиофайлы для автоматической транскрипции",
-  "supported_formats": "Поддерживаемые форматы: MP3, WAV, M4A, OGG, WebM, FLAC",
+  "upload_audio": "Загрузить аудио/видео",
+  "upload_audio_video": "Загрузить аудио или видео",
+  "upload_description": "Загрузите аудио или видео файлы для автоматической транскрипции",
+  "supported_formats": "Поддерживаемые: MP3, WAV, M4A, OGG, FLAC, MP4, MOV, WebM, AVI",
    "supported_formats_video": "Поддерживаемые: MP3, WAV, M4A, OGG, FLAC, MP4, MOV, WebM, AVI",
   "processing": "Транскрипция аудио...",
   "processing_complete": "Транскрипция завершена!",
@@ -53,7 +53,7 @@
   "back_to_case": "Вернуться к делу",
   "select_case": "Выбрать дело",
   "select_case_placeholder": "Выберите дело...",
-  "audio_file": "Аудио файл",
+  "audio_file": "Аудио/Видео файл",
   "result": "Результат",
-  "no_result": "Загрузите аудиофайл для просмотра результата транскрипции"
+  "no_result": "Загрузите аудио или видео файл для просмотра результата транскрипции"
 }
