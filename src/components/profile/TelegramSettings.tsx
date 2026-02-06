@@ -9,12 +9,25 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Loader2, Send, Bell, ExternalLink, Copy, Check } from 'lucide-react';
+import { Loader2, Send, Bell, ExternalLink, Copy, Check, Key, RefreshCw } from 'lucide-react';
 
 const BOT_USERNAME = '@AiLegalArmenia';
+const VERIFICATION_CODE_EXPIRY_MINUTES = 10;
 
 interface TelegramSettingsProps {
   onClose?: () => void;
+}
+
+// Generate a secure 6-character verification code
+function generateVerificationCode(): string {
+  const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'; // Excluding similar chars (0,O,1,I)
+  let code = '';
+  const array = new Uint8Array(6);
+  crypto.getRandomValues(array);
+  for (let i = 0; i < 6; i++) {
+    code += chars[array[i] % chars.length];
+  }
+  return code;
 }
 
 export const TelegramSettings = ({ onClose }: TelegramSettingsProps) => {
@@ -27,9 +40,10 @@ export const TelegramSettings = ({ onClose }: TelegramSettingsProps) => {
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
   const [isTesting, setIsTesting] = useState(false);
+  const [isGeneratingCode, setIsGeneratingCode] = useState(false);
   const [copied, setCopied] = useState(false);
-
-  // Using centralized getText from @/lib/i18n-utils
+  const [verificationCode, setVerificationCode] = useState<string | null>(null);
+  const [codeExpiresAt, setCodeExpiresAt] = useState<Date | null>(null);
 
   useEffect(() => {
     const loadSettings = async () => {
@@ -57,6 +71,67 @@ export const TelegramSettings = ({ onClose }: TelegramSettingsProps) => {
     loadSettings();
   }, [user]);
 
+  const handleGenerateCode = async () => {
+    if (!user) return;
+    setIsGeneratingCode(true);
+
+    try {
+      // Delete any existing unused codes for this user
+      await supabase
+        .from('telegram_verification_codes')
+        .delete()
+        .eq('user_id', user.id)
+        .is('used_at', null);
+
+      // Generate new code
+      const code = generateVerificationCode();
+      const expiresAt = new Date(Date.now() + VERIFICATION_CODE_EXPIRY_MINUTES * 60 * 1000);
+
+      const { error } = await supabase
+        .from('telegram_verification_codes')
+        .insert({
+          user_id: user.id,
+          code,
+          expires_at: expiresAt.toISOString(),
+        });
+
+      if (error) throw error;
+
+      setVerificationCode(code);
+      setCodeExpiresAt(expiresAt);
+
+      toast({
+        title: getText('\u053F\u0578\u0564\u0568 \u057D\u057F\u0565\u0572\u056E\u057E\u0565\u0581', '\u041A\u043E\u0434 \u0441\u043E\u0437\u0434\u0430\u043D', 'Code generated'),
+        description: getText(
+          `\u0553\u0578\u0572\u0561\u0576\u0581\u0565\u0584 Telegram \u0562\u0578\u057F\u056B\u0576\u055D /verify ${code}`,
+          `\u041E\u0442\u043F\u0440\u0430\u0432\u044C\u0442\u0435 \u0431\u043E\u0442\u0443: /verify ${code}`,
+          `Send to bot: /verify ${code}`
+        ),
+      });
+    } catch (error) {
+      console.error('Error generating verification code:', error);
+      toast({
+        title: getText('\u054D\u056D\u0561\u056C', '\u041E\u0448\u0438\u0431\u043A\u0430', 'Error'),
+        description: getText(
+          '\u0549\u0570\u0561\u057B\u0578\u0572\u057E\u0565\u0581 \u056F\u0578\u0564 \u057D\u057F\u0565\u0572\u056E\u0565\u056C',
+          '\u041D\u0435 \u0443\u0434\u0430\u043B\u043E\u0441\u044C \u0441\u043E\u0437\u0434\u0430\u0442\u044C \u043A\u043E\u0434',
+          'Failed to generate code'
+        ),
+        variant: 'destructive',
+      });
+    } finally {
+      setIsGeneratingCode(false);
+    }
+  };
+
+  const copyVerificationCode = () => {
+    if (verificationCode) {
+      navigator.clipboard.writeText(`/verify ${verificationCode}`);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    }
+  };
+
   const handleSave = async () => {
     if (!user) return;
     setIsSaving(true);
@@ -65,7 +140,6 @@ export const TelegramSettings = ({ onClose }: TelegramSettingsProps) => {
       const { error } = await supabase
         .from('profiles')
         .update({
-          telegram_chat_id: chatId || null,
           notification_preferences: {
             telegram_enabled: notificationsEnabled,
           },
@@ -134,6 +208,8 @@ export const TelegramSettings = ({ onClose }: TelegramSettingsProps) => {
     );
   }
 
+  const isLinked = !!chatId;
+
   return (
     <Card>
       <CardHeader>
@@ -150,70 +226,121 @@ export const TelegramSettings = ({ onClose }: TelegramSettingsProps) => {
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-6">
-        {/* Bot Instructions */}
-        <div className="rounded-lg border bg-muted/50 p-4 space-y-3">
-          <p className="text-sm font-medium">
-            {getText('\u0540\u0580\u0561\u0570\u0561\u0576\u0563\u0576\u0565\u0580\u055D', '\u041A\u0430\u043A \u043F\u043E\u0434\u043A\u043B\u044E\u0447\u0438\u0442\u044C:', 'How to connect:')}
-          </p>
-          <ol className="text-sm text-muted-foreground space-y-2 list-decimal list-inside">
-            <li>
-              {getText(
-                '\u0532\u0561\u0581\u0565\u0584 Telegram \u0562\u0578\u057F\u0568',
-                '\u041E\u0442\u043A\u0440\u043E\u0439\u0442\u0435 \u043D\u0430\u0448\u0435\u0433\u043E \u0431\u043E\u0442\u0430 \u0432 Telegram:',
-                'Open our bot in Telegram:'
-              )}{' '}
-              <Button
-                variant="link"
-                className="h-auto p-0 text-primary"
-                onClick={() => window.open(`https://t.me/${BOT_USERNAME.replace('@', '')}`, '_blank')}
-              >
-                {BOT_USERNAME}
-                <ExternalLink className="h-3 w-3 ml-1" />
-              </Button>
-            </li>
-            <li>
-              {getText(
-                '\u0546\u0561\u057F\u0565\u0584 /start',
-                '\u041E\u0442\u043F\u0440\u0430\u0432\u044C\u0442\u0435 \u043A\u043E\u043C\u0430\u043D\u0434\u0443 /start',
-                'Send the /start command'
-              )}
-            </li>
-            <li>
-              {getText(
-                '\u054A\u0561\u057F\u0573\u0565\u0576\u0565\u0584 Chat ID',
-                '\u0421\u043A\u043E\u043F\u0438\u0440\u0443\u0439\u0442\u0435 \u043F\u043E\u043B\u0443\u0447\u0435\u043D\u043D\u044B\u0439 Chat ID \u0438 \u0432\u0441\u0442\u0430\u0432\u044C\u0442\u0435 \u043D\u0438\u0436\u0435',
-                'Copy the received Chat ID and paste it below'
-              )}
-            </li>
-          </ol>
-          <Button variant="outline" size="sm" onClick={copyBotLink}>
-            {copied ? <Check className="h-4 w-4 mr-2" /> : <Copy className="h-4 w-4 mr-2" />}
-            {getText('\u054A\u0561\u057F\u0573\u0565\u0576\u0565\u056C \u0570\u0572\u0578\u0582\u0574\u0568', '\u041A\u043E\u043F\u0438\u0440\u043E\u0432\u0430\u0442\u044C \u0441\u0441\u044B\u043B\u043A\u0443', 'Copy bot link')}
-          </Button>
-        </div>
-
-        {/* Chat ID Input */}
-        <div className="space-y-2">
-          <Label htmlFor="chat-id">Chat ID</Label>
-          <div className="flex gap-2">
-            <Input
-              id="chat-id"
-              placeholder={getText('\u0555\u0580\u056B\u0576\u0561\u056F\u055D 123456789', '\u041D\u0430\u043F\u0440\u0438\u043C\u0435\u0440: 123456789', 'e.g. 123456789')}
-              value={chatId}
-              onChange={(e) => setChatId(e.target.value)}
-            />
-            <Button variant="outline" onClick={handleTest} disabled={isTesting || !chatId}>
-              {isTesting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
+        {/* Connection Status */}
+        {isLinked ? (
+          <div className="rounded-lg border border-primary/50 bg-primary/10 p-4">
+            <p className="text-sm font-medium text-primary flex items-center gap-2">
+              <Check className="h-4 w-4" />
+              {getText('\u0540\u0561\u0577\u056B\u057E\u0568 \u056F\u0561\u057A\u0561\u056F\u0581\u057E\u0561\u056E \u0567', '\u0410\u043A\u043A\u0430\u0443\u043D\u0442 \u043F\u043E\u0434\u043A\u043B\u044E\u0447\u0435\u043D', 'Account connected')}
+            </p>
+            <p className="text-xs text-muted-foreground mt-1">
+              Chat ID: {chatId}
+            </p>
+          </div>
+        ) : (
+          <div className="rounded-lg border bg-muted/50 p-4 space-y-4">
+            <p className="text-sm font-medium">
+              {getText('\u0540\u0580\u0561\u0570\u0561\u0576\u0563\u0576\u0565\u0580\u055D', '\u041A\u0430\u043A \u043F\u043E\u0434\u043A\u043B\u044E\u0447\u0438\u0442\u044C:', 'How to connect:')}
+            </p>
+            <ol className="text-sm text-muted-foreground space-y-2 list-decimal list-inside">
+              <li>
+                {getText(
+                  '\u0532\u0561\u0581\u0565\u0584 Telegram \u0562\u0578\u057F\u0568',
+                  '\u041E\u0442\u043A\u0440\u043E\u0439\u0442\u0435 \u043D\u0430\u0448\u0435\u0433\u043E \u0431\u043E\u0442\u0430 \u0432 Telegram:',
+                  'Open our bot in Telegram:'
+                )}{' '}
+                <Button
+                  variant="link"
+                  className="h-auto p-0 text-primary"
+                  onClick={() => window.open(`https://t.me/${BOT_USERNAME.replace('@', '')}`, '_blank')}
+                >
+                  {BOT_USERNAME}
+                  <ExternalLink className="h-3 w-3 ml-1" />
+                </Button>
+              </li>
+              <li>
+                {getText(
+                  '\u054D\u0565\u0572\u0574\u0565\u0584 "\u054D\u057F\u0561\u0576\u0561\u056C \u056F\u0578\u0564" \u056F\u0578\u0573\u0561\u056F\u0568',
+                  '\u041D\u0430\u0436\u043C\u0438\u0442\u0435 "\u041F\u043E\u043B\u0443\u0447\u0438\u0442\u044C \u043A\u043E\u0434" \u043D\u0438\u0436\u0435',
+                  'Click "Get verification code" below'
+                )}
+              </li>
+              <li>
+                {getText(
+                  '\u0548\u0582\u0572\u0561\u0580\u056F\u0565\u0584 \u056F\u0578\u0564\u0568 \u0562\u0578\u057F\u056B\u0576',
+                  '\u041E\u0442\u043F\u0440\u0430\u0432\u044C\u0442\u0435 \u043A\u043E\u0434 \u0431\u043E\u0442\u0443',
+                  'Send the code to the bot'
+                )}
+              </li>
+            </ol>
+            
+            <Button variant="outline" size="sm" onClick={copyBotLink}>
+              {copied ? <Check className="h-4 w-4 mr-2" /> : <Copy className="h-4 w-4 mr-2" />}
+              {getText('\u054A\u0561\u057F\u0573\u0565\u0576\u0565\u056C \u0570\u0572\u0578\u0582\u0574\u0568', '\u041A\u043E\u043F\u0438\u0440\u043E\u0432\u0430\u0442\u044C \u0441\u0441\u044B\u043B\u043A\u0443', 'Copy bot link')}
             </Button>
           </div>
-          <p className="text-xs text-muted-foreground">
-            {getText(
-              'Chat ID \u056F\u057D\u057F\u0561\u0576\u0561\u0584 /start \u0576\u0561\u057F\u0565\u056C\u0578\u0582\u0581',
-              'Chat ID \u043C\u043E\u0436\u043D\u043E \u043F\u043E\u043B\u0443\u0447\u0438\u0442\u044C, \u043D\u0430\u043F\u0438\u0441\u0430\u0432 \u0431\u043E\u0442\u0443 /start',
-              'Get Chat ID by sending /start to the bot'
+        )}
+
+        {/* Verification Code Section */}
+        {!isLinked && (
+          <div className="space-y-3">
+            <Label className="flex items-center gap-2">
+              <Key className="h-4 w-4" />
+              {getText('\u054D\u057F\u0578\u0582\u0563\u0574\u0561\u0576 \u056F\u0578\u0564', '\u041A\u043E\u0434 \u043F\u043E\u0434\u0442\u0432\u0435\u0440\u0436\u0434\u0435\u043D\u0438\u044F', 'Verification code')}
+            </Label>
+            
+            {verificationCode && codeExpiresAt && codeExpiresAt > new Date() ? (
+              <div className="space-y-2">
+                <div className="flex items-center gap-2">
+                  <Input
+                    readOnly
+                    value={`/verify ${verificationCode}`}
+                    className="font-mono text-center text-lg"
+                  />
+                  <Button variant="outline" onClick={copyVerificationCode}>
+                    {copied ? <Check className="h-4 w-4" /> : <Copy className="h-4 w-4" />}
+                  </Button>
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  {getText(
+                    `\u053F\u0578\u0564\u0568 \u0563\u0578\u0580\u056E\u0578\u0582\u0574 \u0567 ${VERIFICATION_CODE_EXPIRY_MINUTES} \u0580\u0578\u057A\u0565`,
+                    `\u041A\u043E\u0434 \u0434\u0435\u0439\u0441\u0442\u0432\u0438\u0442\u0435\u043B\u0435\u043D ${VERIFICATION_CODE_EXPIRY_MINUTES} \u043C\u0438\u043D\u0443\u0442`,
+                    `Code valid for ${VERIFICATION_CODE_EXPIRY_MINUTES} minutes`
+                  )}
+                </p>
+                <Button 
+                  variant="ghost" 
+                  size="sm" 
+                  onClick={handleGenerateCode}
+                  disabled={isGeneratingCode}
+                >
+                  <RefreshCw className={`h-4 w-4 mr-2 ${isGeneratingCode ? 'animate-spin' : ''}`} />
+                  {getText('\u0546\u0578\u0580 \u056F\u0578\u0564', '\u041D\u043E\u0432\u044B\u0439 \u043A\u043E\u0434', 'New code')}
+                </Button>
+              </div>
+            ) : (
+              <Button onClick={handleGenerateCode} disabled={isGeneratingCode}>
+                {isGeneratingCode ? (
+                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                ) : (
+                  <Key className="h-4 w-4 mr-2" />
+                )}
+                {getText('\u054D\u057F\u0561\u0576\u0561\u056C \u056F\u0578\u0564', '\u041F\u043E\u043B\u0443\u0447\u0438\u0442\u044C \u043A\u043E\u0434', 'Get verification code')}
+              </Button>
             )}
-          </p>
-        </div>
+          </div>
+        )}
+
+        {/* Test Connection (only when linked) */}
+        {isLinked && (
+          <div className="space-y-2">
+            <Label>{getText('\u054D\u057F\u0578\u0582\u0563\u0565\u056C \u056F\u0561\u057A\u0568', '\u041F\u0440\u043E\u0432\u0435\u0440\u0438\u0442\u044C \u0441\u0432\u044F\u0437\u044C', 'Test connection')}</Label>
+            <Button variant="outline" onClick={handleTest} disabled={isTesting}>
+              {isTesting ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Send className="h-4 w-4 mr-2" />}
+              {getText('\u0548\u0582\u0572\u0561\u0580\u056F\u0565\u056C \u0569\u0565\u057D\u057F', '\u041E\u0442\u043F\u0440\u0430\u0432\u0438\u0442\u044C \u0442\u0435\u0441\u0442', 'Send test')}
+            </Button>
+          </div>
+        )}
 
         {/* Notifications Toggle */}
         <div className="flex items-center justify-between">
