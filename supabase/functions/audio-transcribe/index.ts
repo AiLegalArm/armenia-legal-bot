@@ -7,6 +7,8 @@ const corsHeaders = {
 };
 
 const CONFIDENCE_THRESHOLD = 0.50;
+const MAX_FILE_SIZE_MB = 25; // Gemini limit for inline audio
+const MAX_FILE_SIZE_BYTES = MAX_FILE_SIZE_MB * 1024 * 1024;
 
 const TRANSCRIPTION_SYSTEM_PROMPT = `You are a professional audio transcription specialist for Armenian legal proceedings. Your task is to accurately transcribe audio recordings in Armenian (hy-AM), Russian (ru-RU), or English (en-US).
 
@@ -78,6 +80,35 @@ serve(async (req) => {
 
     console.log(`Processing audio transcription for: ${fileName}`);
 
+    // Fetch audio with HEAD request first to check size
+    const headResponse = await fetch(audioUrl, { method: "HEAD" });
+    const contentLength = headResponse.headers.get("content-length");
+    const fileSize = contentLength ? parseInt(contentLength, 10) : 0;
+    
+    console.log(`File size: ${(fileSize / 1024 / 1024).toFixed(2)} MB`);
+
+    if (fileSize > MAX_FILE_SIZE_BYTES) {
+      const errorMsg = `File size (${(fileSize / 1024 / 1024).toFixed(1)} MB) exceeds maximum allowed (${MAX_FILE_SIZE_MB} MB). Please use a smaller file or compress it.`;
+      
+      await supabase.rpc("log_error", {
+        _error_type: "audio",
+        _error_message: errorMsg,
+        _error_details: { fileSize, maxSize: MAX_FILE_SIZE_BYTES, fileName },
+        _case_id: caseId || null,
+        _file_id: fileId || null
+      });
+
+      return new Response(JSON.stringify({ 
+        error: errorMsg,
+        error_code: "file_too_large",
+        error_hy: `Ֆdelays\u0576\u056B \u0579\u0561\u0583\u0568 (${(fileSize / 1024 / 1024).toFixed(1)} MB) \u0563\u0565\u0580\u0561\u0566\u0561\u0576\u0581\u0578\u0582\u0574 \u0567 \u0569\u0578\u0582\u0575\u056C\u0561\u057F\u0580\u0565\u056C\u056B \u0561\u057C\u0561\u057E\u0565\u056C\u0561\u0563\u0578\u0582\u0575\u0576\u0568 (${MAX_FILE_SIZE_MB} MB):`,
+        error_ru: `\u0420\u0430\u0437\u043C\u0435\u0440 \u0444\u0430\u0439\u043B\u0430 (${(fileSize / 1024 / 1024).toFixed(1)} MB) \u043F\u0440\u0435\u0432\u044B\u0448\u0430\u0435\u0442 \u043C\u0430\u043A\u0441\u0438\u043C\u0430\u043B\u044C\u043D\u044B\u0439 \u043B\u0438\u043C\u0438\u0442 (${MAX_FILE_SIZE_MB} MB).`
+      }), {
+        status: 413,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
     // Fetch audio and convert to base64 for Gemini
     const audioResponse = await fetch(audioUrl);
     if (!audioResponse.ok) {
@@ -85,9 +116,15 @@ serve(async (req) => {
     }
     
     const audioBuffer = await audioResponse.arrayBuffer();
-    const audioBase64 = btoa(
-      new Uint8Array(audioBuffer).reduce((data, byte) => data + String.fromCharCode(byte), '')
-    );
+    
+    // Convert to base64 using streaming approach to reduce memory pressure
+    const uint8Array = new Uint8Array(audioBuffer);
+    let audioBase64 = "";
+    const chunkSize = 32768; // 32KB chunks
+    for (let i = 0; i < uint8Array.length; i += chunkSize) {
+      const chunk = uint8Array.slice(i, i + chunkSize);
+      audioBase64 += btoa(String.fromCharCode(...chunk));
+    }
     
     // Determine MIME type from file extension
     const ext = fileName?.split('.').pop()?.toLowerCase() || 'mp3';
@@ -97,16 +134,16 @@ serve(async (req) => {
       'm4a': 'audio/mp4',
       'ogg': 'audio/ogg',
       'webm': 'audio/webm',
-       'flac': 'audio/flac',
-       'mp4': 'video/mp4',
-       'mov': 'video/quicktime',
-       'avi': 'video/x-msvideo',
-       'mkv': 'video/x-matroska'
+      'flac': 'audio/flac',
+      'mp4': 'video/mp4',
+      'mov': 'video/quicktime',
+      'avi': 'video/x-msvideo',
+      'mkv': 'video/x-matroska'
     };
     const mimeType = mimeTypes[ext] || 'audio/mpeg';
  
-     // Determine if this is a video file
-     const isVideo = ['mp4', 'mov', 'avi', 'mkv', 'webm'].includes(ext) && mimeType.startsWith('video');
+    // Determine if this is a video file
+    const isVideo = ['mp4', 'mov', 'avi', 'mkv', 'webm'].includes(ext) && mimeType.startsWith('video');
 
     // Call Gemini for audio transcription via Lovable AI Gateway
     const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
@@ -124,13 +161,13 @@ serve(async (req) => {
             content: [
               { 
                 type: "text", 
-                 text: `Please transcribe this ${isVideo ? 'video' : 'audio'} file. File name: ${fileName}. Focus on accurate Armenian legal terminology if applicable. Extract and transcribe all spoken content.` 
+                text: `Please transcribe this ${isVideo ? 'video' : 'audio'} file. File name: ${fileName}. Focus on accurate Armenian legal terminology if applicable. Extract and transcribe all spoken content.` 
               },
               { 
-                 type: isVideo ? "input_video" : "input_audio",
-                 [isVideo ? "input_video" : "input_audio"]: {
+                type: isVideo ? "input_video" : "input_audio",
+                [isVideo ? "input_video" : "input_audio"]: {
                   data: audioBase64,
-                   format: isVideo ? ext : (ext === 'wav' ? 'wav' : 'mp3')
+                  format: isVideo ? ext : (ext === 'wav' ? 'wav' : 'mp3')
                 }
               }
             ]
