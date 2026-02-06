@@ -62,7 +62,7 @@ import {
 type Case = Database['public']['Tables']['cases']['Row'];
 
 const Dashboard = () => {
-  const { t } = useTranslation(['common', 'cases', 'dashboard', 'disclaimer', 'usage', 'kb']);
+  const { t } = useTranslation(['common', 'cases', 'dashboard', 'disclaimer', 'usage', 'kb', 'admin']);
   const navigate = useNavigate();
   const { toast } = useToast();
   const { user, signOut, isClient, isAdmin, isAuditor } = useAuth();
@@ -334,14 +334,14 @@ const Dashboard = () => {
         {isAuditor ? (
           <Tabs defaultValue="team" className="space-y-6">
             <TabsList>
-              <TabsTrigger value="team" className="gap-2">
-                <Users2 className="h-4 w-4" />
-                {'\u053B\u0574 \u0569\u056B\u0574\u0568'}
-              </TabsTrigger>
-              <TabsTrigger value="cases" className="gap-2">
-                <FolderOpen className="h-4 w-4" />
-                {'\u0533\u0578\u0580\u056E\u0565\u0580'}
-              </TabsTrigger>
+            <TabsTrigger value="team" className="gap-2">
+              <Users2 className="h-4 w-4" />
+              {t('admin:my_team')}
+            </TabsTrigger>
+            <TabsTrigger value="cases" className="gap-2">
+              <FolderOpen className="h-4 w-4" />
+              {t('admin:cases')}
+            </TabsTrigger>
             </TabsList>
 
             <TabsContent value="team">

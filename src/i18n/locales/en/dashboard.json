@@ -33,5 +33,6 @@
   "role_admin": "Administrator",
   "role_lawyer": "Lawyer",
   "role_client": "Client",
-  "role_auditor": "Auditor"
+  "role_auditor": "Auditor",
+  "manage_cases": "Manage your legal cases"
 }
