@@ -7,10 +7,10 @@ const corsHeaders = {
 };
 
 const CONFIDENCE_THRESHOLD = 0.50;
-const MAX_FILE_SIZE_MB = 300;
+// Lovable AI Gateway supports large inline files - setting limit to 100MB
+// Beyond this, video compression is recommended
+const MAX_FILE_SIZE_MB = 100;
 const MAX_FILE_SIZE_BYTES = MAX_FILE_SIZE_MB * 1024 * 1024;
-const INLINE_LIMIT_MB = 20; // Files under 20MB can be sent inline
-const INLINE_LIMIT_BYTES = INLINE_LIMIT_MB * 1024 * 1024;
 
 const TRANSCRIPTION_SYSTEM_PROMPT = `You are a professional audio transcription specialist. Your ONLY task is to accurately transcribe EXACTLY what is spoken in the audio/video file.
 
@@ -85,99 +85,18 @@ function isVideoFile(fileName: string): boolean {
   return ['mp4', 'mov', 'avi', 'mkv', 'webm'].includes(ext);
 }
 
-// Upload file to Gemini File API and get URI
-async function uploadToGeminiFileAPI(
-  audioBuffer: ArrayBuffer,
-  fileName: string,
-  mimeType: string,
-  apiKey: string
-): Promise<string> {
-  console.log(`Uploading ${fileName} (${(audioBuffer.byteLength / 1024 / 1024).toFixed(2)} MB) to Gemini File API...`);
+// Convert ArrayBuffer to base64 in chunks to avoid memory issues
+function arrayBufferToBase64(buffer: ArrayBuffer): string {
+  const uint8Array = new Uint8Array(buffer);
+  const chunkSize = 32768; // 32KB chunks
+  let base64 = "";
   
-  // Step 1: Start resumable upload
-  const startUploadResponse = await fetch(
-    `https://generativelanguage.googleapis.com/upload/v1beta/files?key=${apiKey}`,
-    {
-      method: "POST",
-      headers: {
-        "X-Goog-Upload-Protocol": "resumable",
-        "X-Goog-Upload-Command": "start",
-        "X-Goog-Upload-Header-Content-Length": audioBuffer.byteLength.toString(),
-        "X-Goog-Upload-Header-Content-Type": mimeType,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        file: { display_name: fileName }
-      }),
-    }
-  );
-
-  if (!startUploadResponse.ok) {
-    const errorText = await startUploadResponse.text();
-    throw new Error(`Failed to start upload: ${startUploadResponse.status} - ${errorText}`);
+  for (let i = 0; i < uint8Array.length; i += chunkSize) {
+    const chunk = uint8Array.slice(i, Math.min(i + chunkSize, uint8Array.length));
+    base64 += btoa(String.fromCharCode.apply(null, Array.from(chunk)));
   }
-
-  const uploadUrl = startUploadResponse.headers.get("X-Goog-Upload-URL");
-  if (!uploadUrl) {
-    throw new Error("No upload URL received from Gemini File API");
-  }
-
-  // Step 2: Upload the file content
-  const uploadResponse = await fetch(uploadUrl, {
-    method: "PUT",
-    headers: {
-      "Content-Length": audioBuffer.byteLength.toString(),
-      "X-Goog-Upload-Offset": "0",
-      "X-Goog-Upload-Command": "upload, finalize",
-    },
-    body: audioBuffer,
-  });
-
-  if (!uploadResponse.ok) {
-    const errorText = await uploadResponse.text();
-    throw new Error(`Failed to upload file: ${uploadResponse.status} - ${errorText}`);
-  }
-
-  const uploadResult = await uploadResponse.json();
-  const fileUri = uploadResult.file?.uri;
   
-  if (!fileUri) {
-    throw new Error("No file URI received after upload");
-  }
-
-  console.log(`File uploaded successfully: ${fileUri}`);
-  
-  // Step 3: Wait for file to be processed (ACTIVE state)
-  const fileName_ = uploadResult.file?.name;
-  if (fileName_) {
-    let attempts = 0;
-    const maxAttempts = 30; // 30 seconds max wait
-    
-    while (attempts < maxAttempts) {
-      const statusResponse = await fetch(
-        `https://generativelanguage.googleapis.com/v1beta/${fileName_}?key=${apiKey}`
-      );
-      
-      if (statusResponse.ok) {
-        const statusResult = await statusResponse.json();
-        if (statusResult.state === "ACTIVE") {
-          console.log("File is ready for processing");
-          break;
-        } else if (statusResult.state === "FAILED") {
-          throw new Error(`File processing failed: ${statusResult.error?.message || "Unknown error"}`);
-        }
-      }
-      
-      await new Promise(resolve => setTimeout(resolve, 1000));
-      attempts++;
-    }
-    
-    if (attempts >= maxAttempts) {
-      console.warn("File processing timeout, proceeding anyway...");
-    }
-  }
-
-  return fileUri;
+  return base64;
 }
 
 serve(async (req) => {
@@ -223,7 +142,7 @@ serve(async (req) => {
     console.log(`File size: ${(fileSize / 1024 / 1024).toFixed(2)} MB`);
 
     if (fileSize > MAX_FILE_SIZE_BYTES) {
-      const errorMsg = `File size (${(fileSize / 1024 / 1024).toFixed(1)} MB) exceeds maximum allowed (${MAX_FILE_SIZE_MB} MB). Please use a smaller file or compress it.`;
+      const errorMsg = `File size (${(fileSize / 1024 / 1024).toFixed(1)} MB) exceeds maximum allowed (${MAX_FILE_SIZE_MB} MB). Please compress your video or extract only the audio track.`;
       
       await supabase.rpc("log_error", {
         _error_type: "audio",
@@ -236,8 +155,8 @@ serve(async (req) => {
       return new Response(JSON.stringify({ 
         error: errorMsg,
         error_code: "file_too_large",
-        error_hy: `Ֆdelays\u0576\u056B \u0579\u0561\u0583\u0568 (${(fileSize / 1024 / 1024).toFixed(1)} MB) \u0563\u0565\u0580\u0561\u0566\u0561\u0576\u0581\u0578\u0582\u0574 \u0567 \u0569\u0578\u0582\u0575\u056C\u0561\u057F\u0580\u0565\u056C\u056B \u0561\u057C\u0561\u057E\u0565\u056C\u0561\u0563\u0578\u0582\u0575\u0576\u0568 (${MAX_FILE_SIZE_MB} MB):`,
-        error_ru: `\u0420\u0430\u0437\u043C\u0435\u0440 \u0444\u0430\u0439\u043B\u0430 (${(fileSize / 1024 / 1024).toFixed(1)} MB) \u043F\u0440\u0435\u0432\u044B\u0448\u0430\u0435\u0442 \u043C\u0430\u043A\u0441\u0438\u043C\u0430\u043B\u044C\u043D\u044B\u0439 \u043B\u0438\u043C\u0438\u0442 (${MAX_FILE_SIZE_MB} MB).`
+        error_hy: ` Delays\u0576\u056B \u0579\u0561\u0583\u0568 (${(fileSize / 1024 / 1024).toFixed(1)} MB) \u0563\u0565\u0580\u0561\u0566\u0561\u0576\u0581\u0578\u0582\u0574 \u0567 \u0569\u0578\u0582\u0575\u056C\u0561\u057F\u0580\u0565\u056C\u056B \u0561\u057C\u0561\u057E\u0565\u056C\u0561\u0563\u0578\u0582\u0575\u0576\u0568 (${MAX_FILE_SIZE_MB} MB): \u053D\u0576\u0564\u0580\u0578\u0582\u0574 \u0565\u0576\u0584 \u057D\u0565\u0572\u0574\u0565\u056C \u057F\u0565\u057D\u0561\u0576\u0575\u0578\u0582\u0569\u0568 \u056F\u0561\u0574 \u0570\u0561\u0576\u0565\u056C \u0574\u056B\u0561\u0575\u0576 \u0561\u0578\u0582\u0564\u056B\u0578 \u0570\u0565\u057F\u0584\u0568\u0589`,
+        error_ru: `\u0420\u0430\u0437\u043C\u0435\u0440 \u0444\u0430\u0439\u043B\u0430 (${(fileSize / 1024 / 1024).toFixed(1)} MB) \u043F\u0440\u0435\u0432\u044B\u0448\u0430\u0435\u0442 \u043B\u0438\u043C\u0438\u0442 (${MAX_FILE_SIZE_MB} MB). \u0421\u0436\u043C\u0438\u0442\u0435 \u0432\u0438\u0434\u0435\u043E \u0438\u043B\u0438 \u0438\u0437\u0432\u043B\u0435\u043A\u0438\u0442\u0435 \u0442\u043E\u043B\u044C\u043A\u043E \u0430\u0443\u0434\u0438\u043E\u0434\u043E\u0440\u043E\u0436\u043A\u0443.`
       }), {
         status: 413,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
@@ -248,93 +167,50 @@ serve(async (req) => {
     const isVideo = isVideoFile(fileName);
     const ext = fileName?.split('.').pop()?.toLowerCase() || 'mp3';
 
-    let requestBody: any;
-
-    if (fileSize > INLINE_LIMIT_BYTES) {
-      // Large file: Use Gemini File API
-      console.log("Using Gemini File API for large file...");
-      
-      // Fetch the file as a stream and upload directly
-      const audioResponse = await fetch(audioUrl);
-      if (!audioResponse.ok) {
-        throw new Error(`Failed to fetch audio: ${audioResponse.status}`);
-      }
-      
-      const audioBuffer = await audioResponse.arrayBuffer();
-      
-      // Upload to Gemini File API
-      const fileUri = await uploadToGeminiFileAPI(audioBuffer, fileName, mimeType, LOVABLE_API_KEY);
-      
-      // Build request with file URI reference
-      requestBody = {
-        model: "google/gemini-2.5-flash",
-        messages: [
-          { role: "system", content: TRANSCRIPTION_SYSTEM_PROMPT },
-          { 
-            role: "user", 
-            content: [
-              { 
-                type: "text", 
-                text: `Please transcribe this ${isVideo ? 'video' : 'audio'} file. File name: ${fileName}. Focus on accurate Armenian legal terminology if applicable. Extract and transcribe all spoken content.` 
-              },
-              { 
-                type: "file",
-                file: {
-                  url: fileUri,
-                  mime_type: mimeType
-                }
-              }
-            ]
-          }
-        ],
-        temperature: 0.1,
-        max_tokens: 16000,
-      };
-    } else {
-      // Small file: Send inline as base64
-      console.log("Using inline base64 for small file...");
-      
-      const audioResponse = await fetch(audioUrl);
-      if (!audioResponse.ok) {
-        throw new Error(`Failed to fetch audio: ${audioResponse.status}`);
-      }
-      
-      const audioBuffer = await audioResponse.arrayBuffer();
-      const uint8Array = new Uint8Array(audioBuffer);
-      let audioBase64 = "";
-      const chunkSize = 32768;
-      for (let i = 0; i < uint8Array.length; i += chunkSize) {
-        const chunk = uint8Array.slice(i, i + chunkSize);
-        audioBase64 += btoa(String.fromCharCode(...chunk));
-      }
-      
-      requestBody = {
-        model: "google/gemini-2.5-flash",
-        messages: [
-          { role: "system", content: TRANSCRIPTION_SYSTEM_PROMPT },
-          { 
-            role: "user", 
-            content: [
-              { 
-                type: "text", 
-                text: `Please transcribe this ${isVideo ? 'video' : 'audio'} file. File name: ${fileName}. Focus on accurate Armenian legal terminology if applicable. Extract and transcribe all spoken content.` 
-              },
-              { 
-                type: isVideo ? "input_video" : "input_audio",
-                [isVideo ? "input_video" : "input_audio"]: {
-                  data: audioBase64,
-                  format: isVideo ? ext : (ext === 'wav' ? 'wav' : 'mp3')
-                }
-              }
-            ]
-          }
-        ],
-        temperature: 0.1,
-        max_tokens: 16000,
-      };
+    // Fetch audio file
+    console.log("Downloading audio/video file...");
+    const audioResponse = await fetch(audioUrl);
+    if (!audioResponse.ok) {
+      throw new Error(`Failed to fetch audio: ${audioResponse.status}`);
     }
+    
+    const audioBuffer = await audioResponse.arrayBuffer();
+    console.log(`Downloaded ${(audioBuffer.byteLength / 1024 / 1024).toFixed(2)} MB`);
+    
+    // Convert to base64
+    console.log("Converting to base64...");
+    const audioBase64 = arrayBufferToBase64(audioBuffer);
+    console.log(`Base64 length: ${(audioBase64.length / 1024 / 1024).toFixed(2)} MB`);
+
+    // Build request - use inline data for all files
+    // Lovable AI Gateway handles large inline content well
+    const requestBody = {
+      model: "google/gemini-2.5-flash",
+      messages: [
+        { role: "system", content: TRANSCRIPTION_SYSTEM_PROMPT },
+        { 
+          role: "user", 
+          content: [
+            { 
+              type: "text", 
+              text: `Please transcribe this ${isVideo ? 'video' : 'audio'} file. File name: ${fileName}. Focus on accurate Armenian legal terminology if applicable. Extract and transcribe all spoken content.` 
+            },
+            { 
+              type: isVideo ? "input_video" : "input_audio",
+              [isVideo ? "input_video" : "input_audio"]: {
+                data: audioBase64,
+                format: isVideo ? ext : (ext === 'wav' ? 'wav' : 'mp3')
+              }
+            }
+          ]
+        }
+      ],
+      temperature: 0.1,
+      max_tokens: 16000,
+    };
 
     // Call Gemini via Lovable AI Gateway
+    console.log("Sending to Lovable AI Gateway for transcription...");
     const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
       method: "POST",
       headers: {
@@ -370,10 +246,23 @@ serve(async (req) => {
         return new Response(JSON.stringify({ 
           error: "AI credits exhausted. Please top up your Cloud & AI balance to continue using audio transcription.",
           error_code: "payment_required",
-          error_hy: "\u0531\u0580\u0570\u0565\u057D\u057F\u0561\u056F\u0561\u0576 \u056B\u0576\u057F\u0565\u056C\u0565\u056F\u057F\u056B \u056F\u0580\u0565\u0564\u056B\u057F\u0576\u0565\u0580\u0568 \u057D\u057A\u0561\u057C\u057E\u0565\u056C \u0565\u0576\u0589 \u053D\u0576\u0564\u0580\u0578\u0582\u0574 \u0565\u0576\u0584 \u056C\u056B\u0581\u0584\u0561\u057E\u0578\u0580\u0565\u056C \u0571\u0565\u0580 Cloud & AI \u0570\u0561\u0577\u056B\u057E\u0568\u0589",
-          error_ru: "\u041A\u0440\u0435\u0434\u0438\u0442\u044B AI \u0438\u0441\u0447\u0435\u0440\u043F\u0430\u043D\u044B. \u041F\u043E\u043F\u043E\u043B\u043D\u0438\u0442\u0435 \u0431\u0430\u043B\u0430\u043D\u0441 Cloud & AI \u0434\u043B\u044F \u043F\u0440\u043E\u0434\u043E\u043B\u0436\u0435\u043D\u0438\u044F \u0440\u0430\u0431\u043E\u0442\u044B."
+          error_hy: "Արdelays\u0565\u057D\u057F\u0561\u056F\u0561\u0576 \u056B\u0576\u057F\u0565\u056C\u0565\u056F\u057F\u056B \u056F\u0580\u0565\u0564\u056B\u057F\u0576\u0565\u0580\u0568 \u057D\u057A\u0561\u057C\u057E\u0565\u056C \u0565\u0576\u0589 \u053D\u0576\u0564\u0580\u0578\u0582\u0574 \u0565\u0576\u0584 \u056C\u056B\u0581\u0584\u0561\u057E\u0578\u0580\u0565\u056C \u0571\u0565\u0580 Cloud & AI \u0570\u0561\u0577\u056B\u057E\u0568\u0589",
+          error_ru: "Кредиты AI исчерпаны. Пополните баланс Cloud & AI для продолжения работы."
         }), {
           status: 402,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+
+      // Check if it's a payload too large error
+      if (response.status === 413 || errorText.includes("payload") || errorText.includes("too large")) {
+        return new Response(JSON.stringify({ 
+          error: `File is too large for processing. Please compress your ${isVideo ? 'video' : 'audio'} file or extract only the audio track.`,
+          error_code: "payload_too_large",
+          error_hy: `\u0556\u0561\u0575\u056C\u0568 \u0579\u0561\u0583\u0561\u0566\u0561\u0576\u0581 \u0574\u0565\u056E \u0567 \u0574\u0577\u0561\u056F\u0574\u0561\u0576 \u0570\u0561\u0574\u0561\u0580\u0589 \u053D\u0576\u0564\u0580\u0578\u0582\u0574 \u0565\u0576\u0584 \u057D\u0565\u0572\u0574\u0565\u056C \u0571\u0565\u0580 ${isVideo ? '\u057F\u0565\u057D\u0561\u0576\u0575\u0578\u0582\u0569\u0568' : '\u0561\u0578\u0582\u0564\u056B\u0578\u0576'}\u0589`,
+          error_ru: `\u0424\u0430\u0439\u043B \u0441\u043B\u0438\u0448\u043A\u043E\u043C \u0431\u043E\u043B\u044C\u0448\u043E\u0439 \u0434\u043B\u044F \u043E\u0431\u0440\u0430\u0431\u043E\u0442\u043A\u0438. \u0421\u0436\u043C\u0438\u0442\u0435 ${isVideo ? '\u0432\u0438\u0434\u0435\u043E' : '\u0430\u0443\u0434\u0438\u043E'} \u0438\u043B\u0438 \u0438\u0437\u0432\u043B\u0435\u043A\u0438\u0442\u0435 \u0430\u0443\u0434\u0438\u043E\u0434\u043E\u0440\u043E\u0436\u043A\u0443.`
+        }), {
+          status: 413,
           headers: { ...corsHeaders, "Content-Type": "application/json" },
         });
       }
@@ -421,7 +310,6 @@ serve(async (req) => {
     } = transcriptionResult;
 
     const needsReview = confidence_score < CONFIDENCE_THRESHOLD;
-    const isError = confidence_score < CONFIDENCE_THRESHOLD;
 
     // Save to audio_transcriptions table
     const { data: transcriptionRecord, error: insertError } = await supabase
@@ -459,7 +347,7 @@ serve(async (req) => {
       _model_name: "google/gemini-2.5-flash",
       _tokens_used: tokensUsed,
       _estimated_cost: estimatedCost,
-      _metadata: { fileName, fileId: fileId || null, duration_seconds, usedFileAPI: fileSize > INLINE_LIMIT_BYTES }
+      _metadata: { fileName, fileId: fileId || null, duration_seconds, fileSizeMB: (fileSize / 1024 / 1024).toFixed(2) }
     });
 
     // Return result
@@ -475,22 +363,18 @@ serve(async (req) => {
       warnings: warnings || [],
       word_count,
       needs_review: needsReview,
-      is_error: isError,
-      error_warning: isError 
-        ? `⚠️ Confidence ${(confidence_score * 100).toFixed(0)}% is below 50% threshold. Manual review required.`
-        : null,
-      review_warning: needsReview && !isError
-        ? `Confidence ${(confidence_score * 100).toFixed(0)}% - review recommended.`
-        : null,
-      model: "google/gemini-2.5-flash"
+      tokens_used: tokensUsed
     }), {
+      status: 200,
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
 
   } catch (error) {
     console.error("audio-transcribe error:", error);
+
     return new Response(JSON.stringify({ 
-      error: error instanceof Error ? error.message : "Transcription failed" 
+      error: error instanceof Error ? error.message : "Transcription failed",
+      error_code: "internal_error"
     }), {
       status: 500,
       headers: { ...corsHeaders, "Content-Type": "application/json" },
