@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -6,8 +7,10 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Loader2, FileText, Download, Printer, CheckCircle2, AlertTriangle, Shield, Scale } from "lucide-react";
 import ReactMarkdown from "react-markdown";
+import { toast } from "sonner";
 import type { AggregatedReport, AgentAnalysisRun } from "./types";
 import { AGENT_CONFIGS } from "./types";
+import { exportDocumentToPDF } from "@/lib/pdfExportDocument";
 
 interface AggregatedReportViewProps {
   caseId: string;
@@ -26,10 +29,46 @@ export function AggregatedReportView({
   onGenerateReport,
   isGenerating
 }: AggregatedReportViewProps) {
-  const { t } = useTranslation(["ai"]);
+  const { t, i18n } = useTranslation(["ai", "common"]);
+  const [isExporting, setIsExporting] = useState(false);
 
   const completedRuns = runs.filter(r => r.status === "completed");
   const canGenerate = completedRuns.length >= 3; // Need at least 3 agents completed
+
+  const handleExportPdf = async () => {
+    if (!report) return;
+    
+    setIsExporting(true);
+    try {
+      // Compose full report content
+      const fullContent = [
+        report.executive_summary && `## ${t("ai:executive_summary")}\n\n${report.executive_summary}`,
+        report.evidence_summary && `## ${t("ai:evidence_summary")}\n\n${report.evidence_summary}`,
+        report.violations_summary && `## ${t("ai:violations_summary")}\n\n${report.violations_summary}`,
+        report.defense_strategy && `## ${t("ai:defense_strategy")}\n\n${report.defense_strategy}`,
+        report.prosecution_weaknesses && `## ${t("ai:prosecution_weaknesses")}\n\n${report.prosecution_weaknesses}`,
+        report.recommendations && `## ${t("ai:recommendations")}\n\n${report.recommendations}`,
+      ].filter(Boolean).join("\n\n---\n\n");
+
+      await exportDocumentToPDF({
+        title: report.title || t("ai:aggregated_report"),
+        content: fullContent || report.full_report || t("ai:no_content"),
+        createdAt: new Date(report.generated_at),
+        language: (i18n.language as "hy" | "ru" | "en") || "hy",
+      });
+      
+      toast.success(t("common:pdf_exported"));
+    } catch (error) {
+      console.error("PDF export error:", error);
+      toast.error(t("common:error"));
+    } finally {
+      setIsExporting(false);
+    }
+  };
+
+  const handlePrint = () => {
+    window.print();
+  };
 
   if (!report && !isGenerating) {
     return (
@@ -106,11 +145,20 @@ export function AggregatedReportView({
               </CardDescription>
             </div>
             <div className="flex gap-2">
-              <Button variant="outline" size="sm">
-                <Download className="mr-2 h-4 w-4" />
+              <Button 
+                variant="outline" 
+                size="sm" 
+                onClick={handleExportPdf}
+                disabled={isExporting}
+              >
+                {isExporting ? (
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                ) : (
+                  <Download className="mr-2 h-4 w-4" />
+                )}
                 PDF
               </Button>
-              <Button variant="outline" size="sm">
+              <Button variant="outline" size="sm" onClick={handlePrint}>
                 <Printer className="mr-2 h-4 w-4" />
                 {t("ai:print")}
               </Button>

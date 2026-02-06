@@ -183,5 +183,5 @@
   "changes_saved_successfully": "Изменения сохранены",
   "document_deleted": "Документ удалён",
   "document_deleted_success": "Документ успешно удалён",
-  "delete_error": "Ошибка удаления"
+  "pdf_exported": "PDF успешно создан"
 }

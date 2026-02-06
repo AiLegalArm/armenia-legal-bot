@@ -125,5 +125,6 @@
   "pdf_exported_success": "PDF file created successfully",
   "changes_saved_successfully": "Changes saved successfully",
   "document_deleted": "Document deleted",
-  "document_deleted_success": "Document deleted successfully"
+  "document_deleted_success": "Document deleted successfully",
+  "pdf_exported": "PDF exported successfully"
 }
