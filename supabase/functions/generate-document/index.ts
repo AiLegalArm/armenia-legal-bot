@@ -14,6 +14,12 @@ import {
   validateComposedPrompt 
 } from "./prompt-composer.ts";
 import { getRolePrompt, ROLE_CONFIGS, LegalRole } from "./prompts/role-prompts.ts";
+import { 
+  searchKnowledgeBase, 
+  searchLegalPractice, 
+  buildSearchQuery,
+  mapCategoryToPracticeCategory 
+} from "./rag-search.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -38,6 +44,31 @@ serve(async (req) => {
     const contextText = buildContextText(request);
     const recipientInfo = buildRecipientInfo(request);
     const senderInfo = buildSenderInfo(request);
+
+    // ==========================================================================
+    // RAG: Search Knowledge Base and Legal Practice
+    // ==========================================================================
+    const SUPABASE_URL = Deno.env.get("SUPABASE_URL") || "";
+    const SUPABASE_SERVICE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || "";
+    
+    let kbContext = "";
+    let legalPracticeContext = "";
+    
+    if (SUPABASE_URL && SUPABASE_SERVICE_KEY) {
+      const searchTerms = buildSearchQuery(request.category, request.templateName);
+      const practiceCategory = mapCategoryToPracticeCategory(request.category);
+      
+      // Parallel search in both databases
+      const [kbResults, practiceResults] = await Promise.all([
+        searchKnowledgeBase(searchTerms.join(' '), SUPABASE_URL, SUPABASE_SERVICE_KEY),
+        searchLegalPractice(searchTerms.join(' '), SUPABASE_URL, SUPABASE_SERVICE_KEY, practiceCategory)
+      ]);
+      
+      kbContext = kbResults;
+      legalPracticeContext = practiceResults;
+      
+      console.log(`RAG: KB context length: ${kbContext.length}, Legal practice length: ${legalPracticeContext.length}`);
+    }
 
     // Select the most specific prompt available
     const documentPrompt = DOCUMENT_PROMPTS[request.templateId || ''] 
@@ -70,10 +101,23 @@ ${contextText}
 
 ${request.additionalFields ? `ADDITIONAL INFORMATION:\n${JSON.stringify(request.additionalFields, null, 2)}` : ''}
 
+${kbContext ? `---
+RELEVANT LEGAL SOURCES FROM KNOWLEDGE BASE:
+
+${kbContext}
+---` : ''}
+
+${legalPracticeContext ? `---
+ANALOGOUS COURT PRACTICE (KB REFERENCE ONLY - for legal argumentation structure):
+
+${legalPracticeContext}
+---` : ''}
+
 LANGUAGE REQUIREMENT:
 ${languageNote}
 
-Generate a complete, professional legal document that is ready for submission to Armenian authorities/courts.`;
+Generate a complete, professional legal document that is ready for submission to Armenian authorities/courts.
+Use the legal sources and court practice above to strengthen legal argumentation where applicable.`;
 
     // ==========================================================================
     // COMPOSE PROMPT WITH ROLE-AWARENESS (NEW MODULAR ARCHITECTURE)

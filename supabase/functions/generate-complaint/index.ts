@@ -2,7 +2,12 @@ import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 
 import { SYSTEM_PROMPT, COURT_INSTRUCTIONS, LANGUAGE_INSTRUCTIONS } from "./prompts/index.ts";
 import { validateRequest } from "./validators.ts";
-import { searchKnowledgeBase, buildSearchQuery } from "./rag-search.ts";
+import { 
+  searchKnowledgeBase, 
+  searchLegalPractice, 
+  buildSearchQuery,
+  mapCourtTypeToPracticeCategory 
+} from "./rag-search.ts";
 
 // =============================================================================
 // CORS HEADERS
@@ -35,10 +40,23 @@ serve(async (req) => {
     const SUPABASE_URL = Deno.env.get("SUPABASE_URL") || "";
     const SUPABASE_SERVICE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || "";
     
-    let ragContext = "";
+    let kbContext = "";
+    let legalPracticeContext = "";
+    
     if (SUPABASE_URL && SUPABASE_SERVICE_KEY) {
       const searchTerms = buildSearchQuery(request.courtType, request.category);
-      ragContext = await searchKnowledgeBase(searchTerms.join(' '), SUPABASE_URL, SUPABASE_SERVICE_KEY);
+      const practiceCategory = mapCourtTypeToPracticeCategory(request.courtType);
+      
+      // Parallel search in both databases
+      const [kbResults, practiceResults] = await Promise.all([
+        searchKnowledgeBase(searchTerms.join(' '), SUPABASE_URL, SUPABASE_SERVICE_KEY),
+        searchLegalPractice(searchTerms.join(' '), SUPABASE_URL, SUPABASE_SERVICE_KEY, practiceCategory)
+      ]);
+      
+      kbContext = kbResults;
+      legalPracticeContext = practiceResults;
+      
+      console.log(`RAG: KB context length: ${kbContext.length}, Legal practice length: ${legalPracticeContext.length}`);
     }
 
     // Compose the full prompt
@@ -63,19 +81,26 @@ ${request.extractedText}
 
 ---
 
-${ragContext ? `RELEVANT LEGAL SOURCES FROM KNOWLEDGE BASE:
+${kbContext ? `RELEVANT LEGAL SOURCES FROM KNOWLEDGE BASE:
 
-${ragContext}
+${kbContext}
 
 ---` : 'No relevant sources found in Knowledge Base.'}
 
-Based on the above document content and legal sources, draft a complete judicial complaint ready for filing.
+${legalPracticeContext ? `ANALOGOUS COURT PRACTICE (KB REFERENCE - use for legal argumentation patterns):
 
-Follow the strict template structure. If critical information is missing, state what is needed before drafting.`;
+${legalPracticeContext}
+
+---` : ''}
+
+Based on the above document content, legal sources, and analogous court practice, draft a complete judicial complaint ready for filing.
+
+Follow the strict template structure. If critical information is missing, state what is needed before drafting.
+Use the court practice examples above to strengthen legal argumentation with relevant precedents.`;
 
     console.log(`Generating ${request.courtType} complaint, language: ${request.language}`);
     console.log(`Extracted text length: ${request.extractedText.length}`);
-    console.log(`RAG context length: ${ragContext.length}`);
+    console.log(`KB context length: ${kbContext.length}, Legal practice length: ${legalPracticeContext.length}`);
 
     const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
       method: "POST",
@@ -123,7 +148,8 @@ Follow the strict template structure. If critical information is missing, state 
         tokensUsed: data.usage?.total_tokens || 0,
         courtType: request.courtType,
         category: request.category,
-        ragSourcesUsed: ragContext.length > 0
+        ragSourcesUsed: kbContext.length > 0 || legalPracticeContext.length > 0,
+        legalPracticeUsed: legalPracticeContext.length > 0
       }),
       { headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
