@@ -7,8 +7,10 @@ const corsHeaders = {
 };
 
 const CONFIDENCE_THRESHOLD = 0.50;
-const MAX_FILE_SIZE_MB = 25; // Gemini limit for inline audio
+const MAX_FILE_SIZE_MB = 300;
 const MAX_FILE_SIZE_BYTES = MAX_FILE_SIZE_MB * 1024 * 1024;
+const INLINE_LIMIT_MB = 20; // Files under 20MB can be sent inline
+const INLINE_LIMIT_BYTES = INLINE_LIMIT_MB * 1024 * 1024;
 
 const TRANSCRIPTION_SYSTEM_PROMPT = `You are a professional audio transcription specialist for Armenian legal proceedings. Your task is to accurately transcribe audio recordings in Armenian (hy-AM), Russian (ru-RU), or English (en-US).
 
@@ -44,6 +46,125 @@ const TRANSCRIPTION_SYSTEM_PROMPT = `You are a professional audio transcription 
 - **Quotations**: Mark direct quotes clearly with quotation marks
 
 CRITICAL: Always respond with valid JSON only.`;
+
+// Get MIME type from file extension
+function getMimeType(fileName: string): string {
+  const ext = fileName?.split('.').pop()?.toLowerCase() || 'mp3';
+  const mimeTypes: Record<string, string> = {
+    'mp3': 'audio/mpeg',
+    'wav': 'audio/wav',
+    'm4a': 'audio/mp4',
+    'ogg': 'audio/ogg',
+    'webm': 'audio/webm',
+    'flac': 'audio/flac',
+    'mp4': 'video/mp4',
+    'mov': 'video/quicktime',
+    'avi': 'video/x-msvideo',
+    'mkv': 'video/x-matroska'
+  };
+  return mimeTypes[ext] || 'audio/mpeg';
+}
+
+// Check if file is video
+function isVideoFile(fileName: string): boolean {
+  const ext = fileName?.split('.').pop()?.toLowerCase() || '';
+  return ['mp4', 'mov', 'avi', 'mkv', 'webm'].includes(ext);
+}
+
+// Upload file to Gemini File API and get URI
+async function uploadToGeminiFileAPI(
+  audioBuffer: ArrayBuffer,
+  fileName: string,
+  mimeType: string,
+  apiKey: string
+): Promise<string> {
+  console.log(`Uploading ${fileName} (${(audioBuffer.byteLength / 1024 / 1024).toFixed(2)} MB) to Gemini File API...`);
+  
+  // Step 1: Start resumable upload
+  const startUploadResponse = await fetch(
+    `https://generativelanguage.googleapis.com/upload/v1beta/files?key=${apiKey}`,
+    {
+      method: "POST",
+      headers: {
+        "X-Goog-Upload-Protocol": "resumable",
+        "X-Goog-Upload-Command": "start",
+        "X-Goog-Upload-Header-Content-Length": audioBuffer.byteLength.toString(),
+        "X-Goog-Upload-Header-Content-Type": mimeType,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        file: { display_name: fileName }
+      }),
+    }
+  );
+
+  if (!startUploadResponse.ok) {
+    const errorText = await startUploadResponse.text();
+    throw new Error(`Failed to start upload: ${startUploadResponse.status} - ${errorText}`);
+  }
+
+  const uploadUrl = startUploadResponse.headers.get("X-Goog-Upload-URL");
+  if (!uploadUrl) {
+    throw new Error("No upload URL received from Gemini File API");
+  }
+
+  // Step 2: Upload the file content
+  const uploadResponse = await fetch(uploadUrl, {
+    method: "PUT",
+    headers: {
+      "Content-Length": audioBuffer.byteLength.toString(),
+      "X-Goog-Upload-Offset": "0",
+      "X-Goog-Upload-Command": "upload, finalize",
+    },
+    body: audioBuffer,
+  });
+
+  if (!uploadResponse.ok) {
+    const errorText = await uploadResponse.text();
+    throw new Error(`Failed to upload file: ${uploadResponse.status} - ${errorText}`);
+  }
+
+  const uploadResult = await uploadResponse.json();
+  const fileUri = uploadResult.file?.uri;
+  
+  if (!fileUri) {
+    throw new Error("No file URI received after upload");
+  }
+
+  console.log(`File uploaded successfully: ${fileUri}`);
+  
+  // Step 3: Wait for file to be processed (ACTIVE state)
+  const fileName_ = uploadResult.file?.name;
+  if (fileName_) {
+    let attempts = 0;
+    const maxAttempts = 30; // 30 seconds max wait
+    
+    while (attempts < maxAttempts) {
+      const statusResponse = await fetch(
+        `https://generativelanguage.googleapis.com/v1beta/${fileName_}?key=${apiKey}`
+      );
+      
+      if (statusResponse.ok) {
+        const statusResult = await statusResponse.json();
+        if (statusResult.state === "ACTIVE") {
+          console.log("File is ready for processing");
+          break;
+        } else if (statusResult.state === "FAILED") {
+          throw new Error(`File processing failed: ${statusResult.error?.message || "Unknown error"}`);
+        }
+      }
+      
+      await new Promise(resolve => setTimeout(resolve, 1000));
+      attempts++;
+    }
+    
+    if (attempts >= maxAttempts) {
+      console.warn("File processing timeout, proceeding anyway...");
+    }
+  }
+
+  return fileUri;
+}
 
 serve(async (req) => {
   if (req.method === "OPTIONS") {
@@ -109,50 +230,71 @@ serve(async (req) => {
       });
     }
 
-    // Fetch audio and convert to base64 for Gemini
-    const audioResponse = await fetch(audioUrl);
-    if (!audioResponse.ok) {
-      throw new Error(`Failed to fetch audio: ${audioResponse.status}`);
-    }
-    
-    const audioBuffer = await audioResponse.arrayBuffer();
-    
-    // Convert to base64 using streaming approach to reduce memory pressure
-    const uint8Array = new Uint8Array(audioBuffer);
-    let audioBase64 = "";
-    const chunkSize = 32768; // 32KB chunks
-    for (let i = 0; i < uint8Array.length; i += chunkSize) {
-      const chunk = uint8Array.slice(i, i + chunkSize);
-      audioBase64 += btoa(String.fromCharCode(...chunk));
-    }
-    
-    // Determine MIME type from file extension
+    const mimeType = getMimeType(fileName);
+    const isVideo = isVideoFile(fileName);
     const ext = fileName?.split('.').pop()?.toLowerCase() || 'mp3';
-    const mimeTypes: Record<string, string> = {
-      'mp3': 'audio/mpeg',
-      'wav': 'audio/wav',
-      'm4a': 'audio/mp4',
-      'ogg': 'audio/ogg',
-      'webm': 'audio/webm',
-      'flac': 'audio/flac',
-      'mp4': 'video/mp4',
-      'mov': 'video/quicktime',
-      'avi': 'video/x-msvideo',
-      'mkv': 'video/x-matroska'
-    };
-    const mimeType = mimeTypes[ext] || 'audio/mpeg';
- 
-    // Determine if this is a video file
-    const isVideo = ['mp4', 'mov', 'avi', 'mkv', 'webm'].includes(ext) && mimeType.startsWith('video');
 
-    // Call Gemini for audio transcription via Lovable AI Gateway
-    const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${LOVABLE_API_KEY}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
+    let requestBody: any;
+
+    if (fileSize > INLINE_LIMIT_BYTES) {
+      // Large file: Use Gemini File API
+      console.log("Using Gemini File API for large file...");
+      
+      // Fetch the file as a stream and upload directly
+      const audioResponse = await fetch(audioUrl);
+      if (!audioResponse.ok) {
+        throw new Error(`Failed to fetch audio: ${audioResponse.status}`);
+      }
+      
+      const audioBuffer = await audioResponse.arrayBuffer();
+      
+      // Upload to Gemini File API
+      const fileUri = await uploadToGeminiFileAPI(audioBuffer, fileName, mimeType, LOVABLE_API_KEY);
+      
+      // Build request with file URI reference
+      requestBody = {
+        model: "google/gemini-2.5-flash",
+        messages: [
+          { role: "system", content: TRANSCRIPTION_SYSTEM_PROMPT },
+          { 
+            role: "user", 
+            content: [
+              { 
+                type: "text", 
+                text: `Please transcribe this ${isVideo ? 'video' : 'audio'} file. File name: ${fileName}. Focus on accurate Armenian legal terminology if applicable. Extract and transcribe all spoken content.` 
+              },
+              { 
+                type: "file",
+                file: {
+                  url: fileUri,
+                  mime_type: mimeType
+                }
+              }
+            ]
+          }
+        ],
+        temperature: 0.1,
+        max_tokens: 16000,
+      };
+    } else {
+      // Small file: Send inline as base64
+      console.log("Using inline base64 for small file...");
+      
+      const audioResponse = await fetch(audioUrl);
+      if (!audioResponse.ok) {
+        throw new Error(`Failed to fetch audio: ${audioResponse.status}`);
+      }
+      
+      const audioBuffer = await audioResponse.arrayBuffer();
+      const uint8Array = new Uint8Array(audioBuffer);
+      let audioBase64 = "";
+      const chunkSize = 32768;
+      for (let i = 0; i < uint8Array.length; i += chunkSize) {
+        const chunk = uint8Array.slice(i, i + chunkSize);
+        audioBase64 += btoa(String.fromCharCode(...chunk));
+      }
+      
+      requestBody = {
         model: "google/gemini-2.5-flash",
         messages: [
           { role: "system", content: TRANSCRIPTION_SYSTEM_PROMPT },
@@ -174,8 +316,18 @@ serve(async (req) => {
           }
         ],
         temperature: 0.1,
-        max_tokens: 8000,
-      }),
+        max_tokens: 16000,
+      };
+    }
+
+    // Call Gemini via Lovable AI Gateway
+    const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${LOVABLE_API_KEY}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(requestBody),
     });
 
     if (!response.ok) {
@@ -293,7 +445,7 @@ serve(async (req) => {
       _model_name: "google/gemini-2.5-flash",
       _tokens_used: tokensUsed,
       _estimated_cost: estimatedCost,
-      _metadata: { fileName, fileId: fileId || null, duration_seconds }
+      _metadata: { fileName, fileId: fileId || null, duration_seconds, usedFileAPI: fileSize > INLINE_LIMIT_BYTES }
     });
 
     // Return result
