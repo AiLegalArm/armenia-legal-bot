@@ -11,6 +11,7 @@ import { KBBulkImport } from "@/components/kb/KBBulkImport";
 import { KBWebScraper } from "@/components/kb/KBWebScraper";
 import { KBJsonlImport } from "@/components/kb/KBJsonlImport";
 import { KBMultiFileUpload } from "@/components/kb/KBMultiFileUpload";
+import { KBExport } from "@/components/kb/KBExport";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { 
@@ -21,6 +22,7 @@ import {
   FileStack,
   Globe,
   FileJson,
+  Download,
 } from "lucide-react";
 import {
   AlertDialog,
@@ -47,6 +49,7 @@ export function AdminKnowledgeBaseTab() {
   const [multiFileUploadOpen, setMultiFileUploadOpen] = useState(false);
   const [webScraperOpen, setWebScraperOpen] = useState(false);
   const [jsonlImportOpen, setJsonlImportOpen] = useState(false);
+  const [exportOpen, setExportOpen] = useState(false);
   const [editingDoc, setEditingDoc] = useState<KnowledgeBase | null>(null);
   const [deletingDocId, setDeletingDocId] = useState<string | null>(null);
 
@@ -139,6 +142,10 @@ export function AdminKnowledgeBaseTab() {
               <Button variant="outline" onClick={() => setPdfUploadOpen(true)} className="w-full sm:w-auto">
                 <FileUp className="mr-1.5 h-4 w-4" />
                 <span className="text-xs sm:text-sm">PDF</span>
+              </Button>
+              <Button variant="secondary" onClick={() => setExportOpen(true)} className="w-full sm:w-auto">
+                <Download className="mr-1.5 h-4 w-4" />
+                <span className="text-xs sm:text-sm">{"\u042d\u043a\u0441\u043f\u043e\u0440\u0442"}</span>
               </Button>
             </div>
           </CardContent>
@@ -261,6 +268,12 @@ export function AdminKnowledgeBaseTab() {
           setJsonlImportOpen(false);
           refreshList();
         }}
+      />
+
+      {/* Export */}
+      <KBExport
+        open={exportOpen}
+        onOpenChange={setExportOpen}
       />
 
       {/* Delete Confirmation */}
