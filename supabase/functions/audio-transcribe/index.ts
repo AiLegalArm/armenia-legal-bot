@@ -12,40 +12,54 @@ const MAX_FILE_SIZE_BYTES = MAX_FILE_SIZE_MB * 1024 * 1024;
 const INLINE_LIMIT_MB = 20; // Files under 20MB can be sent inline
 const INLINE_LIMIT_BYTES = INLINE_LIMIT_MB * 1024 * 1024;
 
-const TRANSCRIPTION_SYSTEM_PROMPT = `You are a professional audio transcription specialist for Armenian legal proceedings. Your task is to accurately transcribe audio recordings in Armenian (hy-AM), Russian (ru-RU), or English (en-US).
+const TRANSCRIPTION_SYSTEM_PROMPT = `You are a professional audio transcription specialist. Your ONLY task is to accurately transcribe EXACTLY what is spoken in the audio/video file.
+
+## CRITICAL RULES:
+1. **TRANSCRIBE ONLY WHAT YOU HEAR** - Do NOT invent, assume, or add any content
+2. If audio is silent or unintelligible, say so explicitly
+3. If you cannot understand a word, mark it as [inaudible] or [unclear]
+4. Do NOT add content that was not spoken in the recording
+5. Do NOT assume context or fill in gaps with plausible text
 
 ## Transcription Guidelines:
 1. Transcribe every spoken word accurately, preserving the original language
-2. Identify different speakers if multiple voices are present (Speaker 1:, Speaker 2:, etc.)
-3. Include timestamps for significant segments in format [MM:SS]
-4. Preserve legal terminology exactly as spoken
-5. Note any unclear or inaudible sections with [inaudible] or [unclear]
+2. Auto-detect language (Armenian hy-AM, Russian ru-RU, English en-US, or other)
+3. Identify different speakers if multiple voices are present (Speaker 1:, Speaker 2:, etc.)
+4. Include timestamps for significant segments in format [MM:SS]
+5. Preserve terminology exactly as spoken
 
 ## Output Format (JSON):
 {
-  "transcription": "Full transcription text...",
+  "transcription": "Exact transcription of spoken content...",
   "language_detected": "hy-AM",
   "speakers_count": 1,
   "confidence_score": 0.85,
-  "confidence_reason": "Clear audio quality, minimal background noise",
+  "confidence_reason": "Reason for confidence level",
   "duration_seconds": 45,
-  "warnings": ["Background noise at 0:30-0:45"],
+  "warnings": ["Any issues encountered"],
   "word_count": 120
 }
 
 ## Confidence Score Guidelines:
-- 0.85-1.0: Clear audio, high accuracy, professional recording quality
-- 0.70-0.84: Good audio with minor issues, reliable transcription
-- 0.50-0.69: Moderate quality, some sections may need review
-- Below 0.50: Poor quality, significant manual review required
+- 0.85-1.0: Clear audio, high accuracy
+- 0.70-0.84: Good audio with minor issues
+- 0.50-0.69: Moderate quality, some sections unclear
+- Below 0.50: Poor quality, significant portions unclear
 
-## Special Handling:
-- **Legal terms**: Preserve exact terminology for court proceedings, laws, articles
-- **Names and places**: Transcribe proper nouns carefully with correct spelling
-- **Numbers and dates**: Format consistently (e.g., Article 15, January 5, 2024)
-- **Quotations**: Mark direct quotes clearly with quotation marks
+## If Audio Has No Speech:
+If the audio file contains no speech (only music, silence, or noise), return:
+{
+  "transcription": "[No speech detected in this recording]",
+  "language_detected": "unknown",
+  "speakers_count": 0,
+  "confidence_score": 1.0,
+  "confidence_reason": "No speech content to transcribe",
+  "duration_seconds": X,
+  "warnings": ["Audio contains no speech"],
+  "word_count": 0
+}
 
-CRITICAL: Always respond with valid JSON only.`;
+CRITICAL: Always respond with valid JSON only. NEVER fabricate content that was not in the audio.`;
 
 // Get MIME type from file extension
 function getMimeType(fileName: string): string {

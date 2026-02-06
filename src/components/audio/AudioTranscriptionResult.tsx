@@ -142,33 +142,33 @@ export function AudioTranscriptionResult({ transcription, caseId }: AudioTranscr
 
   return (
     <>
-      <Card>
-        <CardHeader className="pb-3">
-          <div className="flex items-start justify-between gap-4">
-            <div className="space-y-1">
-              <CardTitle className="text-base">
+      <Card className="w-full overflow-hidden">
+        <CardHeader className="pb-3 px-3 sm:px-6">
+          <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3">
+            <div className="space-y-1 min-w-0 flex-1">
+              <CardTitle className="text-sm sm:text-base break-words leading-tight">
                 {transcription.case_files?.original_filename || t('audio:transcription')}
               </CardTitle>
-              <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                <Clock className="h-3.5 w-3.5" />
-                <span>
+              <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs sm:text-sm text-muted-foreground">
+                <span className="flex items-center gap-1">
+                  <Clock className="h-3 w-3 shrink-0" />
                   {format(new Date(transcription.created_at), 'dd.MM.yyyy HH:mm')}
                 </span>
                 {transcription.duration_seconds && (
-                  <span className="ml-2">
+                  <span>
                     {t('audio:duration')}: {durationMinutes}:{durationSeconds.toString().padStart(2, '0')}
                   </span>
                 )}
               </div>
             </div>
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2 shrink-0 self-start">
               {getConfidenceBadge()}
               {getStatusBadge()}
             </div>
           </div>
         </CardHeader>
 
-        <CardContent>
+        <CardContent className="px-3 sm:px-6">
           {transcription.language && (
             <p className="text-xs text-muted-foreground mb-2">
               {t('audio:language')}: {transcription.language}
@@ -180,50 +180,51 @@ export function AudioTranscriptionResult({ transcription, caseId }: AudioTranscr
               value={editedText}
               onChange={(e) => setEditedText(e.target.value)}
               rows={8}
-              className="font-mono text-sm"
+              className="font-mono text-sm w-full"
               aria-label={t('audio:edit_transcription')}
             />
           ) : (
-            <div className="bg-muted/50 rounded-md p-4 max-h-64 overflow-y-auto">
-              <p className="text-sm whitespace-pre-wrap">{displayText}</p>
+            <div className="bg-muted/50 rounded-md p-3 sm:p-4 max-h-64 overflow-y-auto">
+              <p className="text-sm whitespace-pre-wrap break-words">{displayText}</p>
             </div>
           )}
 
           {needsReview && !isEditing && (
-            <div className="mt-3 p-3 bg-orange-50 dark:bg-orange-950/20 border border-orange-200 dark:border-orange-800 rounded-md">
-              <p className="text-sm text-orange-700 dark:text-orange-300 flex items-center gap-2">
-                <AlertTriangle className="h-4 w-4" />
-                {t('audio:low_quality_warning')}
+            <div className="mt-3 p-2 sm:p-3 bg-orange-50 dark:bg-orange-950/20 border border-orange-200 dark:border-orange-800 rounded-md">
+              <p className="text-xs sm:text-sm text-orange-700 dark:text-orange-300 flex items-start gap-2">
+                <AlertTriangle className="h-4 w-4 shrink-0 mt-0.5" />
+                <span>{t('audio:low_quality_warning')}</span>
               </p>
             </div>
           )}
         </CardContent>
 
         {canEdit && (
-          <CardFooter className="flex justify-between gap-2 pt-0">
+          <CardFooter className="flex flex-col sm:flex-row justify-between gap-2 pt-0 px-3 sm:px-6">
             {isEditing ? (
-              <div className="flex gap-2">
+              <div className="flex gap-2 w-full sm:w-auto">
                 <Button
                   size="sm"
                   onClick={handleSave}
                   disabled={updateTranscription.isPending}
+                  className="flex-1 sm:flex-none"
                 >
                   {updateTranscription.isPending ? (
                     <Loader2 className="h-4 w-4 animate-spin mr-1" />
                   ) : (
                     <Check className="h-4 w-4 mr-1" />
                   )}
-                  {t('audio:save_changes')}
+                  <span className="truncate">{t('audio:save_changes')}</span>
                 </Button>
-                <Button size="sm" variant="outline" onClick={handleCancel}>
+                <Button size="sm" variant="outline" onClick={handleCancel} className="flex-1 sm:flex-none">
                   <X className="h-4 w-4 mr-1" />
-                  {t('audio:cancel')}
+                  <span className="truncate">{t('audio:cancel')}</span>
                 </Button>
               </div>
             ) : (
-              <Button size="sm" variant="outline" onClick={() => setIsEditing(true)}>
-                <Edit className="h-4 w-4 mr-1" />
-                {t('audio:edit_transcription')}
+              <Button size="sm" variant="outline" onClick={() => setIsEditing(true)} className="w-full sm:w-auto">
+                <Edit className="h-4 w-4 mr-1 shrink-0" />
+                <span className="truncate">{t('audio:edit_transcription')}</span>
               </Button>
             )}
 
@@ -232,9 +233,10 @@ export function AudioTranscriptionResult({ transcription, caseId }: AudioTranscr
                 size="sm"
                 variant="secondary"
                 onClick={() => setShowKBDialog(true)}
+                className="w-full sm:w-auto"
               >
-                <BookOpen className="h-4 w-4 mr-1" />
-                {t('audio:add_to_kb')}
+                <BookOpen className="h-4 w-4 mr-1 shrink-0" />
+                <span className="truncate">{t('audio:add_to_kb')}</span>
               </Button>
             )}
           </CardFooter>

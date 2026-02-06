@@ -45,7 +45,7 @@ export default function CaseTranscriptions() {
   }
 
   return (
-    <div className="min-h-screen bg-background">
+    <div className="min-h-screen bg-background overflow-x-hidden">
       {/* Skip Link */}
       <a
         href="#main-content"
@@ -56,42 +56,38 @@ export default function CaseTranscriptions() {
 
       {/* Header */}
       <header className="border-b bg-card sticky top-0 z-10">
-        <div className="container mx-auto px-4 py-4 flex items-center justify-between">
-          <div className="flex items-center gap-4">
+        <div className="container mx-auto px-4 py-3 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 sm:gap-4">
+          <div className="flex items-center gap-2 sm:gap-4 w-full sm:w-auto">
             <Button
               variant="ghost"
               size="sm"
               onClick={() => navigate(`/cases/${id}`)}
               aria-label={t('audio:back_to_case')}
+              className="shrink-0 px-2 sm:px-3"
             >
-              <ArrowLeft className="h-4 w-4 mr-2" />
-              {t('audio:back_to_case')}
+              <ArrowLeft className="h-4 w-4 sm:mr-2" />
+              <span className="hidden sm:inline">{t('audio:back_to_case')}</span>
             </Button>
-            <h1 className="text-lg font-semibold text-foreground">
+            <h1 className="text-base sm:text-lg font-semibold text-foreground truncate">
               {t('audio:audio_title')}
             </h1>
           </div>
 
-          <div className="flex items-center gap-4">
+          <div className="flex items-center gap-2 sm:gap-4 self-end sm:self-auto">
             <LanguageSwitcher />
             {user && (
-              <div className="flex items-center gap-3">
-                <span className="text-sm text-muted-foreground hidden sm:inline">
-                  {user.email}
-                </span>
-                <Button variant="outline" size="sm" onClick={() => signOut()}>
-                  {t('common:logout', 'Logout')}
-                </Button>
-              </div>
+              <Button variant="outline" size="sm" onClick={() => signOut()} className="shrink-0">
+                {t('common:logout', 'Logout')}
+              </Button>
             )}
           </div>
         </div>
       </header>
 
       {/* Main Content */}
-      <main id="main-content" className="container mx-auto px-4 py-6">
-        <div className="mb-6">
-          <h2 className="text-xl font-semibold text-foreground">
+      <main id="main-content" className="container mx-auto px-4 py-4 sm:py-6 max-w-full">
+        <div className="mb-4 sm:mb-6">
+          <h2 className="text-lg sm:text-xl font-semibold text-foreground break-words">
             {caseData.title}
           </h2>
           <p className="text-sm text-muted-foreground">
