@@ -14,20 +14,20 @@ export function AudioTranscriptionList({ caseId }: AudioTranscriptionListProps) 
   const { transcriptions, isLoading } = useAudioTranscriptions(caseId);
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-4 sm:space-y-6 w-full overflow-hidden">
       <AudioUpload caseId={caseId} />
 
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <Music className="h-5 w-5" aria-hidden="true" />
-            {t('audio:transcriptions_list')}
+      <Card className="w-full overflow-hidden">
+        <CardHeader className="px-3 sm:px-6">
+          <CardTitle className="flex items-center gap-2 text-base sm:text-lg">
+            <Music className="h-4 w-4 sm:h-5 sm:w-5 shrink-0" aria-hidden="true" />
+            <span className="truncate">{t('audio:transcriptions_list')}</span>
           </CardTitle>
-          <CardDescription>
+          <CardDescription className="text-xs sm:text-sm">
             {t('audio:audio_history')}
           </CardDescription>
         </CardHeader>
-        <CardContent>
+        <CardContent className="px-3 sm:px-6">
           {isLoading ? (
             <div className="flex items-center justify-center py-8">
               <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
@@ -35,8 +35,8 @@ export function AudioTranscriptionList({ caseId }: AudioTranscriptionListProps) 
             </div>
           ) : transcriptions.length === 0 ? (
             <div className="text-center py-8 text-muted-foreground">
-              <Music className="h-12 w-12 mx-auto mb-3 opacity-50" />
-              <p>{t('audio:no_transcriptions')}</p>
+              <Music className="h-10 w-10 sm:h-12 sm:w-12 mx-auto mb-3 opacity-50" />
+              <p className="text-sm">{t('audio:no_transcriptions')}</p>
             </div>
           ) : (
             <div className="space-y-4">
