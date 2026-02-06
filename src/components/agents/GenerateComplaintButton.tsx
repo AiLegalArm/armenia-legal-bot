@@ -158,9 +158,9 @@ ${aggregatedReport.recommendations || ""}
         disabled={!hasEnoughData}
         variant="outline"
         size="sm"
-        className="flex-1 h-8 sm:h-9 rounded-lg text-[11px] sm:text-xs font-medium"
+        className="w-full sm:flex-1 h-9 rounded-lg text-xs font-medium"
       >
-        <FileText className="h-3.5 w-3.5 mr-1 shrink-0" />
+        <FileText className="h-3.5 w-3.5 mr-1.5 shrink-0" />
         <span className="truncate">{t("ai:generate_complaint_from_analysis")}</span>
       </Button>
 

@@ -76,7 +76,7 @@ export function MultiAgentPanel({ caseId, caseFacts }: MultiAgentPanelProps) {
   };
 
   return (
-    <div className="space-y-3 sm:space-y-4 w-full">
+    <div className="space-y-3 sm:space-y-4 w-full overflow-x-hidden">
       {/* Header - Compact card */}
       <Card className="card-premium">
         <CardHeader className="pb-3 px-3 sm:px-4 pt-3 sm:pt-4">
@@ -89,19 +89,19 @@ export function MultiAgentPanel({ caseId, caseFacts }: MultiAgentPanelProps) {
               {t("ai:multi_agent_description")}
             </CardDescription>
             
-            {/* Action Buttons - Compact */}
-            <div className="flex gap-2 w-full pt-1">
+            {/* Action Buttons - Stack vertically on mobile */}
+            <div className="flex flex-col sm:flex-row gap-2 w-full pt-1">
               <Button
                 onClick={() => runAllAgents(caseId)}
                 disabled={isLoading || volumes.length === 0}
                 size="sm"
-                className="flex-1 h-8 sm:h-9 rounded-lg text-[11px] sm:text-xs font-medium"
+                className="w-full sm:flex-1 h-9 rounded-lg text-xs font-medium"
               >
                 {isLoading ? (
                   <Loader2 className="h-3.5 w-3.5 animate-spin" />
                 ) : (
                   <>
-                    <Play className="h-3.5 w-3.5 mr-1" />
+                    <Play className="h-3.5 w-3.5 mr-1.5 shrink-0" />
                     <span className="truncate">{t("ai:run_all_agents")}</span>
                   </>
                 )}
@@ -115,14 +115,14 @@ export function MultiAgentPanel({ caseId, caseFacts }: MultiAgentPanelProps) {
             </div>
           </div>
           
-          {/* Progress bar - More compact */}
+          {/* Progress bar */}
           {completedAgents > 0 && (
             <div className="mt-2 pt-2 border-t border-border/50 space-y-1">
               <div className="flex justify-between text-[10px] sm:text-xs text-muted-foreground">
                 <span>{t("ai:agents_completed")}</span>
                 <span className="font-medium">{completedAgents}/{totalAgents}</span>
               </div>
-              <Progress value={progress} className="h-1.5 sm:h-2 rounded-full" />
+              <Progress value={progress} className="h-1.5 sm:h-2 rounded-full w-full" />
             </div>
           )}
         </CardHeader>
