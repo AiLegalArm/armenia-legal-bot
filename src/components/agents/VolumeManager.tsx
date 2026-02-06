@@ -179,19 +179,19 @@ export function VolumeManager({
       )}
 
       {/* Header with Add button */}
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-        <div className="min-w-0">
-          <h3 className="text-lg font-semibold break-words">{t("ai:case_volumes")}</h3>
-          <p className="text-sm text-muted-foreground break-words">
+      <div className="flex items-center justify-between gap-2">
+        <div className="min-w-0 flex-1">
+          <h3 className="text-sm sm:text-base font-semibold">{t("ai:case_volumes")}</h3>
+          <p className="text-[11px] sm:text-xs text-muted-foreground line-clamp-1">
             {t("ai:volumes_description")}
           </p>
         </div>
         
         <Dialog open={isAddDialogOpen} onOpenChange={setIsAddDialogOpen}>
           <DialogTrigger asChild>
-            <Button className="w-full sm:w-auto whitespace-normal text-center">
-              <Plus className="mr-2 h-4 w-4" />
-              <span className="leading-tight">{t("ai:add_volume")}</span>
+            <Button size="sm" className="h-8 sm:h-9 px-3 text-[11px] sm:text-xs shrink-0">
+              <Plus className="h-3.5 w-3.5 mr-1" />
+              {t("ai:add_volume")}
             </Button>
           </DialogTrigger>
           <DialogContent className="w-[95vw] sm:w-full max-h-[90vh] overflow-hidden flex flex-col">
