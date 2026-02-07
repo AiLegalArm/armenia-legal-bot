@@ -41,11 +41,18 @@ export const ANALYSIS_TYPES = [
 
 export type AnalysisType = typeof ANALYSIS_TYPES[number];
 
-// Map from old module IDs to new analysis types
+/**
+ * @deprecated UNUSED - This mapping is not referenced anywhere in the codebase.
+ * Criminal module routing uses CRIMINAL_MODULE_PROMPTS directly via:
+ *   if (role === "criminal_module" && moduleId) → CRIMINAL_MODULE_PROMPTS[moduleId]
+ * 
+ * Retained for documentation only. Safe to delete.
+ * Verified: 2024-02 - No imports found across src/ or supabase/functions/
+ */
 export const MODULE_ID_TO_ANALYSIS_TYPE: Record<string, AnalysisType> = {
   'evidence_admissibility': 'evidence_admissibility',
   'charge_correspondence': 'charge_qualification',
-  'witness_credibility': 'evidence_admissibility', // Part of evidence analysis
+  'witness_credibility': 'evidence_admissibility',
   'procedural_violations': 'procedural_violations',
   'substantive_violations': 'substantive_law_violations',
   'defense_fair_trial': 'fair_trial_and_rights',
