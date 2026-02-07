@@ -13,7 +13,6 @@ const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
-
 // Legal AI System Prompts — STRICTLY for Republic of Armenia (RA) law
 // CRITICAL: No hallucinations. RAG-FIRST. KB is reference-only.
 // NOTE: If external sources (HUDOC/Datalex/ARLIS/EAEU) are NOT connected via KB/RAG,
@@ -21,8 +20,7 @@ const corsHeaders = {
 
 type Role = "advocate" | "prosecutor" | "judge" | "aggregator";
 
-const GLOBAL_GUARDS = `
-# =============================================================================
+const GLOBAL_GUARDS = # =============================================================================
 # AI LEGAL ARMENIA — MASTER SYSTEM PROMPT (VERSION 2 · FULL · ALL ROLES)
 # Jurisdiction: Republic of Armenia (RA)
 # =============================================================================
@@ -248,6 +246,11 @@ c) Կրկնվող ձևակերպումներ
 
 Լռելյայն պատասխանի լեզուն՝ հայերեն (եթե օգտատերը չի գրում այլ լեզվով)։
 
+// Armenian legal disclaimer
+const DISCLAIMER_HY = `
+⚠️ **Զգուշացում (Disclaimer)** 
+«Սա արհեստական բանականությամբ ստեղծված վերլուծություն է և չի հանդիսանում պաշտոնական իրավաբանական խորհրդատվություն: Խորհուրդ ենք տալիս դիմել լիցենզավորված փաստաբանի»
+`;
 
 interface AnalysisRequest {
   role: "advocate" | "prosecutor" | "judge" | "aggregator" | "criminal_module";
