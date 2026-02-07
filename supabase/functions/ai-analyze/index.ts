@@ -740,7 +740,7 @@ Please provide your professional legal analysis from your designated role perspe
             return new Response(
               JSON.stringify({
                 role,
-                analysis: "Վdelays were too large. Please try again with fewer documents or a simpler query.",
+                analysis: "\u054a\u0561\u057f\u0561\u057d\u056d\u0561\u0576\u0568 \u0579\u0561\u0583\u0561\u0566\u0561\u0576\u0581 \u0574\u0565\u056e \u0567\u0580: \u053d\u0576\u0564\u0580\u0578\u0582\u0574 \u0565\u0576\u0584 \u0576\u0578\u0580\u056b\u0581 \u0583\u0578\u0580\u0571\u0565\u056c \u0561\u057e\u0565\u056c\u056b \u0584\u056b\u0579 \u0583\u0561\u057d\u057f\u0561\u0569\u0572\u0569\u0565\u0580\u0578\u057e:",
                 sources: [],
                 model: "google/gemini-2.5-pro",
                 warning: "Response was truncated",
@@ -755,7 +755,7 @@ Please provide your professional legal analysis from your designated role perspe
           return new Response(
             JSON.stringify({
               role,
-              analysis: "AI-ի պdelays were incomplete. Please try again.",
+              analysis: "AI-\u056b \u057a\u0561\u057f\u0561\u057d\u056d\u0561\u0576\u0568 \u0569\u0565\u0580\u056b \u0567\u0580: \u053d\u0576\u0564\u0580\u0578\u0582\u0574 \u0565\u0576\u0584 \u0576\u0578\u0580\u056b\u0581 \u0583\u0578\u0580\u0571\u0565\u056c:",
               sources: [],
               model: "google/gemini-2.5-pro",
               warning: "Invalid response structure",
