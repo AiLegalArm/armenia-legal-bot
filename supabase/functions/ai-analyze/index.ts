@@ -12,6 +12,11 @@ import {
   type AnalysisType,
   PROMPT_REGISTRY
 } from "./prompts/index.ts";
+import {
+  KB_USAGE_INSTRUCTIONS,
+  formatKBResultsForAI_V2,
+  type LegalPracticeDocument
+} from "./legal-practice-kb.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -439,67 +444,55 @@ serve(async (req) => {
         ragContext = "\n\nNote: No specific legal sources found in knowledge base. Analysis based on general knowledge of RA legislation.\n";
       }
       
-      // Search Legal Practice KB for analogous court cases
+      // Search Legal Practice KB for analogous court cases (V2 with chunking)
       const { data: practiceResults, error: practiceError } = await supabase
-        .rpc("search_legal_practice", { 
+        .rpc("search_legal_practice_kb", { 
           search_query: searchQuery,
-          result_limit: 5
+          category_filter: null,
+          limit_docs: 5
         });
 
       if (!practiceError && practiceResults && practiceResults.length > 0) {
-        const topPractice = practiceResults.slice(0, 3);
+        // Transform DB results to LegalPracticeDocument format for V2 formatter
+        const kbDocuments: LegalPracticeDocument[] = practiceResults.slice(0, 3).map((doc: any) => ({
+          id: doc.id,
+          title: doc.title,
+          practice_category: doc.practice_category,
+          court_type: doc.court_type,
+          outcome: doc.outcome,
+          applied_articles: doc.applied_articles || [],
+          key_violations: doc.key_violations || [],
+          legal_reasoning_summary: doc.legal_reasoning_summary || "",
+          content_snippet: doc.description || "",
+          content_text: doc.content_chunks?.join("\n") || "",
+          content_chunks: doc.content_chunks || [],
+          chunk_index_meta: doc.chunk_index_meta || [],
+          decision_map: doc.decision_map || undefined,
+          key_paragraphs: doc.key_paragraphs || [],
+          relevance_rank: doc.relevance_score || 0,
+        }));
+
+        // Prepend KB usage instructions
+        ragContext += "\n\n" + KB_USAGE_INSTRUCTIONS + "\n";
         
-        ragContext += "\n\n## ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n";
-        ragContext += "## \u053b\u0550\u0531\u054e\u0531\u053f\u0531\u0546 \u054a\u0550\u0531\u053f\u054f\u053b\u053f\u0531\u0545\u053b \u0540\u0535\u0546\u0531\u053f\u0531\u0545\u053b\u0546 \u0546\u0545\u0548\u0552\u053f (KB REFERENCE ONLY)\n";
-        ragContext += "## ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n";
-        ragContext += "\u0540\u053b\u0547\u0535\u0551\u0546\u0535\u0554: \u054d\u057f\u0578\u0580\u0587 \u0576\u0565\u0580\u056f\u0561\u0575\u0561\u0581\u057e\u0561\u056e \u0576\u0575\u0578\u0582\u0569\u0565\u0580\u0568 \u0540\u0535\u0546\u0531\u053f\u0531\u0545\u053b\u0546 \u0546\u0545\u0548\u0552\u053f \u0565\u0576: \u054d\u0561 \u0579\u0567 \u0561\u057a\u0561\u0581\u0578\u0582\u0575\u0581, \u057d\u0561 \u0574\u056b\u0561\u0575\u0576 \u0561\u0576\u0561\u056c\u0578\u0563\u0576\u0565\u0580\u056b \u0570\u0561\u0574\u0561\u0580 \u0567:\n\n";
+        // Use V2 formatter for proper chunking and labeling
+        ragContext += formatKBResultsForAI_V2(kbDocuments, {
+          maxTotalChars: 40000,
+          maxInlinePerDocChars: 12000,
+          chunkSize: 6000,
+          includeFirstChunks: 2,
+          includeKeyParagraphChunks: true,
+          maxKeyParagraphChunks: 2,
+        });
         
-        const outcomeLabels: Record<string, string> = {
-          granted: '\u0532\u0561\u057e\u0561\u0580\u0561\u0580\u057e\u0565\u056c',
-          rejected: '\u0544\u0565\u0580\u056a\u057e\u0565\u056c',
-          partial: '\u0544\u0561\u057d\u0576\u0561\u056f\u056b',
-          remanded: '\u054e\u0565\u0580\u0561\u0564\u0561\u0580\u0571\u057e\u0565\u056c',
-          discontinued: '\u053f\u0561\u0580\u0573\u057e\u0565\u056c'
-        };
-        
-        const courtLabels: Record<string, string> = {
-          first_instance: '\u0531\u057c\u0561\u057b\u056b\u0576 \u0561\u057f\u0575\u0561\u0576',
-          appeal: '\u054e\u0565\u0580\u0561\u0584\u0576\u0576\u056b\u0579',
-          cassation: '\u054e\u0573\u057c\u0561\u0562\u0565\u056f',
-          constitutional: '\u054d\u0561\u0570\u0574\u0561\u0576\u0561\u0564\u0580\u0561\u056f\u0561\u0576',
-          echr: '\u0535\u054d\u054a\u053f'
-        };
-        
-        topPractice.forEach((doc: { 
-          title: string; 
-          practice_category: string; 
-          court_type: string; 
-          outcome: string;
-          legal_reasoning_summary: string;
-          content_snippet: string;
-          key_violations: string[];
-        }, index: number) => {
-          ragContext += `### \u0531\u0576\u0561\u056c\u0578\u0563 ${index + 1}: ${doc.title}\n`;
-          ragContext += `- **\u0531\u057f\u0575\u0561\u0576:** ${courtLabels[doc.court_type] || doc.court_type}\n`;
-          ragContext += `- **\u0531\u0580\u0564\u0575\u0578\u0582\u0576\u0584:** ${outcomeLabels[doc.outcome] || doc.outcome}\n`;
-          if (doc.key_violations && doc.key_violations.length > 0) {
-            ragContext += `- **\u0540\u056b\u0574\u0576\u0561\u056f\u0561\u0576 \u056d\u0561\u056d\u057f\u0578\u0582\u0574\u0576\u0565\u0580:** ${doc.key_violations.join(', ')}\n`;
-          }
-          if (doc.legal_reasoning_summary) {
-            ragContext += `- **\u053b\u0580\u0561\u057e\u0561\u056f\u0561\u0576 \u0570\u056b\u0574\u0576\u0561\u057e\u0578\u0580\u0578\u0582\u0574:** ${doc.legal_reasoning_summary}\n`;
-          }
-          ragContext += `\n**\u054f\u0565\u0584\u057d\u057f:** ${doc.content_snippet}\n\n`;
-          
+        // Track sources
+        kbDocuments.forEach((doc) => {
           sourcesUsed.push({
-            title: `\u0531\u0576\u0561\u056c\u0578\u0563 \u0564\u0561\u057f\u0561\u056f\u0561\u0576 \u057a\u0580\u0561\u056f\u057f\u056b\u056f\u0561 (KB): ${doc.title}`,
+            title: `\u0531\u0576\u0561\u056C\u0578\u0563 \u0564\u0561\u057F\u0561\u056F\u0561\u0576 \u057A\u0580\u0561\u056F\u057F\u056B\u056F\u0561 (KB): ${doc.title}`,
             category: doc.practice_category,
             source_name: "Legal Practice KB"
           });
         });
-        
-        ragContext += "\n## ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n";
-        ragContext += "## KB \u0540\u0535\u0546\u0531\u053f\u0531\u0545\u053b\u0546 \u0532\u0531\u0536\u0531\u0545\u053b \u0531\u054e\u0531\u0550\u054f\n";
-        ragContext += "## ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n";
       }
     }
 
