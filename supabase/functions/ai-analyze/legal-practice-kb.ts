@@ -1,208 +1,559 @@
 // =============================================================================
-// LEGAL PRACTICE KNOWLEDGE BASE - AI USAGE RULES
+// LEGAL PRACTICE KNOWLEDGE BASE - AI USAGE RULES (Version 2)
 // =============================================================================
-// This module handles the integration of Legal Practice KB with AI analysis
-// CRITICAL: KB data is REFERENCE-ONLY and must NEVER be mixed with user case facts
+// PURPOSE
+// 1) KB (legal practice) is REFERENCE-ONLY: may be used for analogous practice,
+//    legal reasoning patterns, and structure templates.
+// 2) KB facts must NEVER be mixed with user case facts or treated as evidence.
+// 3) Large decisions must be injected into AI prompts in a controlled way:
+//    - map layer (decision_map + pointers)
+//    - limited top chunks (1–3) with DocID + ChunkIndex
+//    - full text remains in KB and can be loaded on-demand by chunk.
+// FORMAT RULES (for AI injection)
+// - Plain text only (no Markdown markers like ##, ###, **, -, |)
+// - Prefer numbered lists (1., 1.1., 1.2.)
 // =============================================================================
 
 /**
- * STRICT SEPARATION RULES FOR AI USAGE OF LEGAL PRACTICE KB:
- * 
- * 1. KB documents are used ONLY as reference material for:
- *    - Legal reasoning patterns
- *    - Structure of complaints and legal documents
- *    - Citation of analogous court practice
- *    - Understanding of judicial interpretation
- * 
- * 2. PROHIBITED ACTIONS:
- *    - Copying facts from KB documents into user case analysis
- *    - Treating KB document facts as evidence in user's case
- *    - Mixing KB content with user-provided case materials
- * 
- * 3. REQUIRED LABELING:
- *    All KB-based references MUST be clearly labeled as:
- *    "\u0531\u0576\u0561\u056C\u0578\u0563 \u0564\u0561\u057F\u0561\u056F\u0561\u0576 \u057A\u0580\u0561\u056F\u057F\u056B\u056F\u0561 (KB)" or
- *    "Analogous legal practice (KB)"
+ * System instruction prepended to AI prompts when KB is used.
+ * Keep this in sync with your BASE_SYSTEM_PROMPT constraints.
  */
-
-// System instruction that gets prepended to AI prompts when using KB
 export const KB_USAGE_INSTRUCTIONS = `
-## \u053F\u0531\u0550\u0535\u054E\u0548\u0550 \u053F\u0531\u0546\u0548\u0546\u0546\u0535\u0550 \u053B\u0550\u0531\u054E\u0531\u053F\u0531\u0546 \u054A\u0550\u0531\u053F\u054F\u053B\u053F\u0531\u0545\u053B \u0533\u053B\u054F\u0535\u053C\u053B\u0552\u053B \u0555\u0533\u054F\u0531\u0533\u0548\u0550\u053E\u0544\u0531\u0546 \u054E\u0535\u0550\u0531\u0532\u0535\u0550\u0545\u0531\u053C:
+ԿԱՐԵՎՈՐ ԿԱՆՈՆՆԵՐ՝ Իրավական պրակտիկայի գիտելիքի բազայի (KB) օգտագործման համար
 
-### \u053D\u053B\u054D\u054F \u054A\u0531\u0540\u0531\u0546\u054B\u0546\u0535\u0550:
-1. \u053B\u0580\u0561\u057E\u0561\u056F\u0561\u0576 \u057A\u0580\u0561\u056F\u057F\u056B\u056F\u0561\u0575\u056B \u0562\u0561\u0566\u0561\u0576 (Legal Practice KB) \u0583\u0561\u057D\u057F\u0561\u0569\u0572\u0569\u0565\u0580\u0568 \u056E\u0561\u057C\u0561\u0575\u0578\u0582\u0574 \u0565\u0576 \u0544\u053B\u0531\u0545\u0546 \u0578\u0580\u057A\u0565\u057D \u0540\u0535\u0546\u0531\u053F\u0531\u0545\u053B\u0546 \u0546\u0545\u0548\u0552
-2. \u0535\u0550\u0532\u0535\u0554 \u0574\u056B \u0583\u0578\u0580\u0571\u056B\u0580 \u0570\u0561\u0574\u0561\u0580\u0565\u056C KB-\u056B \u0583\u0561\u057D\u057F\u0565\u0580\u0568 \u0585\u0563\u057F\u0561\u057F\u0565\u0580\u056B \u0563\u0578\u0580\u056E\u056B \u0583\u0561\u057D\u057F\u0565\u0580
-3. KB \u0583\u0561\u057D\u057F\u0561\u0569\u0572\u0569\u0565\u0580\u0568 \u053D\u053B\u054D\u054F \u057F\u0561\u0580\u0561\u0576\u057B\u0561\u057F\u056B\u0580 \u0585\u0563\u057F\u0561\u057F\u0565\u0580\u056B \u0563\u0578\u0580\u056E\u056B \u0561\u057A\u0561\u0581\u0578\u0582\u0575\u0581\u0576\u0565\u0580\u056B\u0581
-4. KB-\u056B \u0581\u0561\u0576\u056F\u0561\u0581\u0561\u056E \u056B\u0576\u0586\u0578\u0580\u0574\u0561\u0581\u056B\u0561\u0576 \u0579\u056B \u0570\u0561\u0576\u0564\u056B\u057D\u0561\u0576\u0578\u0582\u0574 \u0585\u0563\u057F\u0561\u057F\u0565\u0580\u056B \u0563\u0578\u0580\u056E\u056B \u0561\u057A\u0561\u0581\u0578\u0582\u0575\u0581
+1. KB փաստաթղթերը օգտագործվում են ՄԻԱՅՆ որպես հղումային նյութ՝
+1.1. Իրավական մտածողության և հիմնավորման օրինաչափություններ
+1.2. Դատական մեկնաբանության ընդհանուր մոտեցումներ և թեստեր
+1.3. Բողոքների/դատական փաստաթղթերի կառուցվածքային օրինակներ
+1.4. Համանման (անալոգ) դատական պրակտիկայի մեջբերումներ, եթե առկա են KB-ում
 
-### \u0539\u0548\u0552\u053C\u0531\u054F\u0550\u054E\u0531\u053E \u0555\u0533\u054F\u0531\u0533\u0548\u0550\u053E\u0548\u0552\u0544:
-- \u053B\u0580\u0561\u057E\u0561\u056F\u0561\u0576 \u0570\u056B\u0574\u0576\u0561\u057E\u0578\u0580\u0574\u0561\u0576 \u056E\u0580\u0561\u0563\u0580\u0565\u0580 (\u056B\u0576\u0579\u057A\u0565\u057D \u0563\u0580\u0561\u0584 \u0562\u0578\u0572\u0578\u0584, \u0564\u0561\u057F\u0561\u056F\u0561\u0576 \u0561\u056F\u057F)
-- \u053B\u0580\u0561\u057E\u0561\u056F\u0561\u0576 \u057F\u0580\u0561\u0574\u0561\u0562\u0561\u0576\u0578\u0582\u0569\u0575\u0561\u0576 \u0585\u0580\u056B\u0576\u0561\u056F\u0576\u0565\u0580
-- \u0531\u0576\u0561\u056C\u0578\u0563 \u0564\u0561\u057F\u0561\u056F\u0561\u0576 \u057A\u0580\u0561\u056F\u057F\u056B\u056F\u0561\u0575\u056B \u0570\u0572\u0578\u0582\u0574\u0576\u0565\u0580
-- \u053F\u0561\u057C\u0578\u0582\u0581\u057E\u0561\u056E\u0584\u0561\u0575\u056B\u0576 \u0585\u0580\u0565\u0576\u057D\u0564\u0580\u0561\u056F\u0561\u0576 \u0563\u0576\u0561\u0570\u0561\u057F\u0561\u056F\u0576\u0565\u0580
+2. ԱՐԳԵԼՎՈՒՄ Է
+2.1. KB փաստերը ներկայացնել որպես օգտատիրոջ գործի փաստեր
+2.2. KB փաստերը ներկայացնել որպես ապացույց տվյալ գործով
+2.3. Խառնել KB բովանդակությունը օգտատիրոջ տրամադրած գործի նյութերի հետ
+2.4. Մեջբերել գործերի համարներ, հոդվածների համարներ կամ փաստական հանգամանքներ, եթե դրանք բացակայում են KB-ում
 
-### \u054A\u0531\u054F\u0531\u054D\u053D\u0531\u0546\u0546\u0535\u0550\u0538 \u054A\u0531\u0550\u054F\u0531\u0534\u053B\u0550 \u054F\u0531\u0550\u0531\u0546\u054B\u0531\u054F\u053B\u0550:
-\u0531\u0544\u0535\u0546 KB-\u056B\u0581 \u057E\u0565\u0580\u0581\u0580\u0561\u056E \u0570\u0572\u0578\u0582\u0574\u0568 \u057A\u0565\u057F\u0584 \u0567 \u0570\u057D\u057F\u0561\u056F \u0576\u0577\u0565\u056C:
+3. ՊԱՐՏԱԴԻՐ ՊԻՏԱԿԱՎՈՐՈՒՄ
+3.1. KB-ից եկած ցանկացած մեջբերում պետք է ներկայացվի առանձին բաժնում՝
+«Անալոգ դատական պրակտիկա (KB)»
+3.2. Յուրաքանչյուր մեջբերման մոտ պարտադիր նշել
+DocID: <id>, Chunk: <N>/<Total>
 
-"\u2501\u2501\u2501 \u0531\u0576\u0561\u056C\u0578\u0563 \u0564\u0561\u057F\u0561\u056F\u0561\u0576 \u057A\u0580\u0561\u056F\u057F\u056B\u056F\u0561 (KB) \u2501\u2501\u2501"
-[\u0570\u0572\u0578\u0582\u0574\u0568]
-"\u2501\u2501\u2501 KB \u0570\u0572\u0578\u0582\u0574\u056B \u0561\u057E\u0561\u0580\u057F \u2501\u2501\u2501"
-
-### \u0531\u0550\u0533\u0535\u053C\u054E\u0531\u053E \u0533\u0548\u0550\u053E\u0548\u0542\u0548\u0552\u0539\u0545\u0548\u0552\u0546\u0546\u0535\u0550:
-- \u0545\u054F\u0531\u053E\u0535\u053C \u053F\u0531\u0544 \u0553\u0548\u053D\u0531\u0546\u0541\u0535\u053C \u0585\u0563\u057F\u0561\u057F\u0565\u0580\u056B \u0563\u0578\u0580\u056E\u056B \u0583\u0561\u057D\u057F\u0565\u0580\u0568
-- \u0553\u0548\u053D\u0531\u0546\u0541\u0535\u053C KB-\u056B\u0581 \u057E\u0565\u0580\u0581\u0580\u0561\u056E \u0583\u0561\u057D\u057F\u0565\u0580\u0568 \u0565\u0580\u0562\u0565\u057E\u056B\u0581\u0565 \u0585\u0563\u057F\u0561\u057F\u0565\u0580\u056B \u0563\u0578\u0580\u056E\u056B \u0583\u0561\u057D\u057F\u0565\u0580\u0578\u057E
-- \u0549\u0546\u0577\u0565\u056C \u0570\u0572\u0578\u0582\u0574\u056B \u0561\u0572\u0562\u0575\u0578\u0582\u0580\u0568 (KB-\u0576 \u0569\u0565 \u0585\u0563\u057F\u0561\u057F\u0565\u0580\u056B \u0563\u0578\u0580\u056E\u0568)
+4. Մեծ ծավալի որոշումներ
+4.1. KB-ում կարող է պահպանվել ամբողջական տեքստը
+4.2. AI-ին փոխանցելիս թույլատրելի է տալ միայն առավել համարժեք հատվածները (chunk-երով)
+4.3. Եթե անհրաժեշտ է շարունակությունը՝ պահանջել DocID + Chunk ձևաչափով
 `;
 
-// Types for legal practice KB
+// =============================================================================
+// TYPES
+// =============================================================================
+
+export type PracticeCategory = "criminal" | "civil" | "administrative" | "echr";
+export type CourtType = "first_instance" | "appeal" | "cassation" | "constitutional" | "echr";
+export type Outcome = "granted" | "rejected" | "partial" | "remanded" | "discontinued";
+
+export interface AppliedArticles {
+  code: string; // e.g., criminal_code, criminal_procedure_code, constitution, echr
+  articles: string[]; // e.g., ["103", "107", "284"]
+}
+
+export interface DecisionMap {
+  legal_question?: string;
+  holding?: string;
+  tests_or_criteria?: string;
+  application_to_facts?: string;
+  remedy?: string;
+  references?: string[]; // e.g., other case names if present in KB
+}
+
+export type KeyParagraphTag = "issue" | "test" | "holding" | "application" | "remedy" | "other";
+
+export interface KeyParagraphPointer {
+  tag: KeyParagraphTag;
+  chunkIdx: number; // index in content_chunks
+  excerpt?: string; // optional short excerpt from chunk (must be from KB, not invented)
+}
+
+export interface ChunkIndexMeta {
+  idx: number;
+  start: number; // start offset in content_text
+  end: number; // end offset in content_text
+  label?: string;
+}
+
 export interface LegalPracticeDocument {
   id: string;
   title: string;
-  practice_category: 'criminal' | 'civil' | 'administrative' | 'echr';
-  court_type: 'first_instance' | 'appeal' | 'cassation' | 'constitutional' | 'echr';
-  outcome: 'granted' | 'rejected' | 'partial' | 'remanded' | 'discontinued';
-  applied_articles: Array<{
-    code: string;
-    articles: string[];
-  }>;
+  practice_category: PracticeCategory;
+  court_type: CourtType;
+  outcome: Outcome;
+  applied_articles: AppliedArticles[];
   key_violations: string[];
   legal_reasoning_summary: string;
   content_snippet: string;
-  content_text?: string; // Full decision text
+
+  // Full text in KB (may be large)
+  content_text?: string;
+
+  // Version 2 fields
+  content_chunks?: string[];
+  chunk_index_meta?: ChunkIndexMeta[];
+  decision_map?: DecisionMap;
+  key_paragraphs?: KeyParagraphPointer[];
+
   relevance_rank: number;
 }
 
-/**
- * Format KB search results for AI consumption
- * Results are clearly labeled as reference material
- */
-export function formatKBResultsForAI(documents: LegalPracticeDocument[]): string {
-  if (!documents || documents.length === 0) {
-    return '';
-  }
+// =============================================================================
+// LABELS (UI + prompt)
+// =============================================================================
 
-  let formatted = `
-## \u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501
-## \u053B\u0550\u0531\u054E\u0531\u053F\u0531\u0546 \u054A\u0550\u0531\u053F\u054F\u053B\u053F\u0531\u0545\u053B \u0540\u0535\u0546\u0531\u053F\u0531\u0545\u053B\u0546 \u0546\u0545\u0548\u0552\u053F (KB REFERENCE ONLY)
-## \u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501
+const CATEGORY_LABELS: Record<PracticeCategory, string> = {
+  criminal: "Քրեական",
+  civil: "Քաղաքացիական",
+  administrative: "Վարչական",
+  echr: "ՄԻԵԴ",
+};
 
-\u0540\u053B\u0547\u0535\u0551\u0546\u0535\u0554: \u054D\u057F\u0578\u0580\u0587 \u0576\u0565\u0580\u056F\u0561\u0575\u0561\u0581\u057E\u0561\u056E \u0576\u0575\u0578\u0582\u0569\u0565\u0580\u0568 \u0540\u0535\u0546\u0531\u053F\u0531\u0545\u053B\u0546 \u0546\u0545\u0548\u0552\u053F \u0565\u0576:
-\u053D\u056B\u057D\u057F \u0561\u0580\u0563\u0565\u056C\u057E\u0561\u056E \u0567 \u057D\u0580\u0561\u0576\u0581 \u0585\u0563\u057F\u0561\u0563\u0578\u0580\u056E\u0565\u056C \u0585\u0563\u057F\u0561\u057F\u0565\u0580\u056B \u0563\u0578\u0580\u056E\u056B \u0570\u0561\u0574\u0561\u0580:
-\u054D\u0561 \u0579\u0567 \u0561\u057A\u0561\u0581\u0578\u0582\u0575\u0581, \u057D\u0561 \u0574\u056B\u0561\u0575\u0576 \u0561\u0576\u0561\u056C\u0578\u0563\u0576\u0565\u0580\u056B \u0570\u0561\u0574\u0561\u0580 \u0567:
+const COURT_LABELS: Record<CourtType, string> = {
+  first_instance: "Առաջին ատյան",
+  appeal: "Վերաքննիչ",
+  cassation: "Վճռաբեկ",
+  constitutional: "Սահմանադրական",
+  echr: "ՄԻԵԴ",
+};
 
-`;
+const OUTCOME_LABELS: Record<Outcome, string> = {
+  granted: "Բավարարվել է",
+  rejected: "Մերժվել է",
+  partial: "Մասնակի",
+  remanded: "Վերադարձվել է նոր քննության",
+  discontinued: "Կարճվել է",
+};
 
-  documents.forEach((doc, index) => {
-    const categoryLabels: Record<string, string> = {
-      criminal: '\u0554\u0580\u0565\u0561\u056F\u0561\u0576',
-      civil: '\u0554\u0561\u0572\u0561\u0584\u0561\u0581\u056B\u0561\u056F\u0561\u0576',
-      administrative: '\u054E\u0561\u0580\u0579\u0561\u056F\u0561\u0576',
-      echr: '\u0535\u054D\u054A\u053F'
-    };
-    
-    const courtLabels: Record<string, string> = {
-      first_instance: '\u0531\u057C\u0561\u057B\u056B\u0576 \u0561\u057F\u0575\u0561\u0576',
-      appeal: '\u054E\u0565\u0580\u0561\u0584\u0576\u0576\u056B\u0579',
-      cassation: '\u054E\u0573\u057C\u0561\u0562\u0565\u056F',
-      constitutional: '\u054D\u0561\u0570\u0574\u0561\u0576\u0561\u0564\u0580\u0561\u056F\u0561\u0576',
-      echr: '\u0535\u054D\u054A\u053F'
-    };
+const CODE_LABELS: Record<string, string> = {
+  criminal_code: "ՔՕ",
+  criminal_procedure_code: "ՔԴՕ",
+  civil_code: "Քաղաքացիական օրենսգիրք",
+  civil_procedure_code: "Քաղաքացիական դատավարության օրենսգիրք",
+  constitution: "Սահմանադրություն",
+  echr: "ԵԿՄԻԿ",
+  administrative_code: "ՎԴՕ",
+};
 
-    const outcomeLabels: Record<string, string> = {
-      granted: '\u0532\u0561\u057E\u0561\u0580\u0561\u0580\u057E\u0565\u056C',
-      rejected: '\u0544\u0565\u0580\u056A\u057E\u0565\u056C',
-      partial: '\u0544\u0561\u057D\u0576\u0561\u056F\u056B',
-      remanded: '\u054E\u0565\u0580\u0561\u0564\u0561\u0580\u0571\u057E\u0565\u056C',
-      discontinued: '\u053F\u0561\u0580\u0573\u057E\u0565\u056C'
-    };
+// =============================================================================
+// PUBLIC API
+// =============================================================================
 
-    // Use full content_text if available, otherwise content_snippet
-    const fullText = doc.content_text || doc.content_snippet || '';
-    
-    formatted += `
-### \u0531\u0576\u0561\u056C\u0578\u0563 ${index + 1}: ${doc.title}
-- **\u053F\u0561\u057F\u0565\u0563\u0578\u0580\u056B\u0561:** ${categoryLabels[doc.practice_category] || doc.practice_category}
-- **\u0531\u057F\u0575\u0561\u0576:** ${courtLabels[doc.court_type] || doc.court_type}
-- **\u0531\u0580\u0564\u0575\u0578\u0582\u0576\u0584:** ${outcomeLabels[doc.outcome] || doc.outcome}
-- **\u053F\u056B\u0580\u0561\u057C\u057E\u0561\u056E \u0570\u0578\u0564\u057E\u0561\u056E\u0576\u0565\u0580:** ${formatAppliedArticles(doc.applied_articles)}
-${doc.key_violations && doc.key_violations.length > 0 ? `- **\u0540\u056B\u0574\u0576\u0561\u056F\u0561\u0576 \u056D\u0561\u056D\u057F\u0578\u0582\u0574\u0576\u0565\u0580:** ${doc.key_violations.join(', ')}` : ''}
-${doc.legal_reasoning_summary ? `- **\u053B\u0580\u0561\u057E\u0561\u056F\u0561\u0576 \u0570\u056B\u0574\u0576\u0561\u057E\u0578\u0580\u0578\u0582\u0574:** ${doc.legal_reasoning_summary}` : ''}
+export interface FormatKBOptionsV2 {
+  // Overall char cap for all KB injection
+  maxTotalChars?: number; // default 60000
 
-**\u0548\u0550\u0548\u0547\u0544\u0531\u0546 \u053C\u053B\u0531\u0550\u053A\u0531\u053F\u0531\u0546 \u054F\u0535\u053F\u054D\u054F\u0538:**
-${fullText}
+  // Per document cap for inline injection
+  maxInlinePerDocChars?: number; // default 18000
 
-`;
-  });
+  // If doc is larger than inline cap, chunking rules apply
+  chunkSize?: number; // default 8000
+  includeFirstChunks?: number; // default 2
 
-  formatted += `
-## \u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501
-## KB \u0540\u0535\u0546\u0531\u053F\u0531\u0545\u053B\u0546 \u0532\u0531\u0536\u0531\u0545\u053B \u0531\u054E\u0531\u0550\u054F
-## \u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501
+  // Additionally include “best” chunks by index if known
+  includeKeyParagraphChunks?: boolean; // default true
+  maxKeyParagraphChunks?: number; // default 2
 
-`;
-
-  return formatted;
+  // Emit only the “map layer” + references, no chunks (rarely)
+  mapOnly?: boolean; // default false
 }
 
 /**
- * Format applied articles for display
+ * Main function: formats KB results for AI prompt consumption (Version 2).
+ * Produces plain text, clearly labeled as KB reference-only.
  */
-function formatAppliedArticles(articles: Array<{ code: string; articles: string[] }>): string {
-  if (!articles || articles.length === 0) {
-    return '\u0546\u0577\u057E\u0561\u056E \u0579\u0567';
+export function formatKBResultsForAI_V2(documents: LegalPracticeDocument[], options?: FormatKBOptionsV2): string {
+  if (!documents || documents.length === 0) return "";
+
+  const maxTotalChars = options?.maxTotalChars ?? 60_000;
+  const maxInlinePerDocChars = options?.maxInlinePerDocChars ?? 18_000;
+  const chunkSize = options?.chunkSize ?? 8_000;
+  const includeFirstChunks = options?.includeFirstChunks ?? 2;
+
+  const includeKeyParagraphChunks = options?.includeKeyParagraphChunks ?? true;
+  const maxKeyParagraphChunks = options?.maxKeyParagraphChunks ?? 2;
+
+  const mapOnly = options?.mapOnly ?? false;
+
+  let budgetLeft = maxTotalChars;
+  let out = "";
+
+  out += "====================================================================\n";
+  out += "ԱՆԱԼՈԳ ԴԱՏԱԿԱՆ ՊՐԱԿՏԻԿԱ (KB)\n";
+  out += "Սա հղումային նյութ է։ Չի հանդիսանում տվյալ գործի փաստ կամ ապացույց։\n";
+  out += "KB փաստերը խստիվ արգելվում է խառնել օգտատիրոջ գործի փաստերի հետ։\n";
+  out += "====================================================================\n\n";
+
+  for (let i = 0; i < documents.length; i++) {
+    if (budgetLeft <= 0) {
+      out += "ՆՇՈՒՄ: KB ներարկման սահմանաչափը լցված է։ Մնացած արդյունքները չեն ներառվել։\n";
+      break;
+    }
+
+    const doc = documents[i];
+
+    const header = buildDocHeader(doc, i + 1);
+    const headerSafe = capText(header, budgetLeft);
+    out += headerSafe.text;
+    budgetLeft -= headerSafe.text.length;
+    if (budgetLeft <= 0) break;
+
+    const mapLayer = buildMapLayer(doc);
+    const mapSafe = capText(mapLayer, Math.min(budgetLeft, Math.max(0, maxInlinePerDocChars)));
+    out += mapSafe.text;
+    budgetLeft -= mapSafe.text.length;
+    if (budgetLeft <= 0) break;
+
+    if (mapOnly) {
+      out += "\n--------------------------------------------------------------------\n\n";
+      budgetLeft -= "\n--------------------------------------------------------------------\n\n".length;
+      continue;
+    }
+
+    // Determine full text source
+    const fullText = resolveFullText(doc);
+    if (!fullText) {
+      const note = "ՆՇՈՒՄ: Այս փաստաթղթի համար content_text/content_chunks չեն տրամադրվել KB-ում։\n\n";
+      const noteSafe = capText(note, budgetLeft);
+      out += noteSafe.text;
+      budgetLeft -= noteSafe.text.length;
+      out += "--------------------------------------------------------------------\n\n";
+      budgetLeft -= "--------------------------------------------------------------------\n\n".length;
+      continue;
+    }
+
+    // If small enough, include inline full text (still labeled)
+    const inlineCap = Math.min(maxInlinePerDocChars, budgetLeft);
+    const inlineCheck = capText(fullText, inlineCap);
+
+    if (inlineCheck.truncated) {
+      // Too big: use chunks
+      const chunks = resolveChunks(doc, fullText, chunkSize);
+
+      const metaBlock = buildChunkMetaBlock(doc, chunks.length, includeFirstChunks, includeKeyParagraphChunks);
+      const metaSafe = capText(metaBlock, budgetLeft);
+      out += metaSafe.text;
+      budgetLeft -= metaSafe.text.length;
+      if (budgetLeft <= 0) break;
+
+      // Select chunk indexes to include:
+      // 1) key_paragraph chunks (issue/test/holding etc), if available
+      // 2) first chunks (1..includeFirstChunks)
+      const selected = selectChunkIndexes(
+        doc,
+        chunks.length,
+        includeFirstChunks,
+        includeKeyParagraphChunks,
+        maxKeyParagraphChunks,
+      );
+
+      for (const chunkIdx of selected) {
+        if (budgetLeft <= 0) break;
+
+        const label = buildChunkLabel(doc.id, chunkIdx, chunks.length);
+        const labelSafe = capText(label, budgetLeft);
+        out += labelSafe.text;
+        budgetLeft -= labelSafe.text.length;
+        if (budgetLeft <= 0) break;
+
+        const chunkText = chunks[chunkIdx] ?? "";
+        const chunkSafe = capText(chunkText + "\n\n", budgetLeft);
+        out += chunkSafe.text;
+        budgetLeft -= chunkSafe.text.length;
+      }
+
+      const onDemand = buildOnDemandInstruction(doc.id, chunks.length);
+      const onDemandSafe = capText(onDemand, budgetLeft);
+      out += onDemandSafe.text;
+      budgetLeft -= onDemandSafe.text.length;
+    } else {
+      // Fits inline
+      const block = buildInlineFullTextBlock(doc.id, fullText, inlineCap);
+      const blockSafe = capText(block, budgetLeft);
+      out += blockSafe.text;
+      budgetLeft -= blockSafe.text.length;
+    }
+
+    const sep = "\n--------------------------------------------------------------------\n\n";
+    const sepSafe = capText(sep, budgetLeft);
+    out += sepSafe.text;
+    budgetLeft -= sepSafe.text.length;
   }
 
-  const codeLabels: Record<string, string> = {
-    criminal_code: '\u0554\u0555',
-    criminal_procedure_code: '\u0554\u0534\u0555',
-    civil_code: '\u0554\u0545\u0555',
-    civil_procedure_code: '\u0554\u0544\u0534\u0555',
-    constitution: '\u054D\u0561\u0570\u0574\u0561\u0576\u0561\u0564\u0580\u0578\u0582\u0569\u0575\u0578\u0582\u0576',
-    echr: '\u0535\u053F\u053A\u0544',
-    administrative_code: '\u054E\u053B\u0555'
-  };
+  out += "====================================================================\n";
+  out += "KB հատվածի ավարտ\n";
+  out += "====================================================================\n";
 
-  return articles
-    .map(a => `${codeLabels[a.code] || a.code}: \u0570\u0578\u0564. ${a.articles.join(', ')}`)
-    .join('; ');
+  return out;
 }
 
 /**
- * Build search query for legal practice KB
- * Extracts relevant terms from case facts and legal question
+ * Creates/refreshes chunks + chunk index meta for a document.
+ * Intended for ingestion/backfill on server-side.
  */
-export function buildKBSearchQuery(
+export function buildChunksForDocument(
+  contentText: string,
+  chunkSize: number = 8000,
+): { chunks: string[]; meta: ChunkIndexMeta[] } {
+  const normalized = normalizeText(contentText);
+  const chunks: string[] = [];
+  const meta: ChunkIndexMeta[] = [];
+
+  let start = 0;
+  let idx = 0;
+
+  while (start < normalized.length) {
+    const end = Math.min(start + chunkSize, normalized.length);
+    const slice = normalized.slice(start, end);
+
+    chunks.push(slice);
+    meta.push({ idx, start, end });
+
+    idx++;
+    start = end;
+  }
+
+  return { chunks, meta };
+}
+
+/**
+ * Build a conservative KB search query (does not invent article numbers).
+ */
+export function buildKBSearchQuery_V2(
   caseFacts: string | null,
   legalQuestion: string | null,
-  caseType: 'criminal' | 'civil' | 'administrative' | null
+  caseType: "criminal" | "civil" | "administrative" | null,
 ): { query: string; category: string | null } {
   const parts: string[] = [];
-  
-  // Extract key legal terms from case facts
+
   if (caseFacts) {
-    // Look for article references
-    const articleMatches = caseFacts.match(/\u0570\u0578\u0564\u057E\u0561\u056E\s*\d+/gi) || [];
+    // Extract only explicit mentions of "հոդված N"
+    const articleMatches = caseFacts.match(/հոդված\s*\d+(\.\d+)?/gi) || [];
     parts.push(...articleMatches);
-    
-    // Look for legal terms
+
     const legalTerms = [
-      '\u056D\u0561\u056D\u057F\u0578\u0582\u0574', '\u0562\u0578\u0572\u0578\u0584', '\u0570\u0561\u0575\u0581', '\u0564\u0561\u057F\u0561\u057E\u0578\u0580\u0578\u0582\u0569\u0575\u0578\u0582\u0576',
-      '\u0574\u0565\u0572\u0561\u0564\u0580\u0561\u0576\u0584', '\u0561\u057A\u0561\u0581\u0578\u0582\u0575\u0581', '\u057E\u056F\u0561', '\u0578\u0580\u0578\u0577\u0578\u0582\u0574'
+      "բողոք",
+      "միջնորդություն",
+      "ապացույց",
+      "թույլատրելիություն",
+      "անթույլատրելի",
+      "ընթացակարգային խախտում",
+      "արդար դատաքննություն",
+      "վճռաբեկ",
+      "վերաքննիչ",
+      "նախաքննություն",
+      "մեղադրանք",
     ];
-    legalTerms.forEach(term => {
-      if (caseFacts.toLowerCase().includes(term)) {
-        parts.push(term);
-      }
+
+    const lower = caseFacts.toLowerCase();
+    for (const term of legalTerms) {
+      if (lower.includes(term)) parts.push(term);
+    }
+  }
+
+  if (legalQuestion) parts.push(legalQuestion.slice(0, 160));
+
+  const query = parts.join(" ").trim() || "դատական պրակտիկա";
+  return { query, category: caseType };
+}
+
+// =============================================================================
+// INTERNAL HELPERS (private)
+// =============================================================================
+
+function buildDocHeader(doc: LegalPracticeDocument, ordinal: number): string {
+  let s = "";
+  s += `Անալոգ ${ordinal}\n`;
+  s += `Վերնագիր: ${safeLine(doc.title)}\n`;
+  s += `DocID: ${doc.id}\n`;
+  s += `Կատեգորիա: ${CATEGORY_LABELS[doc.practice_category] || doc.practice_category}\n`;
+  s += `Ատյան: ${COURT_LABELS[doc.court_type] || doc.court_type}\n`;
+  s += `Արդյունք: ${OUTCOME_LABELS[doc.outcome] || doc.outcome}\n`;
+  s += `Կիրառված հոդվածներ: ${formatAppliedArticles(doc.applied_articles)}\n`;
+
+  if (doc.key_violations && doc.key_violations.length > 0) {
+    s += `Հիմնական խախտումներ: ${doc.key_violations.join(", ")}\n`;
+  }
+  if (doc.legal_reasoning_summary) {
+    s += `Իրավական հիմնավորում (կարճ): ${safeLine(doc.legal_reasoning_summary)}\n`;
+  }
+
+  s += "\n";
+  return s;
+}
+
+function buildMapLayer(doc: LegalPracticeDocument): string {
+  const m = doc.decision_map;
+
+  // Even if decision_map is missing, we still keep a stable structure
+  let s = "";
+  s += "KB քարտ (հղումային)\n";
+  s += "1. Իրավական հարց\n";
+  s += `1.1. ${safeLine(m?.legal_question || "KB-ում չի լրացված")}\n`;
+  s += "2. Դիրքորոշում (holding)\n";
+  s += `2.1. ${safeLine(m?.holding || "KB-ում չի լրացված")}\n`;
+  s += "3. Թեստեր/չափանիշներ\n";
+  s += `3.1. ${safeLine(m?.tests_or_criteria || "KB-ում չի լրացված")}\n`;
+  s += "4. Դիմում փաստերին (KB-ի ներսում)\n";
+  s += `4.1. ${safeLine(m?.application_to_facts || "KB-ում չի լրացված")}\n`;
+  s += "5. Արդյունք/լուծում (remedy)\n";
+  s += `5.1. ${safeLine(m?.remedy || "KB-ում չի լրացված")}\n`;
+
+  if (m?.references && m.references.length > 0) {
+    s += "6. Հղումներ (եթե առկա են KB-ում)\n";
+    for (let i = 0; i < Math.min(5, m.references.length); i++) {
+      s += `6.${i + 1}. ${safeLine(m.references[i])}\n`;
+    }
+  }
+
+  // Key paragraph pointers (if any)
+  if (doc.key_paragraphs && doc.key_paragraphs.length > 0) {
+    s += "7. Հիմնական հատվածների ցուցիչներ (DocID + Chunk)\n";
+    const take = doc.key_paragraphs.slice(0, 8);
+    for (let i = 0; i < take.length; i++) {
+      const p = take[i];
+      const excerpt = p.excerpt ? ` — ${safeLine(p.excerpt)}` : "";
+      s += `7.${i + 1}. tag=${p.tag}, Chunk=${p.chunkIdx}${excerpt}\n`;
+    }
+  }
+
+  s += "\n";
+  return s;
+}
+
+function buildInlineFullTextBlock(docId: string, fullText: string, cap: number): string {
+  const safe = capText(fullText, cap);
+  let s = "";
+  s += "Անալոգ դատական պրակտիկա (KB)\n";
+  s += `DocID: ${docId}\n`;
+  s += "Տեքստ (ամբողջական՝ քանի որ տեղավորվում է)\n";
+  s += safe.text;
+  s += "\n\n";
+  return s;
+}
+
+function buildChunkMetaBlock(
+  doc: LegalPracticeDocument,
+  totalChunks: number,
+  includeFirstChunks: number,
+  includeKeyParagraphChunks: boolean,
+): string {
+  let s = "";
+  s += "Անալոգ դատական պրակտիկա (KB)\n";
+  s += `DocID: ${doc.id}\n`;
+  s += "Տեքստը մեծ ծավալի է՝ ներկայացվում է հատվածաբար (chunk-երով)\n";
+  s += `Chunk-երի քանակ: ${totalChunks}\n`;
+  s += `Լռելյայն տրվող առաջին հատվածներ: 1..${Math.min(includeFirstChunks, totalChunks)}\n`;
+  s += `Key հատվածների օգտագործում: ${includeKeyParagraphChunks ? "Այո" : "Ոչ"}\n\n`;
+  return s;
+}
+
+function buildChunkLabel(docId: string, chunkIdx: number, total: number): string {
+  return `--- DocID: ${docId}, Chunk: ${chunkIdx + 1}/${total} ---\n`;
+}
+
+function buildOnDemandInstruction(docId: string, totalChunks: number): string {
+  let s = "";
+  s += "Շարունակություն ստանալու համար նշեք՝\n";
+  s += `1. DocID: ${docId}\n`;
+  s += `2. Chunk: N (1..${totalChunks})\n\n`;
+  return s;
+}
+
+function resolveFullText(doc: LegalPracticeDocument): string {
+  // Prefer content_text; fallback to snippet
+  const t = doc.content_text || doc.content_snippet || "";
+  return normalizeText(t);
+}
+
+function resolveChunks(doc: LegalPracticeDocument, fullText: string, chunkSize: number): string[] {
+  if (doc.content_chunks && doc.content_chunks.length > 0) return doc.content_chunks;
+  return chunkText(normalizeText(fullText), chunkSize);
+}
+
+function selectChunkIndexes(
+  doc: LegalPracticeDocument,
+  totalChunks: number,
+  includeFirstChunks: number,
+  includeKeyParagraphChunks: boolean,
+  maxKeyParagraphChunks: number,
+): number[] {
+  const set = new Set<number>();
+
+  // Key paragraphs first
+  if (includeKeyParagraphChunks && doc.key_paragraphs && doc.key_paragraphs.length > 0) {
+    // Prioritize tags by value
+    const priority: KeyParagraphTag[] = ["issue", "test", "holding", "application", "remedy", "other"];
+
+    const sorted = [...doc.key_paragraphs].sort((a, b) => {
+      const pa = priority.indexOf(a.tag);
+      const pb = priority.indexOf(b.tag);
+      return pa - pb;
     });
+
+    for (const p of sorted) {
+      if (set.size >= maxKeyParagraphChunks) break;
+      if (p.chunkIdx >= 0 && p.chunkIdx < totalChunks) set.add(p.chunkIdx);
+    }
   }
-  
-  // Include legal question terms
-  if (legalQuestion) {
-    parts.push(legalQuestion.substring(0, 100));
+
+  // Then first N chunks
+  for (let i = 0; i < Math.min(includeFirstChunks, totalChunks); i++) set.add(i);
+
+  // Return in ascending order for readability
+  return Array.from(set).sort((a, b) => a - b);
+}
+
+function formatAppliedArticles(articles: AppliedArticles[]): string {
+  if (!articles || articles.length === 0) return "Նշված չէ";
+  return articles.map((a) => `${CODE_LABELS[a.code] || a.code}: հոդ. ${a.articles.join(", ")}`).join("; ");
+}
+
+function normalizeText(input: string): string {
+  if (!input) return "";
+  // Light normalization: collapse excessive spaces, keep newlines
+  return input
+    .replace(/\r\n/g, "\n")
+    .replace(/[ \t]+\n/g, "\n")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+}
+
+function safeLine(input: string): string {
+  return (input || "").replace(/\s+/g, " ").trim();
+}
+
+function chunkText(text: string, chunkSize: number): string[] {
+  if (!text) return [];
+  const chunks: string[] = [];
+  let i = 0;
+  while (i < text.length) {
+    chunks.push(text.slice(i, i + chunkSize));
+    i += chunkSize;
   }
-  
-  return {
-    query: parts.join(' ').trim() || '\u0564\u0561\u057F\u0561\u056F\u0561\u0576 \u057A\u0580\u0561\u056F\u057F\u056B\u056F\u0561',
-    category: caseType
-  };
+  return chunks;
+}
+
+function capText(text: string, maxChars: number): { text: string; truncated: boolean } {
+  const t = (text || "").toString();
+  if (maxChars <= 0) return { text: "", truncated: true };
+  if (t.length <= maxChars) return { text: t, truncated: false };
+
+  const slice = t.slice(0, maxChars);
+  const cutAt = Math.max(
+    slice.lastIndexOf("\n\n"),
+    slice.lastIndexOf("\n"),
+    slice.lastIndexOf(". "),
+    slice.lastIndexOf(" "),
+  );
+
+  const finalText = (cutAt > 200 ? slice.slice(0, cutAt) : slice).trimEnd();
+  return { text: finalText, truncated: true };
 }
