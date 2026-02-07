@@ -1075,15 +1075,19 @@ export type Database = {
         Row: {
           applied_articles: Json | null
           case_number_anonymized: string | null
+          chunk_index_meta: Json | null
+          content_chunks: string[] | null
           content_text: string
           court_name: string | null
           court_type: Database["public"]["Enums"]["court_type"]
           created_at: string
           decision_date: string | null
+          decision_map: Json | null
           description: string | null
           id: string
           is_active: boolean
           is_anonymized: boolean
+          key_paragraphs: Json | null
           key_violations: string[] | null
           legal_reasoning_summary: string | null
           outcome: Database["public"]["Enums"]["case_outcome"]
@@ -1098,15 +1102,19 @@ export type Database = {
         Insert: {
           applied_articles?: Json | null
           case_number_anonymized?: string | null
+          chunk_index_meta?: Json | null
+          content_chunks?: string[] | null
           content_text: string
           court_name?: string | null
           court_type: Database["public"]["Enums"]["court_type"]
           created_at?: string
           decision_date?: string | null
+          decision_map?: Json | null
           description?: string | null
           id?: string
           is_active?: boolean
           is_anonymized?: boolean
+          key_paragraphs?: Json | null
           key_violations?: string[] | null
           legal_reasoning_summary?: string | null
           outcome: Database["public"]["Enums"]["case_outcome"]
@@ -1121,15 +1129,19 @@ export type Database = {
         Update: {
           applied_articles?: Json | null
           case_number_anonymized?: string | null
+          chunk_index_meta?: Json | null
+          content_chunks?: string[] | null
           content_text?: string
           court_name?: string | null
           court_type?: Database["public"]["Enums"]["court_type"]
           created_at?: string
           decision_date?: string | null
+          decision_map?: Json | null
           description?: string | null
           id?: string
           is_active?: boolean
           is_anonymized?: boolean
+          key_paragraphs?: Json | null
           key_violations?: string[] | null
           legal_reasoning_summary?: string | null
           outcome?: Database["public"]["Enums"]["case_outcome"]
@@ -1542,6 +1554,16 @@ export type Database = {
         Args: { p_data: string; p_key?: string }
         Returns: string
       }
+      get_kb_chunk: {
+        Args: { chunk_idx: number; doc_id: string }
+        Returns: {
+          chunk_index: number
+          chunk_meta: Json
+          chunk_text: string
+          id: string
+          total_chunks: number
+        }[]
+      }
       get_led_team_ids: { Args: { _user_id: string }; Returns: string[] }
       get_monthly_usage: {
         Args: never
@@ -1633,6 +1655,32 @@ export type Database = {
           title: string
         }[]
       }
+      search_legal_practice_kb: {
+        Args: {
+          category_filter?: string
+          limit_docs?: number
+          search_query: string
+        }
+        Returns: {
+          applied_articles: Json
+          chunk_index_meta: Json
+          content_chunks: string[]
+          court_type: Database["public"]["Enums"]["court_type"]
+          decision_map: Json
+          description: string
+          id: string
+          key_paragraphs: Json
+          key_violations: string[]
+          legal_reasoning_summary: string
+          outcome: Database["public"]["Enums"]["case_outcome"]
+          practice_category: Database["public"]["Enums"]["practice_category"]
+          relevance_score: number
+          title: string
+          total_chunks: number
+        }[]
+      }
+      show_limit: { Args: never; Returns: number }
+      show_trgm: { Args: { "": string }; Returns: string[] }
       soft_delete_case: { Args: { p_case_id: string }; Returns: undefined }
       soft_delete_case_file: { Args: { p_file_id: string }; Returns: undefined }
       store_encrypted_pii: {
