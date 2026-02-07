@@ -181,6 +181,7 @@ export const SYSTEM_PROMPTS: Record<Role, string> = {
     `Լռելյայն պատասխանել հայերեն, եթե օգտատերը չի գրում այլ լեզվով։`,
   ].join("\n\n"),
 };
+
 // Armenian legal disclaimer
 const DISCLAIMER_HY = `
 ⚠️ **Զգուշացում (Disclaimer)** 
