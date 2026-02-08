@@ -243,5 +243,10 @@
   "changes_saved_successfully": "Changes saved successfully",
   "document_deleted": "Document deleted",
   "document_deleted_success": "Document deleted successfully",
-  "delete_error": "Delete error"
+  "delete_error": "Delete error",
+  "party_role": "What is your role in this case?",
+  "party_role_required": "Please select your procedural role",
+  "select_party_role": "Select role",
+  "party_role_claimant": "Claimant / Plaintiff",
+  "party_role_defendant": "Defendant"
 }

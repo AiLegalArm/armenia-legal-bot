@@ -40,6 +40,7 @@ describe('CaseCard', () => {
     deleted_at: null,
     facts: null,
     legal_question: null,
+    party_role: null,
   };
 
   const mockProps = {
