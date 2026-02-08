@@ -101,6 +101,9 @@ export function CaseForm({
     case_type: z.enum(['criminal', 'civil', 'administrative'], {
       required_error: t('case_type_required'),
     }),
+    party_role: z.enum(['claimant', 'defendant'], {
+      required_error: t('party_role_required'),
+    }),
     current_stage: z.string().min(1, t('stage_required')),
     status: z.enum(['open', 'in_progress', 'pending', 'closed', 'archived']),
     priority: z.enum(['low', 'medium', 'high', 'urgent']),
@@ -118,6 +121,7 @@ export function CaseForm({
       title: '',
       description: '',
       case_type: 'criminal',
+      party_role: undefined,
       current_stage: 'preliminary',
       status: 'open',
       priority: 'medium',
@@ -146,6 +150,7 @@ export function CaseForm({
         title: initialData.title,
         description: initialData.description || '',
         case_type: caseType,
+        party_role: (initialData.party_role as 'claimant' | 'defendant') || undefined,
         current_stage: currentStage,
         status: initialData.status,
         priority: initialData.priority,
@@ -163,6 +168,7 @@ export function CaseForm({
         title: '',
         description: '',
         case_type: 'criminal',
+        party_role: undefined,
         current_stage: 'preliminary',
         status: 'open',
         priority: 'medium',
@@ -178,6 +184,7 @@ export function CaseForm({
       case_number: values.case_number,
       title: values.title,
       case_type: values.case_type,
+      party_role: values.party_role,
       current_stage: values.current_stage,
       court: values.court_name || null,
       status: values.status,
@@ -256,6 +263,30 @@ export function CaseForm({
                 )}
               />
 
+              <FormField
+                control={form.control}
+                name="party_role"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>{t('party_role')}</FormLabel>
+                    <Select onValueChange={field.onChange} value={field.value}>
+                      <FormControl>
+                        <SelectTrigger>
+                          <SelectValue placeholder={t('select_party_role')} />
+                        </SelectTrigger>
+                      </FormControl>
+                      <SelectContent>
+                        <SelectItem value="claimant">{t('party_role_claimant')}</SelectItem>
+                        <SelectItem value="defendant">{t('party_role_defendant')}</SelectItem>
+                      </SelectContent>
+                    </Select>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+            </div>
+
+            <div className="grid gap-4 sm:grid-cols-2">
               <FormField
                 control={form.control}
                 name="current_stage"

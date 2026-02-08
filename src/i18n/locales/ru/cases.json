@@ -284,5 +284,10 @@
   "changes_saved_successfully": "Изменения сохранены",
   "document_deleted": "Документ удалён",
   "document_deleted_success": "Документ успешно удалён",
-  "delete_error": "Ошибка удаления"
+  "delete_error": "Ошибка удаления",
+  "party_role": "Кем вы являетесь по делу?",
+  "party_role_required": "Выберите вашу процессуальную роль",
+  "select_party_role": "Выберите роль",
+  "party_role_claimant": "Истец",
+  "party_role_defendant": "Ответчик"
 }

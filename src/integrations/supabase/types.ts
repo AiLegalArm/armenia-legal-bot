@@ -618,6 +618,7 @@ export type Database = {
           lawyer_id: string | null
           legal_question: string | null
           notes: string | null
+          party_role: string | null
           priority: Database["public"]["Enums"]["case_priority"]
           status: Database["public"]["Enums"]["case_status"]
           title: string
@@ -639,6 +640,7 @@ export type Database = {
           lawyer_id?: string | null
           legal_question?: string | null
           notes?: string | null
+          party_role?: string | null
           priority?: Database["public"]["Enums"]["case_priority"]
           status?: Database["public"]["Enums"]["case_status"]
           title: string
@@ -660,6 +662,7 @@ export type Database = {
           lawyer_id?: string | null
           legal_question?: string | null
           notes?: string | null
+          party_role?: string | null
           priority?: Database["public"]["Enums"]["case_priority"]
           status?: Database["public"]["Enums"]["case_status"]
           title?: string
