@@ -1,179 +1,224 @@
-import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2.91.1";
+import { serve } from "https://deno.land/std@0.224.0/http/server.ts";
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.4";
 
-const corsHeaders = {
-  "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
+type BackfillBody = {
+  docId?: string;
+  chunkSize?: number; // chars
+  dryRun?: boolean;
 };
 
-/**
- * Normalize whitespace and split content into chunks.
- */
-function buildChunksForDocument(
-  contentText: string,
-  chunkSize: number = 8000
-): { chunks: string[]; meta: Array<{ idx: number; start: number; end: number }> } {
-  // Normalize whitespace
-  const normalized = contentText.replace(/\s+/g, " ").trim();
-  
-  const chunks: string[] = [];
-  const meta: Array<{ idx: number; start: number; end: number }> = [];
+type KbDoc = {
+  id: string;
+  title: string | null;
+  content_text: string | null; // full text
+  language?: string | null;
+  updated_at?: string | null;
+};
 
-  let start = 0;
-  let idx = 0;
+const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
+const SUPABASE_ANON_KEY = Deno.env.get("SUPABASE_ANON_KEY")!;
+const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 
-  while (start < normalized.length) {
-    const end = Math.min(start + chunkSize, normalized.length);
-    const slice = normalized.slice(start, end);
+// ---- helpers ----
 
-    chunks.push(slice);
-    meta.push({ idx, start, end });
-
-    idx++;
-    start = end;
-  }
-
-  return { chunks, meta };
+function json(status: number, data: unknown) {
+  return new Response(JSON.stringify(data), {
+    status,
+    headers: { "content-type": "application/json; charset=utf-8" },
+  });
 }
 
-/**
- * Admin-only endpoint to backfill chunks for legal_practice_kb documents.
- * POST /kb-backfill-chunks
- * Body: { docId?: string, chunkSize?: number, dryRun?: boolean }
- * - docId: specific document to process (if omitted, processes all without chunks)
- * - chunkSize: characters per chunk (default 8000)
- * - dryRun: if true, returns what would be done without writing
- */
-serve(async (req) => {
-  if (req.method === "OPTIONS") {
-    return new Response(null, { headers: corsHeaders });
+function getBearerToken(req: Request): string | null {
+  const h = req.headers.get("authorization") || req.headers.get("Authorization");
+  if (!h) return null;
+  const m = h.match(/^Bearer\s+(.+)$/i);
+  return m?.[1] ?? null;
+}
+
+async function requireAdmin(req: Request) {
+  const token = getBearerToken(req);
+  if (!token) throw { status: 401, code: "UNAUTHORIZED", message: "Missing Bearer token" };
+
+  const supabaseAuth = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
+    global: { headers: { Authorization: `Bearer ${token}` } },
+  });
+
+  const { data: userData, error: userErr } = await supabaseAuth.auth.getUser();
+  if (userErr || !userData?.user) {
+    throw { status: 401, code: "UNAUTHORIZED", message: "Invalid token" };
   }
 
+  const user = userData.user;
+
+  const role = (user.app_metadata as any)?.role;
+  if (role === "admin") return { token, user };
+
+  throw { status: 403, code: "FORBIDDEN", message: "Admin only" };
+}
+
+function normalizeChunkSize(n?: number): number {
+  const v = typeof n === "number" ? Math.floor(n) : 8000;
+  if (!Number.isFinite(v) || v < 500) return 8000;
+  if (v > 20000) return 20000;
+  return v;
+}
+
+function splitIntoChunks(text: string, chunkSize: number, overlap = 200): { idx: number; text: string }[] {
+  const t = text.replace(/\r\n/g, "\n");
+  const chunks: { idx: number; text: string }[] = [];
+  let start = 0;
+  let i = 0;
+
+  while (start < t.length) {
+    const end = Math.min(start + chunkSize, t.length);
+    const slice = t.slice(start, end);
+
+    const chunkText = slice.trim();
+    if (chunkText.length > 0) chunks.push({ idx: i++, text: chunkText });
+
+    if (end === t.length) break;
+    start = Math.max(0, end - overlap);
+  }
+  return chunks;
+}
+
+function computeHash(s: string): string {
+  let h = 2166136261;
+  for (let i = 0; i < s.length; i++) {
+    h ^= s.charCodeAt(i);
+    h = Math.imul(h, 16777619);
+  }
+  return (h >>> 0).toString(16);
+}
+
+// ---- main ----
+
+serve(async (req) => {
   try {
-    const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
-    const supabaseKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
-    const supabase = createClient(supabaseUrl, supabaseKey);
+    if (req.method !== "POST") return json(405, { error: "METHOD_NOT_ALLOWED" });
 
-    // Verify admin authorization
-    const authHeader = req.headers.get("authorization");
-    if (!authHeader) {
-      return new Response(
-        JSON.stringify({ error: "Unauthorized" }),
-        { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-      );
-    }
+    await requireAdmin(req);
 
-    const token = authHeader.replace("Bearer ", "");
-    const { data: { user }, error: authError } = await supabase.auth.getUser(token);
-    
-    if (authError || !user) {
-      return new Response(
-        JSON.stringify({ error: "Unauthorized" }),
-        { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-      );
-    }
+    const body = (await req.json().catch(() => ({}))) as BackfillBody;
+    const docId = typeof body.docId === "string" && body.docId.trim() ? body.docId.trim() : undefined;
+    const chunkSize = normalizeChunkSize(body.chunkSize);
+    const dryRun = body.dryRun === true;
 
-    // Check if user is admin
-    const { data: roles } = await supabase.rpc("get_user_roles", { _user_id: user.id });
-    const isAdmin = roles?.includes("admin");
-    
-    if (!isAdmin) {
-      return new Response(
-        JSON.stringify({ error: "Admin access required" }),
-        { status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-      );
-    }
+    const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
 
-    const body = await req.json().catch(() => ({}));
-    const { docId, chunkSize = 8000, dryRun = false } = body;
-
-    // Build query to find documents needing chunking
-    let query = supabase
-      .from("legal_practice_kb")
-      .select("id, title, content_text, content_chunks")
-      .eq("is_active", true);
+    // 1) fetch documents
+    let docs: KbDoc[] = [];
 
     if (docId) {
-      query = query.eq("id", docId);
+      const { data, error } = await supabase
+        .from("legal_practice_kb")
+        .select("id,title,content_text,language,updated_at")
+        .eq("id", docId)
+        .limit(1);
+
+      if (error) throw { status: 500, code: "DB_ERROR", message: error.message };
+      docs = (data ?? []) as KbDoc[];
+      if (docs.length === 0) return json(404, { error: "DOC_NOT_FOUND", docId });
     } else {
-      // Find documents without chunks or with empty chunks
-      query = query.or("content_chunks.is.null,content_chunks.eq.{}");
+      const { data, error } = await supabase.rpc("kb_docs_without_chunks");
+
+      if (error) {
+        // Fallback 2-step
+        const { data: allDocs, error: e1 } = await supabase
+          .from("legal_practice_kb")
+          .select("id,title,content_text,language,updated_at")
+          .order("updated_at", { ascending: false })
+          .limit(5000);
+        if (e1) throw { status: 500, code: "DB_ERROR", message: e1.message };
+
+        const docList = (allDocs ?? []) as KbDoc[];
+
+        const { data: existing, error: e2 } = await supabase
+          .from("legal_practice_kb_chunks")
+          .select("doc_id")
+          .limit(50000);
+        if (e2) throw { status: 500, code: "DB_ERROR", message: e2.message };
+
+        const existingSet = new Set((existing ?? []).map((x: any) => String(x.doc_id)));
+        docs = docList.filter((d) => !existingSet.has(d.id));
+      } else {
+        docs = (data ?? []) as KbDoc[];
+      }
     }
 
-    const { data: docs, error: fetchError } = await query.limit(100);
+    // 2) plan chunks
+    const plan = [];
+    let totalChunks = 0;
 
-    if (fetchError) {
-      throw new Error(`Failed to fetch documents: ${fetchError.message}`);
+    for (const d of docs) {
+      const text = (d.content_text ?? "").trim();
+      if (!text) {
+        plan.push({ docId: d.id, title: d.title, action: "skip_empty_content", chunks: 0 });
+        continue;
+      }
+      const chunks = splitIntoChunks(text, chunkSize, 200);
+      totalChunks += chunks.length;
+      plan.push({ docId: d.id, title: d.title, action: "create_chunks", chunks: chunks.length });
     }
 
-    const results: Array<{
-      id: string;
-      title: string;
-      chunksCreated: number;
-      status: string;
-    }> = [];
+    if (dryRun) {
+      return json(200, {
+        dryRun: true,
+        docCount: docs.length,
+        chunkSize,
+        plannedTotalChunks: totalChunks,
+        plan,
+      });
+    }
 
-    for (const doc of docs || []) {
-      if (!doc.content_text || doc.content_text.trim().length === 0) {
-        results.push({
-          id: doc.id,
-          title: doc.title,
-          chunksCreated: 0,
-          status: "skipped_no_content",
-        });
+    // 3) write chunks (idempotent: delete existing, then insert)
+    const writeResults = [];
+    for (const d of docs) {
+      const text = (d.content_text ?? "").trim();
+      if (!text) {
+        writeResults.push({ docId: d.id, status: "skipped_empty" });
         continue;
       }
 
-      const { chunks, meta } = buildChunksForDocument(doc.content_text, chunkSize);
+      const { error: delErr } = await supabase
+        .from("legal_practice_kb_chunks")
+        .delete()
+        .eq("doc_id", d.id);
+      if (delErr) throw { status: 500, code: "DB_ERROR", message: delErr.message };
 
-      if (dryRun) {
-        results.push({
-          id: doc.id,
-          title: doc.title,
-          chunksCreated: chunks.length,
-          status: "dry_run",
-        });
-      } else {
-        const { error: updateError } = await supabase
-          .from("legal_practice_kb")
-          .update({
-            content_chunks: chunks,
-            chunk_index_meta: meta,
-          })
-          .eq("id", doc.id);
+      const chunks = splitIntoChunks(text, chunkSize, 200);
 
-        if (updateError) {
-          results.push({
-            id: doc.id,
-            title: doc.title,
-            chunksCreated: 0,
-            status: `error: ${updateError.message}`,
-          });
-        } else {
-          results.push({
-            id: doc.id,
-            title: doc.title,
-            chunksCreated: chunks.length,
-            status: "success",
-          });
-        }
+      const rows = chunks.map((c) => ({
+        doc_id: d.id,
+        chunk_index: c.idx,
+        chunk_text: c.text,
+        chunk_hash: computeHash(c.text),
+        title: d.title,
+        language: d.language ?? null,
+      }));
+
+      const batchSize = 200;
+      for (let i = 0; i < rows.length; i += batchSize) {
+        const batch = rows.slice(i, i + batchSize);
+        const { error: insErr } = await supabase.from("legal_practice_kb_chunks").insert(batch);
+        if (insErr) throw { status: 500, code: "DB_ERROR", message: insErr.message };
       }
+
+      writeResults.push({ docId: d.id, inserted: rows.length, status: "ok" });
     }
 
-    return new Response(
-      JSON.stringify({
-        processed: results.length,
-        dryRun,
-        results,
-      }),
-      { headers: { ...corsHeaders, "Content-Type": "application/json" } }
-    );
-
-  } catch (error) {
-    console.error("KB backfill error:", error);
-    return new Response(
-      JSON.stringify({ error: error instanceof Error ? error.message : "Backfill failed" }),
-      { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-    );
+    return json(200, {
+      dryRun: false,
+      processedDocs: docs.length,
+      chunkSize,
+      totalChunksInserted: writeResults.reduce((s, r: any) => s + (r.inserted ?? 0), 0),
+      results: writeResults,
+    });
+  } catch (e) {
+    const status = typeof (e as any)?.status === "number" ? (e as any).status : 500;
+    return json(status, {
+      error: (e as any)?.code ?? "INTERNAL_ERROR",
+      message: (e as any)?.message ?? String(e),
+    });
   }
 });
