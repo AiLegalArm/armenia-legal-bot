@@ -17,3 +17,6 @@ verify_jwt = false
 
 [functions.ai-analyze]
 verify_jwt = false
+
+[functions.multi-agent-analyze]
+verify_jwt = false
