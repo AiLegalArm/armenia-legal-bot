@@ -82,6 +82,18 @@ serve(async (req) => {
       );
     }
 
+    // B) category allowlist
+    const ALLOWED_CATEGORIES = new Set(["criminal", "civil", "administrative", "echr"]);
+    if (category != null && !ALLOWED_CATEGORIES.has(category)) {
+      return new Response(
+        JSON.stringify({ error: "Invalid category" }),
+        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    // A) limitDocs cap
+    const safeLimitDocs = Math.max(1, Math.min(Number(limitDocs) || 5, 20));
+
     const searchTerm = sanitizeForPostgrest(query.trim().toLowerCase());
 
     // Build the query
@@ -102,7 +114,7 @@ serve(async (req) => {
         content_text
       `)
       .eq("is_active", true)
-      .limit(limitDocs);
+      .limit(safeLimitDocs);
 
     // Apply category filter if provided
     if (category) {
