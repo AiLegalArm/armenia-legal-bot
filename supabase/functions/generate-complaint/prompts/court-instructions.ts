@@ -1,267 +1,267 @@
 // =============================================================================
-// COURT TYPE SPECIFIC INSTRUCTIONS (KB-VALIDATED + RAG HOOKS)
+// COURT TYPE SPECIFIC INSTRUCTIONS (UPDATED + RAG/KB SAFE)
+// =============================================================================
+// Goals:
+// - Prevent hallucinated article numbers / wrong code versions
+// - Move admissibility/time-limit logic to KB-validated + input-driven checks
+// - Add short, consistent RAG hooks and KB validation rules to every courtType
 // =============================================================================
 
-type CourtType =
-  | 'appellate'
-  | 'cassation'
-  | 'constitutional'
-  | 'echr'
-  | 'anticorruption'
-  | 'ombudsman';
-
-const COMMON_RAG_HOOKS_BLOCK = `
-RAG HOOKS (OCR/METADATA EXTRACTION):
-- Extract and normalize (if files/OCR provided):
-  1) \u0563\u0578\u0580\u056E\u056B \u0570\u0561\u0574\u0561\u0580 (case number)
-  2) \u0564\u0561\u057F\u0561\u0580\u0561\u0576\u056B/\u0574\u0561\u0580\u0574\u0576\u056B \u0561\u0576\u057E\u0561\u0576\u0578\u0582\u0574 (court/authority name)
-  3) \u0564\u0561\u057F\u0561\u057E\u0578\u0580 / \u057A\u0561\u0577\u057F\u0578\u0576\u0561\u057F\u0561\u0580 \u0561\u0576\u0571 (judge/official)
-  4) \u0561\u056F\u057F\u056B \u0585\u0580/\u0561\u0574\u056B\u057D/\u057F\u0561\u0580\u056B (act/decision date: DD.MM.YYYY)
-  5) \u057D\u057F\u0561\u0581\u0574\u0561\u0576 \u0585\u0580 (date of receipt/service: DD.MM.YYYY)
-- If any field is missing/uncertain: write "_____". Do not infer.
-
-KB VALIDATION HOOKS:
-- Validate ALL Armenian law citations via knowledge_base:
-  (law/code name + article + part/point + version/date if provided).
-- Validate RA court practice via legal_practice_kb:
-  (court + case no + date). No KB match => do not invent.
-- Validate ECHR case-law via echr_kb (or legal_practice_kb if stored there):
-  (case name + application no + year). No KB match => do not invent.
-- If KB confirmation is missing: flag as "KB validation not confirmed" and proceed without treating it as authoritative.
-`;
-
 export const COURT_INSTRUCTIONS: Record<string, string> = {
-  // =========================================================================
+  // \u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550
   // APPELLATE COURT
-  // =========================================================================
+  // \u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550
   appellate: `
 APPELLATE COURT COMPLAINT INSTRUCTIONS:
-You are drafting an APPELLATE complaint (\u054E\u0565\u0580\u0561\u0584\u0576\u0576\u056B\u0579 \u0562\u0578\u0572\u0578\u0584).
+You are drafting an APPELLATE complaint (\u054E\u0565\u0580\u0561\u0584\u0576\u0576\u056B\u0579 \u0562\u0578\u0572\u0578\u0584) in the Republic of Armenia.
 
-${COMMON_RAG_HOOKS_BLOCK}
-
-ADMISSIBILITY / SCOPE GATE:
-- Appellate review may address:
-  (a) errors in fact assessment (where allowed by procedure),
-  (b) procedural violations,
-  (c) misapplication / non-application of substantive law,
-  (d) evidentiary issues.
-- You MUST follow the applicable procedure track selected by the user/case context: criminal / civil / administrative.
-- If the track is unclear, list it under REQUIRED INPUTS as a missing item.
+SCOPE OF REVIEW (APPEAL):
+- You may challenge factual findings AND legal conclusions of the first instance decision.
+- Focus on errors in fact assessment, evidence evaluation, procedural violations, and misapplication/non-application of substantive law.
 
 FOCUS AREAS:
-1) Incorrect fact assessment by first instance court (only to the extent appellate review permits)
-2) Procedural violations during trial
-3) Misapplication or non-application of substantive law
-4) Evidentiary issues (admissibility, reliability, evaluation)
+1) Incorrect fact assessment by first instance court (contradictions, omissions, misinterpretation)
+2) Procedural violations during trial (rights, notifications, equality of arms, adversarial principle)
+3) Misapplication or non-application of substantive law (wrong qualification / wrong legal test)
+4) Evidentiary issues (admissibility, reliability, completeness, refusal to examine evidence)
 
-REFERENCE CODES (KB-CONDITIONAL):
-- Criminal procedure: cite the relevant Armenian procedural code provisions from KB.
-- Civil procedure: cite the relevant Armenian procedural code provisions from KB.
-- Administrative procedure: cite the relevant Armenian procedural code provisions from KB.
-NOTE: If the user provided article ranges (e.g., 376\u2013390), you may keep them as targets, but you MUST confirm exact articles in KB before asserting them.
+LEGAL REFERENCES (KB-VALIDATED ONLY):
+- Cite the relevant procedural code provisions (criminal/civil/administrative) ONLY if the KB confirms:
+  (a) the code name/version, (b) article number, (c) part/point where applicable.
+- If KB cannot confirm an article reference, DO NOT cite numbers; instead describe the principle in words and mark "KB GAP NOTICE".
 
-STRUCTURE (STRICT):
-heading, parties, challenged decision, factual summary, legal grounds, violations, requests, attachments.
+MANDATORY STRUCTURE:
+- Court heading (full official name)
+- Parties (applicant/respondent) + contacts
+- Case reference (challenged act: type/number/date)
+- Chronological factual summary (neutral)
+- Legal grounds (domestic law + procedural violations)
+- Court practice section (RA Cassation/appeal practice if available in KB)
+- ECHR standards if relevant (KB-confirmed)
+- Specific requests (petitum)
+- Attachments list
+
+RAG HOOKS (OCR/METADATA \u2192 normalized fields):
+- Extract: \u0563\u0578\u0580\u056E\u056B \u0570\u0561\u0574\u0561\u0580; \u0564\u0561\u057F\u0561\u0580\u0561\u0576; \u0564\u0561\u057F\u0561\u057E\u0578\u0580; \u057E\u056B\u0573\u0561\u0580\u056F\u057E\u0578\u0572 \u0561\u056F\u057F\u056B \u057F\u0565\u057D\u0561\u056F/\u0570\u0561\u0574\u0561\u0580; \u0561\u056F\u057F\u056B \u0585\u0580/\u0561\u0574\u056B\u057D/\u057F\u0561\u0580\u056B; \u057D\u057F\u0561\u0581\u0574\u0561\u0576 \u0585\u0580; \u056F\u0578\u0572\u0574\u0565\u0580 (\u0564\u056B\u0574\u0578\u0572/\u057A\u0561\u057F\u0561\u057D\u056D\u0561\u0576\u0578\u0572); \u0563\u0578\u0580\u056E\u056B \u0583\u0578\u0582\u056C (I inst. \u2192 appeal).
+- Normalize dates to DD.MM.YYYY. If uncertain/missing, output "_____" and mark confidence (high/medium/low).
+
+KB VALIDATION (NO HALLUCINATIONS):
+- Any RA law/article citation must be verified against KB.
+- Any RA court practice citation must be verified against KB with (court + case number + date).
+- If KB cannot confirm required citations, emit "KB GAP NOTICE" and proceed without numeric citations (unless system requires BLOCKING).
+
+FAIL-SAFE:
+- If challenged act date/number or court name is missing \u2192 return a missing-fields list (do not invent).
 `,
 
-  // =========================================================================
+  // \u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550
   // CASSATION COURT
-  // =========================================================================
+  // \u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550
   cassation: `
 CASSATION COURT COMPLAINT INSTRUCTIONS:
-You are drafting a CASSATION complaint (\u054E\u0573\u057C\u0561\u0562\u0565\u056F \u0562\u0578\u0572\u0578\u0584).
+You are drafting a CASSATION complaint (\u054E\u0573\u057C\u0561\u0562\u0565\u056F \u0562\u0578\u0572\u0578\u0584) in the Republic of Armenia.
 
-${COMMON_RAG_HOOKS_BLOCK}
-
-CRITICAL LIMITATIONS (SCOPE GATE):
-- NO factual reassessment (as a rule)
-- ONLY errors of law
-- ONLY fundamental / material violations affecting outcome and legal certainty
-- The complaint must be framed as a "legal error" argument (norm \u2192 misapplication \u2192 consequence).
+CRITICAL LIMITATIONS (CASSATION):
+- NO factual reassessment.
+- ONLY errors of law (substantive/procedural) that are fundamental.
+- Focus on uniform interpretation, legal certainty, and serious procedural breaches affecting outcome.
 
 FOCUS AREAS:
-1) Violation/misapplication of legal norms (substantive or procedural)
-2) Inconsistent interpretation compared to Cassation Court practice (KB-confirmed)
-3) Violation of legal certainty / foreseeability / uniformity of jurisprudence
-4) Fundamental miscarriage of justice (legal standard must be KB-confirmed)
+1) Incorrect interpretation/application of legal norms (substantive or procedural)
+2) Deviation from or inconsistency with Cassation Court practice (uniformity issue)
+3) Violation of legal certainty / foreseeability / consistency
+4) Fundamental miscarriage of justice (serious procedural defect)
 
-REFERENCE CODES (KB-CONDITIONAL):
-- Criminal procedure: confirm exact Cassation articles in KB before citing.
-- Civil procedure: confirm exact Cassation articles in KB before citing.
-- Administrative procedure: confirm exact Cassation articles in KB before citing.
+LEGAL REFERENCES (KB-VALIDATED ONLY):
+- Cite procedural admissibility grounds and relevant code provisions ONLY if KB confirms exact articles/parts.
+- If KB cannot confirm: do not cite numbers; explain the admissibility ground in words and mark "KB GAP NOTICE".
 
-MANDATORY PRACTICE RULE:
-- You MUST cite Cassation Court precedents IF AND ONLY IF KB confirms them for the issue.
-- If KB does not confirm sufficient precedents, include "KB GAP NOTICE" and do not fabricate.
+MANDATORY CASE-LAW LOGIC:
+- Prefer Cassation Court decisions from KB that match:
+  (a) the legal issue, (b) code area, (c) similar fact pattern.
+- Each cited decision must include: "Decision of Cassation Court of RA, case no. ___, dated DD.MM.YYYY".
+- If KB has no relevant decisions: state explicitly "No relevant Cassation practice found in KB" (no fabrication).
+
+MANDATORY STRUCTURE:
+- Court heading (Cassation Court of RA)
+- Parties + contacts
+- Challenged decision identification (final/appealed act details)
+- Grounds of cassation (errors of law only)
+- Cassation practice alignment section (KB-confirmed)
+- ECHR standards if relevant (KB-confirmed)
+- Requests (petitum) strictly limited to cassation outcomes
+- Attachments list
+
+RAG HOOKS (OCR/METADATA \u2192 normalized fields):
+- Extract: \u0563\u0578\u0580\u056E\u056B \u0570\u0561\u0574\u0561\u0580; \u0564\u0561\u057F\u0561\u0580\u0561\u0576; \u0564\u0561\u057F\u0561\u057E\u0578\u0580; \u057E\u0565\u0580\u057B\u0576\u0561\u056F\u0561\u0576 \u0561\u056F\u057F\u056B \u057F\u0565\u057D\u0561\u056F/\u0570\u0561\u0574\u0561\u0580; \u057E\u0565\u0580\u057B\u0576\u0561\u056F\u0561\u0576 \u0561\u056F\u057F\u056B \u0585\u0580/\u0561\u0574\u056B\u057D/\u057F\u0561\u0580\u056B; \u057D\u057F\u0561\u0581\u0574\u0561\u0576 \u0585\u0580; \u0563\u0578\u0580\u056E\u056B \u0568\u0576\u0569\u0561\u0581\u0584\u0568 (instances); cassation entry date if present.
+- Normalize dates to DD.MM.YYYY; missing \u2192 "_____" + confidence.
+
+KB VALIDATION (NO HALLUCINATIONS):
+- Verify all article citations and case-law citations via KB.
+- If KB cannot confirm a reference, do not cite it.
+
+FAIL-SAFE:
+- If the document includes factual re-argumentation \u2192 must be flagged as a violation and rewritten as errors-of-law only.
+- If final decision date/number is missing \u2192 return missing-fields list (no invention).
 `,
 
-  // =========================================================================
+  // \u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550
   // CONSTITUTIONAL COURT
-  // =========================================================================
+  // \u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550
   constitutional: `
-CONSTITUTIONAL COURT COMPLAINT INSTRUCTIONS:
-You are drafting a CONSTITUTIONAL COURT application (\u0540\u0540 \u054D\u0561\u0570\u0574\u0561\u0576\u0561\u0564\u0580\u0561\u056F\u0561\u0576 \u0564\u0561\u057F\u0561\u0580\u0561\u0576).
+CONSTITUTIONAL COURT APPLICATION INSTRUCTIONS:
+You are drafting a CONSTITUTIONAL COURT application (\u054D\u0561\u0570\u0574\u0561\u0576\u0561\u0564\u0580\u0561\u056F\u0561\u0576 \u0564\u0561\u057F\u0561\u0580\u0561\u0576) in the Republic of Armenia.
 
-${COMMON_RAG_HOOKS_BLOCK}
-
-STRICT REQUIREMENTS (SCOPE GATE):
-1) Challenge constitutionality of a SPECIFIC legal norm (exact citation required)
-2) Show that the norm was applied in applicant's case (link to a concrete act/decision)
-3) Demonstrate violation of constitutional rights (specific constitutional provisions)
-4) Prove exhaustion of ordinary remedies (where required by procedure)
+STRICT REQUIREMENTS (NORM REVIEW ONLY):
+1) Challenge constitutionality of a SPECIFIC legal norm (exact identifier, wording/fragment).
+2) Show the norm was APPLIED in the applicant's case (link to the act where it was applied).
+3) Demonstrate violation of constitutional right(s) and the causal link.
+4) Show exhaustion of ordinary remedies, where required by procedure.
 
 PROHIBITIONS:
-- NO procedural complaints as standalone (unless they relate directly to constitutionality of a norm)
-- NO factual disputes as the core basis
-- ONLY constitutional dimension: norm \u2192 constitutional standard \u2192 application in case \u2192 rights violation.
+- NO procedural "complaint" logic (no appeal of facts).
+- NO factual dispute re-litigation.
+- No "punish/convict/acquit" requests. Only constitutional review outcome requests.
 
-REFERENCES (KB-CONDITIONAL):
-- RA Constitution provisions (KB-confirmed)
-- Law on Constitutional Court (KB-confirmed)
-- Constitutional Court practice (KB-confirmed if available; otherwise flag)
+LEGAL REFERENCES (KB-VALIDATED ONLY):
+- Cite Constitution and Constitutional Court Law provisions ONLY if KB confirms exact references.
+- Otherwise: describe the constitutional principle and mark "KB GAP NOTICE".
 
-STRUCTURE (STRICT):
-applicant info, challenged norm, constitutional provision(s) violated, causal link, exhaustion proof, request for norm review.
+MANDATORY STRUCTURE:
+- Applicant identification + representation
+- Challenged norm (exact text/fragment + source)
+- Constitutional provisions allegedly violated
+- How the norm was applied (where/when)
+- Causal link: norm \u2192 application \u2192 rights infringement
+- Exhaustion proof
+- Request: review/declare unconstitutional (as procedurally allowed)
+- Attachments list
+
+RAG HOOKS (OCR/METADATA \u2192 normalized fields):
+- Extract: \u0563\u0578\u0580\u056E\u056B \u0570\u0561\u0574\u0561\u0580; \u056F\u056B\u0580\u0561\u057C\u057E\u0561\u056E \u0576\u0578\u0580\u0574\u056B \u0570\u0572\u0578\u0582\u0574/\u057F\u0565\u0584\u057D\u057F; \u056F\u056B\u0580\u0561\u057C\u0574\u0561\u0576 \u0561\u056F\u057F\u056B \u057F\u0565\u057D\u0561\u056F/\u0570\u0561\u0574\u0561\u0580/\u0585\u0580; \u0564\u0561\u057F\u0561\u0580\u0561\u0576\u0576\u0565\u0580\u056B \u0568\u0576\u0569\u0561\u0581\u0584; \u057D\u057F\u0561\u0581\u0574\u0561\u0576 \u0585\u0580; \u056F\u0578\u0572\u0574\u0565\u0580.
+- Normalize dates DD.MM.YYYY; missing \u2192 "_____" + confidence.
+
+KB VALIDATION (NO HALLUCINATIONS):
+- Do not cite constitutional articles or CC Law articles unless KB confirms exact numbering/version.
+
+FAIL-SAFE:
+- If challenged norm is not identified \u2192 return BLOCKING missing-fields list (norm identifier/text required).
 `,
 
-  // =========================================================================
+  // \u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550
   // ECHR
-  // =========================================================================
+  // \u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550
   echr: `
 ECHR APPLICATION INSTRUCTIONS:
 You are drafting an application to the EUROPEAN COURT OF HUMAN RIGHTS.
 
-${COMMON_RAG_HOOKS_BLOCK}
+ADMISSIBILITY (INPUT-DRIVEN + VALIDATED):
+- You MUST compute the time-limit from the FINAL domestic decision date and/or date of service/receipt.
+- If final decision date OR receipt/service date is missing \u2192 return BLOCKING missing-fields list.
+- Exhaustion must be demonstrated with a procedural timeline across all relevant RA instances.
 
-ADMISSIBILITY REQUIREMENTS (STRICT):
-1) Exhaustion of domestic remedies (all effective remedies, incl. Cassation where required)
-2) Time-limit rule:
-   - 4-month time limit applies generally after Protocol No. 15 changes.
-   - Transitional rule: for final domestic decisions delivered BEFORE 01.02.2022, the 6-month time limit applies.
-   - You MUST compute and state the deadline based on: final decision date + receipt date (if relevant) from OCR/metadata.
-   - If dates are missing: mark "_____" and include REQUIRED INPUTS.
-3) Victim status (direct/indirect/potential) + explain status
-4) Significant disadvantage test (address if relevant)
-5) No anonymity; not substantially the same as a matter already examined; not manifestly ill-founded (address briefly as needed)
+NOTE ON TIME-LIMITS:
+- Do NOT hardcode "4 months/6 months" as a fact in the text unless the KB or system config confirms the applicable rule and the relevant dates are provided.
+- Always state exact dates and show the calculation logic when dates exist.
 
-STRUCTURE BY ECHR RULES (STRICT SECTIONS):
+STRUCTURE BY ECHR PRACTICE (DRAFT STRUCTURE):
 - Section I: Parties
-- Section II: Statement of Facts
-- Section III: Statement of Alleged Violations (by ECHR Article)
-- Section IV: Compliance with Admissibility Criteria
+- Section II: Statement of Facts (chronological)
+- Section III: Alleged Violations (by ECHR Article, separate legal tests)
+- Section IV: Admissibility (exhaustion + time-limit + victim status + significant disadvantage)
 - Section V: Object of the Application
 - Section VI: Other International Proceedings
 - Section VII: List of Documents
 
-ECHR ARTICLES commonly invoked (examples):
-- Article 6, Article 5, Article 3, Article 8, Article 13, Article 1 Protocol 1
+CITATION RULES:
+- ECHR case names may remain in original form.
+- Cite ECHR case-law ONLY if KB (or your authoritative ECHR dataset integrated in KB) confirms case name + year + application number.
+- If not confirmed \u2192 do not cite; mark "KB GAP NOTICE".
 
-CITATION RULE:
-- Cite ECHR case-law ONLY if KB confirms: Case Name v. Country (year), application no. XXXXX/XX
-- If KB cannot confirm enough cases: issue "KB GAP NOTICE".
+RAG HOOKS (OCR/METADATA \u2192 normalized fields):
+- Extract: final domestic decision (court + type + number + date); service/receipt date; domestic proceedings timeline; applicant/victim identity; alleged violations; evidence list.
+- Normalize dates DD.MM.YYYY; missing \u2192 "_____" + confidence.
+
+KB VALIDATION (NO HALLUCINATIONS):
+- Verify any ECHR article naming and any cited cases via KB/dataset.
+- Verify RA domestic law references via KB when used to explain exhaustion.
+
+FAIL-SAFE:
+- If admissibility-critical dates are missing \u2192 BLOCKING.
+- If exhaustion steps are incomplete \u2192 list missing instances/documents (no invention).
 `,
 
-  // =========================================================================
-  // ANTI-CORRUPTION COURT
-  // =========================================================================
+  // \u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550
+  // ANTI-CORRUPTION COURT (RA)
+  // \u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550
   anticorruption: `
-ANTI-CORRUPTION COURT COMPLAINT INSTRUCTIONS:
-You are drafting a complaint for the ANTI-CORRUPTION COURT (\u0540\u0561\u056F\u0561\u056F\u0578\u057C\u0578\u0582\u057A\u0581\u056B\u0578\u0576 \u0564\u0561\u057F\u0561\u0580\u0561\u0576).
+ANTI-CORRUPTION COURT COMPLAINT INSTRUCTIONS (RA):
+You are drafting a complaint related to Anti-Corruption Court jurisdiction (\u0540\u0561\u056F\u0561\u056F\u0578\u057C\u0578\u0582\u057A\u0581\u056B\u0578\u0576 \u0564\u0561\u057F\u0561\u0580\u0561\u0576) in the Republic of Armenia.
 
-${COMMON_RAG_HOOKS_BLOCK}
+JURISDICTION (KB-CONFIRMED MAPPING ONLY):
+- Describe jurisdiction categories ONLY if confirmed in KB (do not hardcode chapter numbers or article lists without KB confirmation).
 
-JURISDICTION GATE:
-- Confirm the case falls within Anti-Corruption Court jurisdiction based on:
-  (a) offense qualification / chapter / corruption category,
-  (b) subject (official status),
-  (c) statutory allocation rules.
-- If qualification/jurisdiction basis is missing: list under REQUIRED INPUTS.
+FOCUS AREAS (COMMON):
+1) Evidence handling (financial documents, recordings, seizure, analysis)
+2) Procedural guarantees (defense rights, disclosure, equality of arms)
+3) Witness protection/anonymity issues (if applicable)
+4) Asset recovery / confiscation measures (if applicable)
+5) International cooperation instruments (only if KB confirms applicability)
 
-PATH SELECTION (MANDATORY):
-You MUST determine which pathway applies (based on user/case context):
-A) APPELLATE complaint (\u054E\u0565\u0580\u0561\u0584\u0576\u0576\u056B\u0579 \u0562\u0578\u0572\u0578\u0584) against Anti-Corruption Court first instance decisions
-B) CASSATION complaint (\u054E\u0573\u057C\u0561\u0562\u0565\u056F \u0562\u0578\u0572\u0578\u0584) to Cassation Court of RA
-If unclear: stop and list REQUIRED INPUTS.
+APPEAL vs CASSATION:
+- If courtType implies appeal-level: factual + legal issues allowed.
+- If cassation-level: errors of law only (see cassation constraints).
+(Enforce via orchestrator/validators based on selected path.)
 
-APPELLATE FOCUS:
-- Procedural violations, evidence admissibility, fact assessment (if allowed)
-- Cite KB-confirmed procedural code provisions
+LEGAL REFERENCES (KB-VALIDATED ONLY):
+- Cite relevant criminal/procedural norms ONLY if KB confirms exact references.
 
-CASSATION FOCUS:
-- ONLY errors of law, NO factual reassessment
-- Cite KB-confirmed cassation procedural provisions
-- Cite KB-confirmed Cassation precedents relevant to corruption / asset recovery (if present)
+RAG HOOKS (OCR/METADATA \u2192 normalized fields):
+- Extract: \u0563\u0578\u0580\u056E\u056B \u0570\u0561\u0574\u0561\u0580; \u0564\u0561\u057F\u0561\u0580\u0561\u0576; \u0564\u0561\u057F\u0561\u057E\u0578\u0580; \u0574\u0565\u0572\u0561\u0564\u0580\u0561\u0576\u0584\u056B/\u0563\u0578\u0580\u056E\u056B \u0562\u0576\u0578\u0582\u0575\u0569 (\u056F\u0578\u057C\u0578\u0582\u057A\u0581\u056B\u0578\u0576); \u0586\u056B\u0576\u0561\u0576\u057D\u0561\u056F\u0561\u0576 \u0561\u057A\u0561\u0581\u0578\u0582\u0575\u0581\u0576\u0565\u0580\u056B \u057F\u0565\u057D\u0561\u056F\u0576\u0565\u0580; \u057E\u056B\u0573\u0561\u0580\u056F\u057E\u0578\u0572 \u0561\u056F\u057F; \u0561\u056F\u057F\u056B \u0585\u0580/\u0561\u0574\u056B\u057D/\u057F\u0561\u0580\u056B; \u057D\u057F\u0561\u0581\u0574\u0561\u0576 \u0585\u0580.
+- Normalize dates DD.MM.YYYY; missing \u2192 "_____" + confidence.
 
-SPECIAL CONSIDERATIONS (ISSUE SPOTTING):
-1) Financial evidence: bank docs, asset trails, forensic accounting
-2) Recordings: legality, authenticity, chain of custody
-3) Witness protection/anonymity: fair trial implications
-4) Limitation periods: KB-confirmed rules only
-5) Confiscation/asset recovery: domestic + international standards (KB-confirmed instruments only)
-6) International cooperation frameworks (UNCAC/GRECO): cite only if present in KB
+KB VALIDATION (NO HALLUCINATIONS):
+- Verify all law/article and case-law citations via KB.
+- If KB cannot confirm, emit "KB GAP NOTICE" and avoid numeric citations.
 
-STRUCTURE:
-heading with correct court designation, parties, challenged decision, factual summary, legal grounds, violations, requests, attachments.
+FAIL-SAFE:
+- If the case does not appear to fall within anti-corruption jurisdiction and KB cannot confirm jurisdiction basis \u2192 flag as "Jurisdiction Uncertain" and request clarification (do not assume).
 `,
 
-  // =========================================================================
-  // OMBUDSMAN - Human Rights Defender
-  // =========================================================================
+  // \u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550
+  // OMBUDSMAN - Human Rights Defender (RA)
+  // \u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550
   ombudsman: `
-HUMAN RIGHTS DEFENDER (OMBUDSMAN) COMPLAINT INSTRUCTIONS:
-You are drafting a complaint to the HUMAN RIGHTS DEFENDER OF THE REPUBLIC OF ARMENIA (\u0540\u0540 \u0544\u0561\u0580\u0564\u0578\u0582 \u056B\u0580\u0561\u057E\u0578\u0582\u0576\u0584\u0576\u0565\u0580\u056B \u057A\u0561\u0577\u057F\u057A\u0561\u0576).
+HUMAN RIGHTS DEFENDER (OMBUDSMAN) COMPLAINT INSTRUCTIONS (RA):
+You are drafting a complaint to the Human Rights Defender of the Republic of Armenia (\u0544\u0561\u0580\u0564\u0578\u0582 \u056B\u0580\u0561\u057E\u0578\u0582\u0576\u0584\u0576\u0565\u0580\u056B \u057A\u0561\u0577\u057F\u057A\u0561\u0576).
 
-${COMMON_RAG_HOOKS_BLOCK}
+ADMISSIBILITY (PRACTICAL CHECKS):
+- The complaint must concern actions/inaction of a state/local authority or official.
+- If the matter is currently pending before a court, note it and ensure the complaint focuses on systemic/administrative issues (avoid conflicting requests).
+- Time-limit: do not hardcode "1 year" unless KB confirms; instead request the violation/discovery date and validate against KB rules/config.
 
-LEGAL BASIS (KB-CONDITIONAL):
-- RA Constitution (relevant rights + Ombudsman framework provisions) \u2014 KB-confirmed
-- Law on Human Rights Defender (procedure/powers) \u2014 KB-confirmed
+MANDATORY STRUCTURE:
+1) Recipient (full official designation + address if confirmed by KB/config)
+2) Applicant details (name, address, contacts, representative basis)
+3) Respondent authority/official
+4) Factual background (chronological)
+5) Violated rights (Constitution + international instruments) \u2014 KB-validated citations only
+6) Previous remedies attempted + responses
+7) Requests (investigation, recommendations, monitoring, systemic measures)
+8) Attachments
 
-JURISDICTION GATE:
-- The complaint must concern action/inaction by a state/local authority or official that allegedly violates rights.
-- If the matter is pending in court, explain admissibility constraints and whether systemic dimension justifies review.
+CITATION REQUIREMENTS (KB-VALIDATED ONLY):
+- Constitution provisions, Ombudsman law provisions, and international treaties must be cited only if KB confirms exact references.
+- Do not cite annual reports/recommendations unless they exist in KB.
 
-TIME LIMIT GATE:
-- Submitted within one year of the violation or discovery (as per your instruction).
-- Compute using extracted dates; if missing, use "_____".
+RAG HOOKS (OCR/METADATA \u2192 normalized fields):
+- Extract: violation date; discovery date; authority/official; key events; responses from authorities; any court pendency indicator; evidence list.
+- Normalize dates DD.MM.YYYY; missing \u2192 "_____" + confidence.
 
-MANDATORY STRUCTURE (KEEP AS PROVIDED; DO NOT ALTER RECIPIENT ADDRESS):
-1) \u054D\u057F\u0561\u0581\u0578\u0572 / Recipient:
-   \u0540\u0540 \u0544\u0561\u0580\u0564\u0578\u0582 \u056B\u0580\u0561\u057E\u0578\u0582\u0576\u0584\u0576\u0565\u0580\u056B \u057A\u0561\u0577\u057F\u057A\u0561\u0576
-   \u0535\u0580\u0587\u0561\u0576, \u054A\u0578\u0582\u0577\u056F\u056B\u0576\u056B 50\u0561, 0010
+KB VALIDATION (NO HALLUCINATIONS):
+- Verify all citations via KB; otherwise "KB GAP NOTICE".
 
-2) Applicant details:
-   - Full name, address, contact
-   - Relationship to victim (if representative)
-
-3) Respondent authority:
-   - Name of body/official, position, department
-
-4) Factual background:
-   - Chronology, specific acts/inaction, dates
-
-5) Violated rights:
-   - Constitutional rights (specific articles; KB-confirmed)
-   - International norms (ECHR/ICCPR/CAT/CEDAW/CRC) only if KB confirms ratification/usage
-   - Domestic laws violated (KB-confirmed)
-
-6) Previous remedies:
-   - Steps taken, responses received, why inadequate
-
-7) Requests:
-   - Investigation, recommendations, monitoring, systemic proposals
-
-8) Attachments:
-   - Copies of documents, correspondence, evidence
-
-CITATION REQUIREMENTS (KB-CONDITIONAL):
-- Constitution articles (KB-confirmed)
-- Law on Human Rights Defender (KB-confirmed)
-- International conventions ratified by Armenia (KB-confirmed)
-- UN treaty bodies / Special Rapporteurs / Ombudsman reports: cite only if present in KB; otherwise flag "KB validation not confirmed"
-
-TONE:
-Formal, clear, rights-focused, suitable for submission to NHR institution.
+FAIL-SAFE:
+- If respondent authority is not identified \u2192 return missing-fields list (no invention).
 `
 };
