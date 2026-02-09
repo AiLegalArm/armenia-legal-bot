@@ -92,6 +92,22 @@ serve(async (req) => {
   }
 
   try {
+    // === AUTH GUARD ===
+    const authHeader = req.headers.get("Authorization") ?? "";
+    const sb = createClient(
+      Deno.env.get("SUPABASE_URL")!,
+      Deno.env.get("SUPABASE_ANON_KEY")!,
+      { global: { headers: { Authorization: authHeader } } }
+    );
+    const { data: { user }, error: authError } = await sb.auth.getUser();
+    if (authError || !user) {
+      return new Response(JSON.stringify({ error: "Unauthorized" }), {
+        status: 401,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+    // === END AUTH GUARD ===
+
     const { kbIds, batchSize = 5, delayMs = 2000 } = await req.json() as FetchRequest;
 
     if (!kbIds || !Array.isArray(kbIds) || kbIds.length === 0) {
