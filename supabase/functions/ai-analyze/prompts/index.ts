@@ -12,10 +12,14 @@ import { QUALIFICATION_PROMPT } from './qualification.ts';
 import { PROCEDURAL_PROMPT } from './procedural.ts';
 import { SUBSTANTIVE_PROMPT } from './substantive.ts';
 import { RIGHTS_PROMPT } from './rights.ts';
+import { APPEAL_PROMPT } from './appeal.ts';
 
 // Re-export types
 export type { AnalysisType };
 export { ANALYSIS_TYPES };
+
+// Re-export appeal prompt for direct use
+export { APPEAL_PROMPT };
 
 // Prompt registry mapping analysis types to their specific prompts
 export const PROMPT_REGISTRY = {
@@ -53,6 +57,13 @@ export function getFullPrompt(analysisType: AnalysisType): string {
     throw new Error(`PROMPT_REGISTRY missing key: ${String(analysisType)}`);
   }
   return `${BASE_SYSTEM_PROMPT}\n\n---\n\n${specificPrompt}`;
+}
+
+/**
+ * Get full appeal prompt with base system prompt
+ */
+export function getAppealPrompt(): string {
+  return `${BASE_SYSTEM_PROMPT}\n\n---\n\n${APPEAL_PROMPT}`;
 }
 
 /**
