@@ -82,7 +82,7 @@ serve(async (req) => {
       );
     }
 
-    const searchTerm = query.trim().toLowerCase();
+    const searchTerm = sanitizeForPostgrest(query.trim().toLowerCase());
 
     // Build the query
     let dbQuery = supabase
@@ -109,7 +109,7 @@ serve(async (req) => {
       dbQuery = dbQuery.eq("practice_category", category);
     }
 
-    // Search using ilike across multiple fields
+    // Search using ilike across multiple fields (searchTerm is sanitized)
     dbQuery = dbQuery.or(
       `title.ilike.%${searchTerm}%,` +
       `legal_reasoning_summary.ilike.%${searchTerm}%,` +
@@ -221,4 +221,18 @@ function findRelevantChunks(
 
 function escapeRegex(str: string): string {
   return str.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+/**
+ * Sanitize user input for safe use in PostgREST .or()/.ilike() filters.
+ * Strips characters that act as PostgREST operators/delimiters and
+ * escapes SQL LIKE wildcards (% and _).
+ */
+function sanitizeForPostgrest(input: string): string {
+  return input
+    .replace(/[%_]/g, "")          // remove SQL LIKE wildcards
+    .replace(/[(),.*\\]/g, "")     // remove PostgREST metacharacters
+    .replace(/\s+/g, " ")         // normalize whitespace
+    .trim()
+    .substring(0, 200);           // hard length cap
 }
