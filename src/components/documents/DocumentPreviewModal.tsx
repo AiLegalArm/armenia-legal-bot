@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
+import { useNavigate } from "react-router-dom";
 import {
   Dialog,
   DialogContent,
@@ -12,7 +13,7 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { Textarea } from "@/components/ui/textarea";
 import { 
   Download, FileText, Edit, RotateCcw, 
-  Save, X, Check, Copy, Loader2 
+  Save, X, Check, Copy, Loader2, FolderOpen 
 } from "lucide-react";
 import { toast } from "sonner";
 import { exportDocumentToPDF } from "@/lib/pdfExportDocument";
@@ -28,7 +29,7 @@ export interface DocumentPreviewModalProps {
   title: string;
   onEdit?: () => void;
   onRegenerate?: () => void;
-  onSave?: () => void;
+  onSave?: () => Promise<boolean> | void;
   isGenerating?: boolean;
 }
 
@@ -47,11 +48,14 @@ export function DocumentPreviewModal({
   isGenerating = false
 }: DocumentPreviewModalProps) {
   const { i18n } = useTranslation();
+  const navigate = useNavigate();
   const lang = i18n.language;
   const [isEditing, setIsEditing] = useState(false);
   const [editedContent, setEditedContent] = useState(content);
   const [copied, setCopied] = useState(false);
   const [isExporting, setIsExporting] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
+  const [isSaved, setIsSaved] = useState(false);
 
   const labels = {
     title: lang === "hy" ? "\u0553\u0561\u057d\u057f\u0561\u0569\u0572\u0569\u056b \u0574\u0561\u0575\u0580\u0561\u0564\u056b\u057f\u0578\u0582\u0574" : lang === "ru" ? "\u041f\u0440\u0435\u0434\u043f\u0440\u043e\u0441\u043c\u043e\u0442\u0440 \u0434\u043e\u043a\u0443\u043c\u0435\u043d\u0442\u0430" : "Document Preview",
@@ -66,6 +70,9 @@ export function DocumentPreviewModal({
     close: lang === "hy" ? "\u0553\u0561\u056f\u0565\u056c" : lang === "ru" ? "\u0417\u0430\u043a\u0440\u044b\u0442\u044c" : "Close",
     saveDocument: lang === "hy" ? "\u054a\u0561\u0570\u057a\u0561\u0576\u0565\u056c \u0583\u0561\u057d\u057f\u0561\u0569\u0578\u0582\u0572\u0569\u0568" : lang === "ru" ? "\u0421\u043e\u0445\u0440\u0430\u043d\u0438\u0442\u044c \u0434\u043e\u043a\u0443\u043c\u0435\u043d\u0442" : "Save document",
     exporting: lang === "hy" ? "\u0531\u0580\u057f\u0561\u0570\u0561\u0576\u0578\u0582\u0574..." : lang === "ru" ? "\u042d\u043a\u0441\u043f\u043e\u0440\u0442..." : "Exporting...",
+    saveToMyDocs: lang === "hy" ? "\u054a\u0561\u0570\u057a\u0561\u0576\u0565\u056c \u056b\u0574 \u0583\u0561\u057d\u057f\u0561\u0569\u0572\u0569\u0565\u0580\u0578\u0582\u0574" : lang === "ru" ? "\u0421\u043e\u0445\u0440\u0430\u043d\u0438\u0442\u044c \u0432 \u043c\u043e\u0438 \u0434\u043e\u043a\u0443\u043c\u0435\u043d\u0442\u044b" : "Save to My Documents",
+    saved: lang === "hy" ? "\u054a\u0561\u0570\u057a\u0561\u0576\u057e\u0565\u0581" : lang === "ru" ? "\u0421\u043e\u0445\u0440\u0430\u043d\u0435\u043d\u043e" : "Saved",
+    goToMyDocs: lang === "hy" ? "\u0531\u0576\u0581\u0576\u0565\u056c \u056b\u0574 \u0583\u0561\u057d\u057f\u0561\u0569\u0572\u0569\u0565\u0580" : lang === "ru" ? "\u041f\u0435\u0440\u0435\u0439\u0442\u0438 \u0432 \u043c\u043e\u0438 \u0434\u043e\u043a\u0443\u043c\u0435\u043d\u0442\u044b" : "Go to My Documents",
   };
 
   // Update edited content when content changes
@@ -114,9 +121,22 @@ export function DocumentPreviewModal({
     toast.success(lang === "hy" ? "\u0553\u0561\u057d\u057f\u0561\u0569\u0578\u0582\u0572\u0569\u0568 \u0562\u0565\u057c\u0576\u057e\u0565\u0581" : lang === "ru" ? "\u0414\u043e\u043a\u0443\u043c\u0435\u043d\u0442 \u0441\u043a\u0430\u0447\u0430\u043d" : "Document downloaded");
   };
 
-  const handleSave = () => {
-    onSave?.();
-    setIsEditing(false);
+  const handleSaveToMyDocs = async () => {
+    if (!onSave) return;
+    setIsSaving(true);
+    try {
+      const result = await onSave();
+      if (result) {
+        setIsSaved(true);
+      }
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const handleGoToMyDocs = () => {
+    onOpenChange(false);
+    navigate("/my-documents");
   };
 
   const handleCancelEdit = () => {
@@ -158,7 +178,7 @@ export function DocumentPreviewModal({
 
         {/* Footer Actions */}
         <DialogFooter className="flex flex-col sm:flex-row gap-2 sm:gap-0">
-          <div className="flex gap-2 w-full sm:w-auto">
+          <div className="flex flex-wrap gap-2 w-full sm:w-auto">
             {/* Left side actions */}
             {isEditing ? (
               <>
@@ -166,7 +186,7 @@ export function DocumentPreviewModal({
                   <X className="h-4 w-4 mr-2" />
                   {labels.cancel}
                 </Button>
-                <Button onClick={handleSave}>
+                <Button onClick={() => setIsEditing(false)}>
                   <Check className="h-4 w-4 mr-2" />
                   {labels.save}
                 </Button>
@@ -189,8 +209,29 @@ export function DocumentPreviewModal({
             )}
           </div>
 
-          <div className="flex gap-2 w-full sm:w-auto sm:ml-auto">
-            {/* Right side actions */}
+          <div className="flex flex-wrap gap-2 w-full sm:w-auto sm:ml-auto">
+            {/* Save to My Documents button */}
+            {isSaved ? (
+              <Button onClick={handleGoToMyDocs} variant="default">
+                <FolderOpen className="h-4 w-4 mr-2" />
+                {labels.goToMyDocs}
+              </Button>
+            ) : (
+              <Button
+                onClick={handleSaveToMyDocs}
+                disabled={isSaving || !onSave}
+                variant="default"
+              >
+                {isSaving ? (
+                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                ) : (
+                  <Save className="h-4 w-4 mr-2" />
+                )}
+                {labels.saveToMyDocs}
+              </Button>
+            )}
+            
+            {/* Other actions */}
             <Button
               variant="outline"
               onClick={onRegenerate}

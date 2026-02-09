@@ -75,7 +75,7 @@ const MyDocuments = () => {
   const { t, i18n } = useTranslation(['common', 'cases']);
   const navigate = useNavigate();
   const { toast } = useToast();
-  const { user, signOut } = useAuth();
+  const { user, signOut, loading: authLoading } = useAuth();
   
   const [documents, setDocuments] = useState<GeneratedDocument[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -89,8 +89,12 @@ const MyDocuments = () => {
   const [isExporting, setIsExporting] = useState(false);
 
   useEffect(() => {
-    fetchDocuments();
-  }, []);
+    if (!authLoading && user) {
+      fetchDocuments();
+    } else if (!authLoading && !user) {
+      setIsLoading(false);
+    }
+  }, [user, authLoading]);
 
   const fetchDocuments = async () => {
     if (!user) return;
