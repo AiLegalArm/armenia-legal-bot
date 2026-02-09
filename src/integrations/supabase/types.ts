@@ -603,6 +603,7 @@ export type Database = {
       }
       cases: {
         Row: {
+          appeal_party_role: string | null
           case_number: string
           case_type: Database["public"]["Enums"]["case_type"] | null
           client_id: string | null
@@ -625,6 +626,7 @@ export type Database = {
           updated_at: string
         }
         Insert: {
+          appeal_party_role?: string | null
           case_number: string
           case_type?: Database["public"]["Enums"]["case_type"] | null
           client_id?: string | null
@@ -647,6 +649,7 @@ export type Database = {
           updated_at?: string
         }
         Update: {
+          appeal_party_role?: string | null
           case_number?: string
           case_type?: Database["public"]["Enums"]["case_type"] | null
           client_id?: string | null

@@ -1,4 +1,8 @@
 {
+  "appeal_party_role": "Процессуальная роль по жалобе",
+  "select_appeal_party_role": "Выберите роль",
+  "appeal_role_appellant": "Апеллянт / Заявитель жалобы",
+  "appeal_role_respondent": "Лицо, возражающее против жалобы",
   "process_ocr_extract": "OCR + Авто-извлечение",
   "cases": "Дела",
   "case": "Дело",

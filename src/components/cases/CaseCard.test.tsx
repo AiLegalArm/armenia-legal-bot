@@ -36,11 +36,12 @@ describe('CaseCard', () => {
     notes: null,
     case_type: 'civil' as const,
     current_stage: 'preliminary',
-    court: null, // Keep for DB compatibility, but not used in UI
+    court: null,
     deleted_at: null,
     facts: null,
     legal_question: null,
     party_role: null,
+    appeal_party_role: null,
   };
 
   const mockProps = {

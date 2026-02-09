@@ -104,6 +104,7 @@ export function CaseForm({
     party_role: z.enum(['claimant', 'defendant'], {
       required_error: t('party_role_required'),
     }),
+    appeal_party_role: z.enum(['appellant', 'respondent']).optional(),
     current_stage: z.string().min(1, t('stage_required')),
     status: z.enum(['open', 'in_progress', 'pending', 'closed', 'archived']),
     priority: z.enum(['low', 'medium', 'high', 'urgent']),
@@ -122,6 +123,7 @@ export function CaseForm({
       description: '',
       case_type: 'criminal',
       party_role: undefined,
+      appeal_party_role: undefined,
       current_stage: 'preliminary',
       status: 'open',
       priority: 'medium',
@@ -151,6 +153,7 @@ export function CaseForm({
         description: initialData.description || '',
         case_type: caseType,
         party_role: (initialData.party_role as 'claimant' | 'defendant') || undefined,
+        appeal_party_role: (initialData.appeal_party_role as 'appellant' | 'respondent') || undefined,
         current_stage: currentStage,
         status: initialData.status,
         priority: initialData.priority,
@@ -169,6 +172,7 @@ export function CaseForm({
         description: '',
         case_type: 'criminal',
         party_role: undefined,
+        appeal_party_role: undefined,
         current_stage: 'preliminary',
         status: 'open',
         priority: 'medium',
@@ -185,6 +189,7 @@ export function CaseForm({
       title: values.title,
       case_type: values.case_type,
       party_role: values.party_role,
+      appeal_party_role: values.appeal_party_role || null,
       current_stage: values.current_stage,
       court: values.court_name || null,
       status: values.status,
@@ -305,6 +310,28 @@ export function CaseForm({
                             {t(stage.label)}
                           </SelectItem>
                         ))}
+                      </SelectContent>
+                    </Select>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+
+              <FormField
+                control={form.control}
+                name="appeal_party_role"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>{t('appeal_party_role')}</FormLabel>
+                    <Select onValueChange={field.onChange} value={field.value}>
+                      <FormControl>
+                        <SelectTrigger>
+                          <SelectValue placeholder={t('select_appeal_party_role')} />
+                        </SelectTrigger>
+                      </FormControl>
+                      <SelectContent>
+                        <SelectItem value="appellant">{t('appeal_role_appellant')}</SelectItem>
+                        <SelectItem value="respondent">{t('appeal_role_respondent')}</SelectItem>
                       </SelectContent>
                     </Select>
                     <FormMessage />
