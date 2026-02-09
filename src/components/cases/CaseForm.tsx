@@ -51,6 +51,46 @@ const CASE_STAGES = [
   { value: 'cassation', label: 'stage_4' },
 ] as const;
 
+// =============================================================================
+// PARTY ROLE DEFINITIONS BY PROCEDURE TYPE
+// =============================================================================
+
+// Civil procedure roles
+const CIVIL_PARTY_ROLES = [
+  { value: 'claimant', labelKey: 'party_role_claimant' },
+  { value: 'defendant', labelKey: 'party_role_defendant' },
+  { value: 'third_party', labelKey: 'party_role_third_party' },
+] as const;
+
+// Administrative procedure roles
+const ADMINISTRATIVE_PARTY_ROLES = [
+  { value: 'applicant', labelKey: 'party_role_applicant' },
+  { value: 'administrative_body', labelKey: 'party_role_administrative_body' },
+  { value: 'interested_party', labelKey: 'party_role_interested_party' },
+] as const;
+
+// Criminal procedure roles
+const CRIMINAL_PARTY_ROLES = [
+  { value: 'defendant', labelKey: 'party_role_criminal_defendant' },
+  { value: 'defense', labelKey: 'party_role_defense' },
+  { value: 'prosecutor', labelKey: 'party_role_prosecutor' },
+  { value: 'victim', labelKey: 'party_role_victim' },
+] as const;
+
+// Helper to get party roles based on case type
+function getPartyRolesForCaseType(caseType: string) {
+  switch (caseType) {
+    case 'civil':
+      return CIVIL_PARTY_ROLES;
+    case 'administrative':
+      return ADMINISTRATIVE_PARTY_ROLES;
+    case 'criminal':
+      return CRIMINAL_PARTY_ROLES;
+    default:
+      return CIVIL_PARTY_ROLES;
+  }
+}
+
 // Court list as per requirements
 const COURTS = [
   { value: 'Սահմանադրական դատարան', label: 'court_constitutional' },
@@ -101,9 +141,7 @@ export function CaseForm({
     case_type: z.enum(['criminal', 'civil', 'administrative'], {
       required_error: t('case_type_required'),
     }),
-    party_role: z.enum(['claimant', 'defendant'], {
-      required_error: t('party_role_required'),
-    }),
+    party_role: z.string().min(1, t('party_role_required')),
     appeal_party_role: z.enum(['appellant', 'respondent']).optional(),
     current_stage: z.string().min(1, t('stage_required')),
     status: z.enum(['open', 'in_progress', 'pending', 'closed', 'archived']),
@@ -132,6 +170,9 @@ export function CaseForm({
       notes: '',
     },
   });
+
+  // Watch case_type to update party_role options dynamically
+  const watchedCaseType = form.watch('case_type');
 
   useEffect(() => {
     if (initialData) {
@@ -271,23 +312,29 @@ export function CaseForm({
               <FormField
                 control={form.control}
                 name="party_role"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>{t('party_role')}</FormLabel>
-                    <Select onValueChange={field.onChange} value={field.value}>
-                      <FormControl>
-                        <SelectTrigger>
-                          <SelectValue placeholder={t('select_party_role')} />
-                        </SelectTrigger>
-                      </FormControl>
-                      <SelectContent>
-                        <SelectItem value="claimant">{t('party_role_claimant')}</SelectItem>
-                        <SelectItem value="defendant">{t('party_role_defendant')}</SelectItem>
-                      </SelectContent>
-                    </Select>
-                    <FormMessage />
-                  </FormItem>
-                )}
+                render={({ field }) => {
+                  const partyRoles = getPartyRolesForCaseType(watchedCaseType);
+                  return (
+                    <FormItem>
+                      <FormLabel>{t('party_role')} *</FormLabel>
+                      <Select onValueChange={field.onChange} value={field.value}>
+                        <FormControl>
+                          <SelectTrigger>
+                            <SelectValue placeholder={t('select_party_role')} />
+                          </SelectTrigger>
+                        </FormControl>
+                        <SelectContent>
+                          {partyRoles.map((role) => (
+                            <SelectItem key={role.value} value={role.value}>
+                              {t(role.labelKey)}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      <FormMessage />
+                    </FormItem>
+                  );
+                }}
               />
             </div>
 
