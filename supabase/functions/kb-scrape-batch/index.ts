@@ -20,7 +20,7 @@ Deno.serve(async (req) => {
   }
 
   try {
-    // === AUTH GUARD ===
+    // === AUTH GUARD (admin-only) ===
     const authHeader = req.headers.get("Authorization") ?? "";
     const sb = createClient(
       Deno.env.get('SUPABASE_URL')!,
@@ -31,6 +31,13 @@ Deno.serve(async (req) => {
     if (authError || !user) {
       return new Response(JSON.stringify({ error: "Unauthorized" }), {
         status: 401,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
+    const { data: isAdmin } = await sb.rpc("has_role", { _user_id: user.id, _role: "admin" });
+    if (!isAdmin) {
+      return new Response(JSON.stringify({ error: "Forbidden: admin only" }), {
+        status: 403,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       });
     }
