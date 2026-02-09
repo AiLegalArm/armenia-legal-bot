@@ -124,8 +124,7 @@ serve(async (req) => {
     const authClient = createClient(_authUrl, _authKey, {
       global: { headers: { Authorization: authHeader } },
     });
-    const token = authHeader.replace("Bearer ", "");
-    const { data: { user }, error: authError } = await authClient.auth.getUser(token);
+    const { data: { user }, error: authError } = await authClient.auth.getUser();
     if (authError || !user) {
       return new Response(
         JSON.stringify({ error: "Unauthorized" }),
@@ -763,16 +762,7 @@ Please provide your professional legal analysis from your designated role perspe
 
     // Save to database if caseId provided
     if (caseId) {
-      const authHeader = req.headers.get("authorization");
-      let userId = null;
-
-      if (authHeader) {
-        const token = authHeader.replace("Bearer ", "");
-        const {
-          data: { user },
-        } = await supabase.auth.getUser(token);
-        userId = user?.id || null;
-      }
+      const userId = user.id;
 
       // Determine the role/analysis_type to store
       let roleToStore: string;
