@@ -203,6 +203,15 @@ serve(async (req) => {
       );
     }
 
+    // FIX A: Cap message length to prevent abuse
+    const MAX_MESSAGE_LENGTH = 5000;
+    if (message.length > MAX_MESSAGE_LENGTH) {
+      return new Response(
+        JSON.stringify({ error: "Message too long" }),
+        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
     const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
     if (!LOVABLE_API_KEY) {
       throw new Error("LOVABLE_API_KEY is not configured");
@@ -212,14 +221,8 @@ serve(async (req) => {
     const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
-    // Get user from auth header
-    let userId = null;
-    const authHeader = req.headers.get("authorization");
-    if (authHeader) {
-      const token = authHeader.replace("Bearer ", "");
-      const { data: { user } } = await supabase.auth.getUser(token);
-      userId = user?.id || null;
-    }
+    // FIX C: Reuse user.id from auth guard above (removed duplicate authHeader/getUser)
+    const userId = user.id;
 
     console.log(`Legal chat request from user: ${userId}, message length: ${message.length}`);
 
@@ -396,11 +399,17 @@ ${fullText}`;
       { role: "system", content: systemPromptWithContext }
     ];
 
-    // Add conversation history if provided
+    // FIX B: Add conversation history with caps to prevent token abuse
+    const MAX_HISTORY_MESSAGES = 30;
+    const MAX_CONTENT_LENGTH = 5000;
     if (conversationHistory && Array.isArray(conversationHistory)) {
-      for (const msg of conversationHistory) {
-        if (msg.role === "user" || msg.role === "assistant") {
-          messages.push({ role: msg.role, content: msg.content });
+      const safeHistory = conversationHistory.slice(-MAX_HISTORY_MESSAGES);
+      for (const msg of safeHistory) {
+        if (
+          (msg.role === "user" || msg.role === "assistant") &&
+          typeof msg.content === "string"
+        ) {
+          messages.push({ role: msg.role, content: msg.content.substring(0, MAX_CONTENT_LENGTH) });
         }
       }
     }
