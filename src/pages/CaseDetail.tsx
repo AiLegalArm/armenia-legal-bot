@@ -66,7 +66,7 @@ const CaseDetail = () => {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const { t, i18n } = useTranslation(['cases', 'common', 'ai', 'disclaimer', 'reminders']);
-  const { user, signOut, isClient, isAdmin } = useAuth();
+  const { user, signOut, isClient, isAdmin, isLawyer, isAuditor } = useAuth();
   
   const { data: caseData, isLoading } = useCase(id);
   const { updateCase, deleteCase } = useCases();
@@ -173,7 +173,7 @@ const CaseDetail = () => {
     });
   };
 
-  const canEdit = isClient || isAdmin;
+  const canEdit = isClient || isAdmin || isLawyer;
 
   if (isLoading) {
     return (
