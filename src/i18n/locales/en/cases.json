@@ -1,4 +1,8 @@
 {
+  "appeal_party_role": "Procedural Role in Appeal",
+  "select_appeal_party_role": "Select role",
+  "appeal_role_appellant": "Appellant / Complainant",
+  "appeal_role_respondent": "Respondent to Appeal",
   "process_ocr_extract": "OCR + Auto-extract",
   "cases": "Cases",
   "case": "Case",
