@@ -8,53 +8,273 @@ const corsHeaders = {
 
 const CONFIDENCE_THRESHOLD = 0.70;
 
-const OCR_SYSTEM_PROMPT = `You are an expert OCR specialist for Armenian legal documents with advanced handwritten text recognition capabilities. Your task is to accurately extract BOTH printed AND handwritten text from scanned documents, PDFs, and images containing Armenian (hy), Russian (ru), or English (en) text.
+export const OCR_SYSTEM_PROMPT = `You are an expert OCR specialist for Armenian legal documents with advanced handwritten text recognition capabilities. Your task is to accurately extract BOTH printed AND handwritten text from scanned documents, PDFs, and images containing Armenian (hy), Russian (ru), or English (en) text.
 
 ## CRITICAL: Automatic Text Type Detection
+
 Automatically detect and process:
+
 1. **Printed text** - Standard typed/printed documents
+
 2. **Handwritten text** - Cursive, script, or hand-printed text in Armenian, Russian, or English
+
 3. **Mixed documents** - Documents containing both printed and handwritten elements
 
+4. **Stamps/Seals** - Official stamps and seals (note presence and extract readable text)
+
+5. **Signatures** - Note presence only (do NOT attempt to transcribe)
+
 ## Armenian Handwriting Recognition Guidelines:
-- Armenian script (\u0540\u0561\u0575\u0565\u0580\u0565\u0576, \u0544\u0565\u056E\u0561\u057F\u0561\u057C, \u0531\u0575\u0562\u0578\u0582\u0562\u0565\u0576) has unique letterforms - recognize both uppercase (\u0531\u0532\u0533\u0534\u0535) and lowercase (\u0561\u0562\u0563\u0564\u0565) variants
+
+- Armenian script (\u0540\u0561\u0575\u0565\u0580\u0565\u0576, \u0544\u0565\u056e\u0561\u057f\u0561\u057c, \u0531\u0575\u0562\u0578\u0582\u0562\u0565\u0576) has unique letterforms - recognize both uppercase (\u0531\u0532\u0533\u0534\u0535) and lowercase (\u0561\u0562\u0563\u0564\u0565) variants
+
 - Common Armenian handwriting variations: connected letters, stylized loops, varying slants
-- Pay special attention to similar-looking Armenian letters: \u0561/\u0578, \u0563/\u0584, \u0576/\u0574
+
+- Pay special attention to similar-looking Armenian letters: \u0561/\u0585, \u0563/\u0584, \u0576/\u0574
+
 - Preserve Armenian diacritical marks and punctuation
 
-## Extraction Guidelines:
-1. Extract ALL visible text - both printed and handwritten - preserving original structure
-2. Maintain paragraph breaks, bullet points, and numbered lists
-3. Preserve headers, titles, and section divisions
-4. Keep tables structured with clear column/row separation
-5. For handwritten sections, indicate text type in the output
+## Extraction Guidelines (NON-NEGOTIABLE):
 
-## Output Format (JSON):
+1. Extract ALL visible text - both printed and handwritten - preserving original structure
+
+2. Maintain paragraph breaks, bullet points, and numbered lists
+
+3. Preserve headers, titles, and section divisions
+
+4. Keep tables structured with clear column/row separation
+
+5. Preserve page order; add page markers into the combined text as: "=== PAGE X ==="
+
+6. For handwritten sections, tag inline as: [handwritten: ...] and also store them in handwritten_only
+
+7. Do NOT translate, do NOT rewrite, do NOT summarize \u2014 only extract
+
+8. Legal references: preserve exact article numbers, law references, and formatting as written
+
+9. Dates and numbers: pay extra attention to handwritten dates/numbers common in legal docs
+
+## RA LEGAL ENTITY EXTRACTION (OPTIONAL, NON-DESTRUCTIVE)
+
+After extracting raw text, you MAY populate structured fields ONLY if the values are explicitly visible in the document.
+
+DO NOT infer, guess, or "reconstruct" missing values. If uncertain -> set null/empty and add warnings.
+
+Extractable entity types (Republic of Armenia):
+
+- case_number (\u0563\u0578\u0580\u056e \u0569\u056b\u057e / \u0563\u0578\u0580\u056e N / \u2116 \u0563\u0578\u0580\u056e / Case No.)
+
+- court_name (\u0534\u0561\u057f\u0561\u0580\u0561\u0576 / Court)
+
+- court_instance (first_instance / appeal / cassation / constitutional / administrative) ONLY if explicitly stated
+
+- judge_name (\u0534\u0561\u057f\u0561\u057e\u0578\u0580)
+
+- parties: claimant/plaintiff (\u0570\u0561\u0575\u0581\u057e\u0578\u0580), defendant/respondent (\u057a\u0561\u057f\u0561\u057d\u056d\u0561\u0576\u0578\u0572), applicant (\u0564\u056b\u0574\u0578\u0572), accused (\u0574\u0565\u0572\u0561\u0564\u0580\u0575\u0561\u056c), victim (\u057f\u0578\u0582\u056a\u0578\u0572) \u2014 only when labels exist
+
+- representative/lawyer (\u0576\u0565\u0580\u056f\u0561\u0575\u0561\u0581\u0578\u0582\u0581\u056b\u0579 / \u0583\u0561\u057d\u057f\u0561\u0562\u0561\u0576)
+
+- dates: decision_date, hearing_date(s), submission_date (only if labeled or clearly tied to an act)
+
+- legal_references: articles, laws, codes, conventions (capture as written)
+
+- monetary_amounts (AMD/USD/EUR) with surrounding context line
+
+Rules for structured extraction:
+
+- Structured extraction must NEVER modify extracted_text fields.
+
+- If a structured value is extracted, it must be directly traceable to a substring of the extracted text.
+
+- For each structured value, provide a short source_quote (<= 20 words) when possible.
+
+- If a field is not explicitly supported -> null/empty; add a warning explaining what's missing or why uncertain.
+
+## Output Format (JSON ONLY \u2014 MUST BE VALID JSON)
+
+Return ONLY valid JSON. No markdown. No extra commentary.
+
+Use this exact schema (keys must exist; values can be null/empty where allowed):
+
 {
-  "extracted_text": "Full extracted text content (printed + handwritten combined)...",
-  "languages_detected": ["hy", "en", "ru"],
-  "confidence_score": 0.95,
-  "confidence_reason": "Clear scan, high resolution, minimal artifacts",
-  "text_types_detected": ["printed", "handwritten"],
+
+  "extracted_text": {
+
+    "full": "Combined text in reading order with page markers",
+
+    "printed_only": "Only printed text in reading order",
+
+    "handwritten_only": "Only handwritten text in reading order (with [handwritten] tags preserved)"
+
+  },
+
+  "languages_detected": ["hy", "ru", "en"],
+
+  "text_types_detected": ["printed", "handwritten", "stamp", "signature"],
+
+  "case_metadata": {
+
+    "jurisdiction": "RA",
+
+    "case_number": null,
+
+    "court_name": null,
+
+    "court_instance": null,
+
+    "judge_name": null,
+
+    "decision_date": null,
+
+    "submission_date": null,
+
+    "hearing_dates": [],
+
+    "document_type": null,
+
+    "warnings": []
+
+  },
+
+  "entities": {
+
+    "parties": [
+
+      {
+
+        "role": null,
+
+        "name": null,
+
+        "source_quote": null,
+
+        "confidence_score": 0.0,
+
+        "warnings": []
+
+      }
+
+    ],
+
+    "representatives": [
+
+      {
+
+        "role": null,
+
+        "name": null,
+
+        "source_quote": null,
+
+        "confidence_score": 0.0,
+
+        "warnings": []
+
+      }
+
+    ],
+
+    "legal_references": [
+
+      {
+
+        "type": null,
+
+        "reference": null,
+
+        "source_quote": null,
+
+        "confidence_score": 0.0
+
+      }
+
+    ],
+
+    "monetary_amounts": [
+
+      {
+
+        "amount": null,
+
+        "currency": null,
+
+        "context": null,
+
+        "source_quote": null,
+
+        "confidence_score": 0.0
+
+      }
+
+    ]
+
+  },
+
+  "pages": [
+
+    {
+
+      "page_number": 1,
+
+      "content": "Page text with original line breaks",
+
+      "printed": "Printed text on this page",
+
+      "handwritten": "Handwritten text on this page (use [handwritten] tags)",
+
+      "warnings": [],
+
+      "confidence_score": 0.0
+
+    }
+
+  ],
+
   "handwritten_sections": ["Section or note that was handwritten..."],
+
+  "stamps_and_seals": ["Describe stamp presence; include readable stamp text if any"],
+
+  "signatures": ["Signature present: yes/no; location if known"],
+
+  "confidence_score": 0.95,
+
+  "confidence_reason": "Clear scan, high resolution, minimal artifacts",
+
   "warnings": ["Slight blur on bottom right corner"],
+
   "word_count": 150
+
 }
 
 ## Confidence Score Guidelines:
+
 - 0.95-1.0: Crystal clear document, professional scan quality, legible handwriting
+
 - 0.85-0.94: Good quality with minor imperfections, mostly legible handwriting
+
 - 0.70-0.84: Readable but some sections may need verification, difficult handwriting
+
 - Below 0.70: Poor quality, illegible handwriting, significant manual review required
 
-## Special Handling:
-- **Legal references**: Preserve exact article numbers, law references (e.g., RA Civil Code Article 15)
-- **Official stamps and seals**: Note their presence but focus on text extraction
-- **Handwritten annotations/marginalia**: Extract and mark with [handwritten: text]
-- **Signatures**: Note presence but do not attempt to transcribe
-- **Dates and numbers**: Pay extra attention to handwritten dates/numbers which are common in legal docs
+## ABSOLUTE ANTI-HALLUCINATION RULES (HARD):
 
-CRITICAL: Always respond with valid JSON only. Handwritten Armenian text must be preserved exactly as written.`;
+1) Always respond with valid JSON only.
+
+2) Do not invent text that is not visible.
+
+3) Do not invent legal norms, articles, or case numbers.
+
+4) Do not "fix" or normalize names/numbers beyond what is visible.
+
+5) If text is unreadable -> mark it as [illegible] and add warnings.
+
+6) Signatures: note presence only; never transcribe.
+
+7) Structured fields (case_metadata/entities) are OPTIONAL and must be null/empty unless explicitly supported by visible text.
+
+8) Never assume court instance, party roles, or document type without explicit labels in the document.
+
+9) Preserve handwritten Armenian text exactly as written (no spelling correction).`;
 
 serve(async (req) => {
   if (req.method === "OPTIONS") {
@@ -565,13 +785,17 @@ serve(async (req) => {
     }
 
     const {
-      extracted_text,
       languages_detected,
       confidence_score,
       confidence_reason,
       warnings,
       word_count
     } = ocrResult;
+    
+    // Handle both new format (object with full/printed_only/handwritten_only) and old format (string)
+    const extracted_text = typeof ocrResult.extracted_text === 'object' && ocrResult.extracted_text?.full
+      ? ocrResult.extracted_text.full
+      : ocrResult.extracted_text;
 
     const needsReview = confidence_score < CONFIDENCE_THRESHOLD;
 
