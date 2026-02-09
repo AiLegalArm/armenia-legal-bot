@@ -239,8 +239,12 @@ serve(async (req) => {
       console.log(`Searching KB with keywords: ${keywords.join(', ')}`);
       
       if (keywords.length > 0) {
+        // Sanitize each keyword to prevent PostgREST/SQL injection
+        const safeKeywords = keywords.map(sanitizeForPostgrest).filter(k => k.length > 0);
+        
+        if (safeKeywords.length > 0) {
         // Build OR conditions for each keyword searching in title and content
-        const orConditions = keywords
+        const orConditions = safeKeywords
           .map((k) => `title.ilike.%${k}%,content_text.ilike.%${k}%`)
           .join(',');
         
@@ -277,6 +281,7 @@ serve(async (req) => {
           
           console.log(`Found ${keywordResults.length} results, using top ${topResults.length}`);
         }
+        } // end safeKeywords.length > 0
       }
       
       // Fallback: try full-text search if keyword search found nothing
@@ -468,3 +473,15 @@ ${fullText}`;
     );
   }
 });
+
+/**
+ * Sanitize user input for safe use in PostgREST .or()/.ilike() filters.
+ */
+function sanitizeForPostgrest(input: string): string {
+  return input
+    .replace(/[%_]/g, "")
+    .replace(/[(),.*\\]/g, "")
+    .replace(/\s+/g, " ")
+    .trim()
+    .substring(0, 200);
+}
