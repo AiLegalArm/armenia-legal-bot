@@ -178,7 +178,7 @@ serve(async (req) => {
   }
 
   try {
-    // === AUTH GUARD (Audit Fix: Stage 5 — Critical) ===
+    // === AUTH GUARD (Prevent Anonymous Access) ===
     const authHeader = req.headers.get("Authorization");
     if (!authHeader?.startsWith("Bearer ")) {
       return new Response(
@@ -192,8 +192,8 @@ serve(async (req) => {
       global: { headers: { Authorization: authHeader } },
     });
     const token = authHeader.replace("Bearer ", "");
-    const { data: claimsData, error: claimsError } = await authClient.auth.getClaims(token);
-    if (claimsError || !claimsData?.claims) {
+    const { data: { user }, error: authError } = await authClient.auth.getUser(token);
+    if (authError || !user) {
       return new Response(
         JSON.stringify({ error: "Unauthorized" }),
         { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } }
