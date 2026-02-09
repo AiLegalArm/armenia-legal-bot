@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect } from 'react';
+import { useState, useCallback, useEffect, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import type { Database } from '@/integrations/supabase/types';
 import { supabase } from '@/integrations/supabase/client';
@@ -57,9 +57,14 @@ export function CaseAIAnalysisPanel({
   const [savedAnalysisRoles, setSavedAnalysisRoles] = useState<Set<AIRole>>(new Set());
   const [loadingSavedAnalyses, setLoadingSavedAnalyses] = useState(false);
 
+  // If user clicks "Clear" while the initial saved-analyses load is still in-flight,
+  // we must ignore that async result to prevent the content from "reappearing".
+  const ignoreSavedAnalysesLoadRef = useRef(false);
+
   // Load previously saved analyses
   useEffect(() => {
     const loadSavedAnalyses = async () => {
+      ignoreSavedAnalysesLoadRef.current = false;
       setLoadingSavedAnalyses(true);
       try {
         const { data, error } = await supabase
@@ -69,6 +74,8 @@ export function CaseAIAnalysisPanel({
           .order('created_at', { ascending: false });
 
         if (error) throw error;
+
+        if (ignoreSavedAnalysesLoadRef.current) return;
 
         if (data && data.length > 0) {
           const latestByRole = new Map<string, typeof data[0]>();
@@ -109,6 +116,7 @@ export function CaseAIAnalysisPanel({
 
     loadSavedAnalyses();
   }, [caseId, loadResults]);
+
 
   const handleSaveAnalysis = useCallback(async (role: AIRole) => {
     if (!results[role]) return;
@@ -221,7 +229,19 @@ export function CaseAIAnalysisPanel({
               </Button>
               {Object.values(results).some(r => r !== null) && (
                 <>
-                  <Button variant="outline" size="sm" onClick={clearResults} className="h-10 rounded-xl text-mobile-sm sm:text-sm">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      ignoreSavedAnalysesLoadRef.current = true;
+                      clearResults();
+                      setSavedAnalysisRoles(new Set());
+                    }}
+                    className="h-10 rounded-xl text-mobile-sm sm:text-sm"
+                  >
                     {t('common:clear', 'Clear')}
                   </Button>
                   <PdfExportButton onClick={handleExportAllAnalyses} />
