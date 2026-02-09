@@ -252,13 +252,60 @@ serve(async (req) => {
     let caseFilesContext = "";
     const fileContentsForVision: Array<{ name: string; base64: string; mimeType: string }> = [];
 
+    // Load case meta (procedure_type + party_role) so the model cannot "choose a side" on its own.
+    let procedureType: string = "unknown";
+    let partyRole: string | null = null;
+    let partyContextBlock = "";
+
     if (caseId) {
+      const { data: caseMeta, error: caseMetaError } = await supabase
+        .from("cases")
+        .select("case_type, party_role")
+        .eq("id", caseId)
+        .maybeSingle();
+
+      if (caseMetaError) {
+        console.error("Failed to load case meta:", caseMetaError);
+        return new Response(JSON.stringify({ error: "Failed to load case settings for analysis" }), {
+          status: 500,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+
+      const caseType = (caseMeta?.case_type as string | null) ?? null;
+      partyRole = (caseMeta?.party_role as string | null) ?? null;
+
+      procedureType =
+        caseType === "civil"
+          ? "civil_procedure"
+          : caseType === "administrative"
+            ? "administrative_procedure"
+            : caseType === "criminal"
+              ? "criminal_procedure"
+              : "unknown";
+
+      if (!partyRole) {
+        return new Response(
+          JSON.stringify({
+            error:
+              "Procedural role is not set for this case. Please edit the case and select Plaintiff/Defendant/Third party (or the relevant role) before running analysis.",
+          }),
+          {
+            status: 400,
+            headers: { ...corsHeaders, "Content-Type": "application/json" },
+          },
+        );
+      }
+
+      partyContextBlock = `### Process Context (MANDATORY)\nprocedure_type: ${procedureType}\nparty_role: ${partyRole}\ncourt_instance: unknown\n`;
+
       // Get case files
       const { data: caseFiles, error: filesError } = await supabase
         .from("case_files")
         .select("id, original_filename, file_type, storage_path")
         .eq("case_id", caseId)
         .is("deleted_at", null);
+
 
       if (!filesError && caseFiles && caseFiles.length > 0) {
         const fileIds = caseFiles.map((f) => f.id);
@@ -445,6 +492,7 @@ serve(async (req) => {
     if (role === "aggregator") {
       userMessage = `## Case for Comprehensive Legal Analysis (RA Law):
 
+${partyContextBlock}
 ### Case Facts:
 ${caseFacts || "Not provided"}
 
@@ -475,6 +523,7 @@ Please provide a comprehensive synthesis of all perspectives and your final reco
       // Criminal module-specific analysis
       userMessage = `## \u0554\u0580\u0565\u0561\u056F\u0561\u0576 \u0563\u0578\u0580\u056E\u056B \u057E\u0565\u0580\u056C\u0578\u0582\u056E\u0578\u0582\u0569\u0575\u0578\u0582\u0576 (Criminal Case Analysis):
 
+${partyContextBlock}
 ### \u0533\u0578\u0580\u056E\u056B \u0583\u0561\u057D\u057F\u0565\u0580 (Case Facts):
 ${caseFacts || "\u0546\u0577\u057E\u0561\u056E \u0579\u0567"}
 
@@ -489,6 +538,7 @@ Perform focused analysis as specified in the system prompt. Base your analysis O
     } else {
       userMessage = `## Legal Case for Analysis (RA Law):
 
+${partyContextBlock}
 ### Case Facts:
 ${caseFacts || "Not provided"}
 
