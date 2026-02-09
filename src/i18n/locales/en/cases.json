@@ -248,9 +248,17 @@
   "document_deleted": "Document deleted",
   "document_deleted_success": "Document deleted successfully",
   "delete_error": "Delete error",
-  "party_role": "What is your role in this case?",
+  "party_role": "Procedural Role",
   "party_role_required": "Please select your procedural role",
   "select_party_role": "Select role",
   "party_role_claimant": "Claimant / Plaintiff",
-  "party_role_defendant": "Defendant"
+  "party_role_defendant": "Defendant",
+  "party_role_third_party": "Third Party",
+  "party_role_applicant": "Applicant",
+  "party_role_administrative_body": "Administrative Body",
+  "party_role_interested_party": "Interested Party",
+  "party_role_criminal_defendant": "Defendant / Accused",
+  "party_role_defense": "Defense",
+  "party_role_prosecutor": "Prosecution",
+  "party_role_victim": "Victim"
 }

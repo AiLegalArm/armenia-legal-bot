@@ -293,5 +293,13 @@
   "party_role_required": "Выберите вашу процессуальную роль",
   "select_party_role": "Выберите роль",
   "party_role_claimant": "Истец",
-  "party_role_defendant": "Ответчик"
+  "party_role_defendant": "Ответчик",
+  "party_role_third_party": "Третье лицо",
+  "party_role_applicant": "Заявитель",
+  "party_role_administrative_body": "Административный орган",
+  "party_role_interested_party": "Заинтересованное лицо",
+  "party_role_criminal_defendant": "Подсудимый / Обвиняемый",
+  "party_role_defense": "Защита",
+  "party_role_prosecutor": "Обвинение",
+  "party_role_victim": "Потерпевший"
 }
