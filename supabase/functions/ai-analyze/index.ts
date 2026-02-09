@@ -111,7 +111,7 @@ serve(async (req) => {
   }
 
   try {
-    // === AUTH GUARD (Audit Fix: Stage 3/5 — Critical) ===
+    // === AUTH GUARD (Audit Fix: Stage 5 — Critical) ===
     const authHeader = req.headers.get("Authorization");
     if (!authHeader?.startsWith("Bearer ")) {
       return new Response(
@@ -119,14 +119,14 @@ serve(async (req) => {
         { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
-    const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
-    const supabaseAnonKey = Deno.env.get("SUPABASE_ANON_KEY")!;
-    const authClient = createClient(supabaseUrl, supabaseAnonKey, {
+    const _authUrl = Deno.env.get("SUPABASE_URL")!;
+    const _authKey = Deno.env.get("SUPABASE_ANON_KEY")!;
+    const authClient = createClient(_authUrl, _authKey, {
       global: { headers: { Authorization: authHeader } },
     });
     const token = authHeader.replace("Bearer ", "");
-    const { data: claimsData, error: claimsError } = await authClient.auth.getClaims(token);
-    if (claimsError || !claimsData?.claims) {
+    const { data: { user }, error: authError } = await authClient.auth.getUser(token);
+    if (authError || !user) {
       return new Response(
         JSON.stringify({ error: "Unauthorized" }),
         { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } }
