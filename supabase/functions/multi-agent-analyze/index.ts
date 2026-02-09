@@ -652,25 +652,18 @@ serve(async (req) => {
 
   try {
     // === AUTH GUARD (Prevent Anonymous Access) ===
-    const authHeader = req.headers.get("Authorization");
-    if (!authHeader?.startsWith("Bearer ")) {
-      return new Response(
-        JSON.stringify({ error: "Unauthorized" }),
-        { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-      );
-    }
-    const _authUrl = Deno.env.get("SUPABASE_URL")!;
-    const _authKey = Deno.env.get("SUPABASE_ANON_KEY")!;
-    const authClient = createClient(_authUrl, _authKey, {
-      global: { headers: { Authorization: authHeader } },
-    });
-    const token = authHeader.replace("Bearer ", "");
-    const { data: { user }, error: authError } = await authClient.auth.getUser(token);
+    const authHeader = req.headers.get("Authorization") ?? "";
+    const sb = createClient(
+      Deno.env.get("SUPABASE_URL")!,
+      Deno.env.get("SUPABASE_ANON_KEY")!,
+      { global: { headers: { Authorization: authHeader } } }
+    );
+    const { data: { user }, error: authError } = await sb.auth.getUser();
     if (authError || !user) {
-      return new Response(
-        JSON.stringify({ error: "Unauthorized" }),
-        { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-      );
+      return new Response(JSON.stringify({ error: "Unauthorized" }), {
+        status: 401,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
     }
     // === END AUTH GUARD ===
 
