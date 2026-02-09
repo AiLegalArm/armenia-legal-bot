@@ -316,9 +316,9 @@ export function useDocumentGenerator(
     }
   };
 
-  const handleSave = async () => {
+  const handleSave = async (): Promise<boolean> => {
     const contentToSave = editedContent || generatedContent;
-    if (!contentToSave) return;
+    if (!contentToSave) return false;
 
     try {
       const { data: { user } } = await supabase.auth.getUser();
@@ -346,6 +346,8 @@ export function useDocumentGenerator(
         title: t("cases:document_saved"),
         description: t("cases:document_saved_to_drafts"),
       });
+      
+      return true;
     } catch (error: unknown) {
       const errorMessage = error instanceof Error ? error.message : t("cases:save_error");
       console.error("Save error:", error);
@@ -354,6 +356,7 @@ export function useDocumentGenerator(
         description: errorMessage,
         variant: "destructive",
       });
+      return false;
     }
   };
 
