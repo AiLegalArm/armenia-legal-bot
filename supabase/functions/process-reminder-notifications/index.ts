@@ -9,11 +9,11 @@ const corsHeaders = {
 // Language-specific templates
 const templates = {
   hy: {
-    courtHearing: "⚖️ <b>Դdelays դdelays delays delays delays delays</b>\n\n📋 {title}\n📅 {datetime}\n⏰ {timeLeft}\n\n{description}",
-    deadline: "⏰ <b> Delays ժdelays delays</b>\n\n📋 {title}\n📅 {datetime}\n⏰ {timeLeft}\n\n{description}",
-    task: "✅ <b>Առdelays delays</b>\n\n📋 {title}\n📅 {datetime}\n⏰ {timeLeft}\n\n{description}",
-    meeting: "📅 <b>Հdelays delays</b>\n\n📋 {title}\n📅 {datetime}\n⏰ {timeLeft}\n\n{description}",
-    other: "🔔 <b> Delays delays delays</b>\n\n📋 {title}\n📅 {datetime}\n⏰ {timeLeft}\n\n{description}",
+    courtHearing: "\u2696\ufe0f <b>\u0534\u0561\u057f\u0561\u056f\u0561\u0576 \u0576\u056b\u057d\u057f</b>\n\n\ud83d\udccb {title}\n\ud83d\udcc5 {datetime}\n\u23f0 {timeLeft}\n\n{description}",
+    deadline: "\u23f0 <b>\u0544\u0578\u057f\u0565\u0576\u0578\u0582\u0574 \u0567 \u057e\u0565\u0580\u057b\u0576\u0561\u056a\u0561\u0574\u056f\u0565\u057f\u0568</b>\n\n\ud83d\udccb {title}\n\ud83d\udcc5 {datetime}\n\u23f0 {timeLeft}\n\n{description}",
+    task: "\u2705 <b>\u0531\u057c\u0561\u057b\u0561\u0564\u0580\u0561\u0576\u0584\u056b \u0570\u056b\u0577\u0565\u0581\u0578\u0582\u0574</b>\n\n\ud83d\udccb {title}\n\ud83d\udcc5 {datetime}\n\u23f0 {timeLeft}\n\n{description}",
+    meeting: "\ud83d\udcc5 <b>\u0540\u0561\u0576\u0564\u056b\u057a\u0578\u0582\u0574</b>\n\n\ud83d\udccb {title}\n\ud83d\udcc5 {datetime}\n\u23f0 {timeLeft}\n\n{description}",
+    other: "\ud83d\udd14 <b>\u0540\u056b\u0577\u0565\u0581\u0578\u0582\u0574</b>\n\n\ud83d\udccb {title}\n\ud83d\udcc5 {datetime}\n\u23f0 {timeLeft}\n\n{description}",
   },
   ru: {
     courtHearing: "⚖️ <b>Судебное заседание</b>\n\n📋 {title}\n📅 {datetime}\n⏰ {timeLeft}\n\n{description}",
@@ -41,11 +41,11 @@ const typeToKey: Record<string, keyof typeof templates.en> = {
 
 function formatTimeLeft(minutes: number, lang: string): string {
   if (minutes < 60) {
-    const labels = { hy: "րdelays delays", ru: "минут", en: "minutes" };
+    const labels = { hy: "\u0580\u0578\u057a\u0565", ru: "минут", en: "minutes" };
     return `${minutes} ${labels[lang as keyof typeof labels] || labels.en}`;
   }
   const hours = Math.floor(minutes / 60);
-  const labels = { hy: " delays delays", ru: "часов", en: "hours" };
+  const labels = { hy: "\u056a\u0561\u0574", ru: "часов", en: "hours" };
   return `${hours} ${labels[lang as keyof typeof labels] || labels.en}`;
 }
 
