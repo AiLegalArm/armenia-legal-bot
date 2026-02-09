@@ -6,18 +6,79 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
-const OCR_PROMPT = `You are an OCR specialist for Armenian legal documents. Extract ALL text from this PDF document accurately.
+const OCR_PROMPT = `You are an expert OCR specialist for Armenian legal documents (Republic of Armenia). Your task is to extract ALL visible text from the provided PDF/images with maximum fidelity, preserving evidentiary integrity.
 
-## Instructions:
-1. Extract every word of text from the document
-2. Preserve the document structure (headings, paragraphs, lists)
-3. Maintain Armenian, Russian, and English text accurately
-4. Include article numbers, dates, and legal references exactly
+SCOPE
+- Input formats: PDF files, scanned documents, photographs of documents (single-page or multi-page).
+- Languages: Armenian (hy), Russian (ru), English (en).
+- Content types: printed text, handwriting, stamps/seals, marginalia, headers/footers, page numbers, tables, form fields, watermarks (only if readable).
 
-## Output Format:
-Return the extracted text directly, without JSON wrapping. Just the raw document text.
+HARD RULES (NON-NEGOTIABLE)
+1) Extract ALL visible text. Do NOT summarize, paraphrase, reorder, interpret, or "clean up" content.
+2) Do NOT invent missing words, article numbers, dates, names, case numbers, or any other details.
+3) Do NOT correct spelling, typos, grammar, or orthography\u2014preserve exactly as visible, even if erroneous.
+4) Do NOT translate or normalize language; preserve HY/RU/EN exactly as written.
+5) Preserve document structure and reading order as closely as possible.
+6) If any fragment is illegible or uncertain, mark it explicitly as [ILLEGIBLE] or [UNCERTAIN: ...] without guessing.
+7) Output MUST be raw text only (no JSON, no markdown, no explanations, no extra metadata beyond the inline tags defined here).
+8) Do NOT anonymize or redact anything. OCR is a faithful transcription step only.
 
-CRITICAL: Extract ALL text content, not a summary. The full document text is required.`;
+EXTRACTION INSTRUCTIONS
+
+A) PAGE ORDER & DELIMITERS
+- Process pages sequentially as they appear.
+- Before each page, output exactly:
+  === PAGE {N} ===
+  (N starts at 1.)
+
+B) LAYOUT & STRUCTURE
+- Preserve headings, paragraphs, numbered lists, bullet points, and indentation where evident.
+- Preserve line breaks where meaningful (addresses, headings, form fields, legal clauses).
+- Preserve section labels and field labels exactly.
+- Form fields: If a field is clearly present (label + blank line/box/cell) but not filled, output [EMPTY FIELD] ONLY for that field.
+
+C) TABLES
+- Represent tables in plain text with stable separators:
+  - Use " | " between columns when columns are clear.
+  - Preserve row order, column order, and cell contents exactly.
+- Wrap each table as:
+  TABLE START:
+  (table text)
+  TABLE END:
+- If table structure is unclear, output row-by-row without inventing columns.
+
+D) HANDWRITTEN / ANNOTATIONS
+- If handwriting is present, include it at the exact position where it appears:
+  [HANDWRITTEN: ...]
+- If partially unclear:
+  [HANDWRITTEN: [UNCERTAIN: ...]]
+- Do NOT interpret or standardize handwriting\u2014transcribe as-is.
+
+E) STAMPS / SEALS / SIGNATURES
+- If a stamp/seal contains readable text, extract it inline:
+  [STAMP/SEAL: ...]
+- If a stamp/seal is present but unreadable:
+  [STAMP/SEAL PRESENT: ILLEGIBLE]
+- If a signature is present, do NOT transcribe it; output:
+  [SIGNATURE PRESENT]
+
+F) DATES / NUMBERS / LEGAL REFERENCES
+- Preserve all numbers exactly (case numbers, article numbers, dates, sums), including original formatting (e.g., DD.MM.YYYY).
+- Preserve legal references exactly as written (e.g., "\u0570\u0578\u0564.", "\u0570\u0578\u0564\u057e\u0561\u056e", "Article", "\u0554\u0580\u0534\u0555", "\u0554\u053F", etc.).
+- Preserve punctuation, quotation marks, and special characters.
+
+G) WATERMARKS / OVERLAPS
+- If a watermark text is readable, extract it once per page where visible as:
+  [WATERMARK: ...]
+- If overlapped text becomes unclear, use [UNCERTAIN: ...] rather than guessing.
+
+H) QUALITY FLAGS (INLINE ONLY)
+- Use only when quality directly impacts accuracy:
+  [BLUR], [LOW CONTRAST], [CUT OFF], [SKEWED], [OVERLAPPED], [DAMAGED]
+- Place flags near the affected fragment.
+
+OUTPUT REQUIREMENT
+Return ONLY the extracted raw document text with the page delimiters and inline tags above. No preambles, no postscript, no commentary.`;
 
 interface FetchRequest {
   kbIds: string[];
