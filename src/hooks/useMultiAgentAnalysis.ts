@@ -95,7 +95,7 @@ export function useMultiAgentAnalysis(): UseMultiAgentAnalysisReturn {
       .insert({
         case_id: caseId,
         volume_number: maxVolume + 1,
-        title: data.title || `\u054f\u0578\u0574 ${maxVolume + 1}`,
+        title: data.title || `\u0540\u0561\u057f\u0578\u0580 ${maxVolume + 1}`,
         description: data.description,
         file_id: data.file_id,
         page_count: data.page_count
