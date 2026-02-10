@@ -1161,6 +1161,44 @@ export type Database = {
         }
         Relationships: []
       }
+      legal_practice_kb_chunks: {
+        Row: {
+          chunk_hash: string | null
+          chunk_index: number
+          chunk_text: string
+          created_at: string
+          doc_id: string
+          id: string
+          title: string | null
+        }
+        Insert: {
+          chunk_hash?: string | null
+          chunk_index: number
+          chunk_text: string
+          created_at?: string
+          doc_id: string
+          id?: string
+          title?: string | null
+        }
+        Update: {
+          chunk_hash?: string | null
+          chunk_index?: number
+          chunk_text?: string
+          created_at?: string
+          doc_id?: string
+          id?: string
+          title?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "legal_practice_kb_chunks_doc_id_fkey"
+            columns: ["doc_id"]
+            isOneToOne: false
+            referencedRelation: "legal_practice_kb"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       notifications: {
         Row: {
           created_at: string
@@ -1595,6 +1633,42 @@ export type Database = {
       is_team_leader: {
         Args: { _team_id: string; _user_id: string }
         Returns: boolean
+      }
+      kb_docs_without_chunks: {
+        Args: never
+        Returns: {
+          applied_articles: Json | null
+          case_number_anonymized: string | null
+          chunk_index_meta: Json | null
+          content_chunks: string[] | null
+          content_text: string
+          court_name: string | null
+          court_type: Database["public"]["Enums"]["court_type"]
+          created_at: string
+          decision_date: string | null
+          decision_map: Json | null
+          description: string | null
+          id: string
+          is_active: boolean
+          is_anonymized: boolean
+          key_paragraphs: Json | null
+          key_violations: string[] | null
+          legal_reasoning_summary: string | null
+          outcome: Database["public"]["Enums"]["case_outcome"]
+          practice_category: Database["public"]["Enums"]["practice_category"]
+          source_name: string | null
+          source_url: string | null
+          title: string
+          updated_at: string
+          uploaded_by: string | null
+          visibility: string
+        }[]
+        SetofOptions: {
+          from: "*"
+          to: "legal_practice_kb"
+          isOneToOne: false
+          isSetofReturn: true
+        }
       }
       log_api_usage: {
         Args: {

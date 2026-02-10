@@ -116,7 +116,7 @@ serve(async (req) => {
     if (docId) {
       const { data, error } = await supabase
         .from("legal_practice_kb")
-        .select("id,title,content_text,language,updated_at")
+        .select("id,title,content_text,updated_at")
         .eq("id", docId)
         .limit(1);
 
@@ -130,7 +130,7 @@ serve(async (req) => {
         // Fallback 2-step
         const { data: allDocs, error: e1 } = await supabase
           .from("legal_practice_kb")
-          .select("id,title,content_text,language,updated_at")
+          .select("id,title,content_text,updated_at")
           .order("updated_at", { ascending: false })
           .limit(5000);
         if (e1) throw { status: 500, code: "DB_ERROR", message: e1.message };
@@ -198,7 +198,6 @@ serve(async (req) => {
         chunk_text: c.text,
         chunk_hash: computeHash(c.text),
         title: d.title,
-        language: d.language ?? null,
       }));
 
       const batchSize = 200;
