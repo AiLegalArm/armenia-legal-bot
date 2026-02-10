@@ -176,7 +176,7 @@ export function LegalPracticeBulkImport({ open, onOpenChange }: LegalPracticeBul
       updateFile(id, { status: 'importing', progress: 60 });
 
       if (file.name.endsWith('.json')) {
-        // JSON mode: array of entries
+        // JSON mode: array of entries or single object
         let jsonData: unknown;
         try {
           jsonData = JSON.parse(textContent);
@@ -184,38 +184,61 @@ export function LegalPracticeBulkImport({ open, onOpenChange }: LegalPracticeBul
           throw new Error('Invalid JSON format');
         }
         const items = Array.isArray(jsonData) ? jsonData : [jsonData];
+        const fallbackTitle = file.name.replace(/\.json$/i, '').replace(/_/g, ' ');
         const rows = items
-          .filter((item: any) => item.title && item.content_text)
-          .map((item: any) => ({
-            title: String(item.title),
-            content_text: String(item.content_text),
-            practice_category: item.practice_category || category,
-            court_type: item.court_type || courtType,
-            outcome: item.outcome || (autoDetectOutcome ? detectOutcome(String(item.content_text)) : manualOutcome),
+          .map((item: any) => {
+            // Flexible field resolution
+            const contentText = item.content_text || item.content || item.text || item.body || '';
+            const title = item.title || item.name || fallbackTitle;
+            if (!contentText) return null;
+            return {
+              title: String(title),
+              content_text: String(contentText),
+              practice_category: item.practice_category || category,
+              court_type: item.court_type || courtType,
+              outcome: item.outcome || (autoDetectOutcome ? detectOutcome(String(contentText)) : manualOutcome),
+              is_active: true,
+              is_anonymized: item.is_anonymized ?? true,
+              visibility: item.visibility || 'ai_only',
+              source_name: item.source_name || file.name,
+              court_name: item.court_name || null,
+              case_number_anonymized: item.case_number_anonymized || null,
+              decision_date: item.decision_date || null,
+              applied_articles: item.applied_articles || null,
+              legal_reasoning_summary: item.legal_reasoning_summary || null,
+              key_violations: item.key_violations || null,
+              description: item.description || null,
+            };
+          })
+          .filter(Boolean);
+
+        if (rows.length === 0) {
+          // If it's a single object with no recognized content fields,
+          // treat the entire JSON as content
+          const fullContent = JSON.stringify(jsonData, null, 2);
+          const { error } = await supabase.from('legal_practice_kb').insert({
+            title: fallbackTitle,
+            content_text: fullContent,
+            practice_category: category,
+            court_type: courtType,
+            outcome: autoDetectOutcome ? detectOutcome(fullContent) : manualOutcome,
             is_active: true,
-            is_anonymized: item.is_anonymized ?? true,
-            visibility: item.visibility || 'ai_only',
-            source_name: item.source_name || file.name,
-            court_name: item.court_name || null,
-            case_number_anonymized: item.case_number_anonymized || null,
-            decision_date: item.decision_date || null,
-            applied_articles: item.applied_articles || null,
-            legal_reasoning_summary: item.legal_reasoning_summary || null,
-            key_violations: item.key_violations || null,
-            description: item.description || null,
-          }));
-
-        if (rows.length === 0) throw new Error('No valid entries in JSON');
-
-        // Insert in batches
-        const batchSize = 50;
-        for (let i = 0; i < rows.length; i += batchSize) {
-          const batch = rows.slice(i, i + batchSize);
-          const { error } = await supabase.from('legal_practice_kb').insert(batch);
+            is_anonymized: true,
+            visibility: 'ai_only',
+            source_name: file.name,
+          });
           if (error) throw error;
+          updateFile(id, { status: 'success', progress: 100 });
+        } else {
+          // Insert in batches
+          const batchSize = 50;
+          for (let i = 0; i < rows.length; i += batchSize) {
+            const batch = rows.slice(i, i + batchSize);
+            const { error } = await supabase.from('legal_practice_kb').insert(batch);
+            if (error) throw error;
+          }
+          updateFile(id, { status: 'success', progress: 100 });
         }
-
-        updateFile(id, { status: 'success', progress: 100 });
       } else {
         // TXT mode: single entry
         const title = file.name.replace(/\.txt$/i, '').replace(/_/g, ' ');
