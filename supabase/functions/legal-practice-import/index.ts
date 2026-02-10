@@ -445,6 +445,12 @@ serve(async (req) => {
         const v = existingDoc[f];
         if (v === null || v === undefined || v === "" || (Array.isArray(v) && v.length === 0)) {
           missingFields.push(f);
+        } else if (f === "applied_articles" && typeof v === "object" && !Array.isArray(v)) {
+          // Check if applied_articles is {sources: []} — treat as missing
+          const aa = v as Record<string, unknown>;
+          if (Array.isArray(aa.sources) && aa.sources.length === 0) {
+            missingFields.push(f);
+          }
         }
       }
 
