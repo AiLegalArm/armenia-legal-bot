@@ -50,7 +50,7 @@ interface LegalPracticeDocument {
   court_name: string | null;
   case_number_anonymized: string | null;
   decision_date: string | null;
-  applied_articles: Array<{ code: string; articles: string[] }>;
+  applied_articles: any;
   outcome: CaseOutcome;
   key_violations: string[] | null;
   legal_reasoning_summary: string | null;
@@ -95,7 +95,7 @@ const defaultFormData = {
   court_name: '',
   case_number_anonymized: '',
   decision_date: '',
-  applied_articles: [] as Array<{ code: string; articles: string[] }>,
+  applied_articles: null as any,
   outcome: 'granted' as CaseOutcome,
   key_violations: [] as string[],
   legal_reasoning_summary: '',
@@ -141,7 +141,7 @@ export function LegalPracticeKB() {
       if (error) throw error;
       return (data || []).map((doc: any) => ({
         ...doc,
-        applied_articles: Array.isArray(doc.applied_articles) ? doc.applied_articles : []
+        applied_articles: doc.applied_articles ?? null
       })) as LegalPracticeDocument[];
     }
   });
@@ -174,7 +174,7 @@ export function LegalPracticeKB() {
       const payload = {
         ...data,
         key_violations: data.key_violations.length > 0 ? data.key_violations : null,
-        applied_articles: data.applied_articles.length > 0 ? data.applied_articles : [],
+        applied_articles: data.applied_articles || null,
         decision_date: data.decision_date || null,
         court_name: data.court_name || null,
         case_number_anonymized: data.case_number_anonymized || null,
@@ -311,7 +311,7 @@ export function LegalPracticeKB() {
       visibility: doc.visibility
     });
     setKeyViolationsInput((doc.key_violations || []).join(', '));
-    setArticlesInput(JSON.stringify(doc.applied_articles || [], null, 2));
+    setArticlesInput(JSON.stringify(doc.applied_articles || null, null, 2));
     setIsDialogOpen(true);
   };
 
