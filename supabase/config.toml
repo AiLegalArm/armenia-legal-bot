@@ -26,3 +26,9 @@ project_id = "nrmmgcgwriyrlbcpoqvk"
 
 [functions.legal-practice-import]
 verify_jwt = false
+
+[functions.kb-backfill-chunks]
+verify_jwt = false
+
+[functions.legal-practice-enrich]
+verify_jwt = false
