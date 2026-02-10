@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import type { Database } from '@/integrations/supabase/types';
@@ -11,6 +11,7 @@ import { KBPdfUpload } from '@/components/kb/KBPdfUpload';
 import { KBBulkImport } from '@/components/kb/KBBulkImport';
 import { KBMultiFileUpload } from '@/components/kb/KBMultiFileUpload';
 import { Button } from '@/components/ui/button';
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { useKnowledgeBase, type KBFilters } from '@/hooks/useKnowledgeBase';
 import { useAuth } from '@/hooks/useAuth';
 import { 
@@ -21,7 +22,10 @@ import {
   BookOpen,
   ArrowLeft,
   FileUp,
-  FileStack
+  FileStack,
+  Folder,
+  FolderOpen,
+  ChevronRight,
 } from 'lucide-react';
 import {
   AlertDialog,
@@ -50,13 +54,14 @@ const KnowledgeBasePage = () => {
   const navigate = useNavigate();
   const { user, signOut, isAdmin } = useAuth();
   
-  const [filters, setFilters] = useState<KBFilters>({ page: 1, pageSize: 12 });
+  const [filters, setFilters] = useState<KBFilters>({ page: 1, pageSize: 200 });
   const [formOpen, setFormOpen] = useState(false);
   const [pdfUploadOpen, setPdfUploadOpen] = useState(false);
   const [bulkImportOpen, setBulkImportOpen] = useState(false);
   const [multiFileUploadOpen, setMultiFileUploadOpen] = useState(false);
   const [editingDoc, setEditingDoc] = useState<KnowledgeBase | null>(null);
   const [deletingDocId, setDeletingDocId] = useState<string | null>(null);
+  const [openFolders, setOpenFolders] = useState<Set<string>>(new Set());
 
   const { 
     documents, 
@@ -66,6 +71,26 @@ const KnowledgeBasePage = () => {
     updateDocument, 
     deleteDocument 
   } = useKnowledgeBase(filters);
+
+  // Group documents by source_name
+  const groupedDocuments = useMemo(() => {
+    const groups = new Map<string, Array<(typeof documents)[number]>>();
+    for (const doc of documents) {
+      const key = ('source_name' in doc && doc.source_name) ? doc.source_name : t('common:other', 'Other');
+      if (!groups.has(key)) groups.set(key, []);
+      groups.get(key)!.push(doc);
+    }
+    return Array.from(groups.entries()).sort((a, b) => a[0].localeCompare(b[0]));
+  }, [documents, t]);
+
+  const toggleFolder = (name: string) => {
+    setOpenFolders(prev => {
+      const next = new Set(prev);
+      if (next.has(name)) next.delete(name);
+      else next.add(name);
+      return next;
+    });
+  };
 
   const handleCreate = (data: Database['public']['Tables']['knowledge_base']['Insert']) => {
     createDocument.mutate(data, {
@@ -207,21 +232,44 @@ const KnowledgeBasePage = () => {
           </div>
         ) : (
           <>
-            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-              {documents.map((doc) => (
-                <KBDocumentCard
-                  key={doc.id}
-                  document={doc}
-                  onView={(id) => navigate(`/kb/${id}`)}
-                  onEdit={isAdmin ? (id) => {
-                    const docToEdit = documents.find((d) => d.id === id);
-                    if (docToEdit && 'is_active' in docToEdit) setEditingDoc(docToEdit as KnowledgeBase);
-                  } : undefined}
-                  onDelete={isAdmin ? (id) => setDeletingDocId(id) : undefined}
-                  isAdmin={isAdmin}
-                  rank={'rank' in doc ? (doc.rank as number) : undefined}
-                />
-              ))}
+            <div className="space-y-3">
+              {groupedDocuments.map(([sourceName, docs]) => {
+                const isOpen = openFolders.has(sourceName);
+                return (
+                  <Collapsible key={sourceName} open={isOpen} onOpenChange={() => toggleFolder(sourceName)}>
+                    <CollapsibleTrigger asChild>
+                      <button className="flex w-full items-center gap-2 rounded-lg border bg-card px-4 py-3 text-left transition-colors hover:bg-muted/50">
+                        <ChevronRight className={`h-4 w-4 text-muted-foreground transition-transform ${isOpen ? 'rotate-90' : ''}`} />
+                        {isOpen ? (
+                          <FolderOpen className="h-5 w-5 text-primary" />
+                        ) : (
+                          <Folder className="h-5 w-5 text-primary" />
+                        )}
+                        <span className="flex-1 font-medium">{sourceName}</span>
+                        <span className="text-sm text-muted-foreground">{docs.length}</span>
+                      </button>
+                    </CollapsibleTrigger>
+                    <CollapsibleContent>
+                      <div className="mt-2 grid gap-4 pl-6 sm:grid-cols-2 lg:grid-cols-3">
+                        {docs.map((doc) => (
+                          <KBDocumentCard
+                            key={doc.id}
+                            document={doc}
+                            onView={(id) => navigate(`/kb/${id}`)}
+                            onEdit={isAdmin ? (id) => {
+                              const docToEdit = documents.find((d) => d.id === id);
+                              if (docToEdit && 'is_active' in docToEdit) setEditingDoc(docToEdit as KnowledgeBase);
+                            } : undefined}
+                            onDelete={isAdmin ? (id) => setDeletingDocId(id) : undefined}
+                            isAdmin={isAdmin}
+                            rank={'rank' in doc ? (doc.rank as number) : undefined}
+                          />
+                        ))}
+                      </div>
+                    </CollapsibleContent>
+                  </Collapsible>
+                );
+              })}
             </div>
 
             {/* Pagination */}

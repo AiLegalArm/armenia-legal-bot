@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
@@ -31,7 +31,7 @@ import {
 import { Badge } from '@/components/ui/badge';
 import { Label } from '@/components/ui/label';
 import { toast } from 'sonner';
-import { Plus, Trash2, Edit, Search, FileText, Scale, AlertTriangle, Sparkles, FolderUp, Wand2, Loader2 } from 'lucide-react';
+import { Plus, Trash2, Edit, Search, FileText, Scale, AlertTriangle, Sparkles, FolderUp, Wand2, Loader2, Folder, FolderOpen, ChevronRight } from 'lucide-react';
 import { LegalPracticeAIImport } from './LegalPracticeAIImport';
 import { LegalPracticeBulkImport } from './LegalPracticeBulkImport';
 
@@ -118,6 +118,7 @@ export function LegalPracticeKB() {
   const [aiImportOpen, setAiImportOpen] = useState(false);
   const [bulkImportOpen, setBulkImportOpen] = useState(false);
   const [enrichingIds, setEnrichingIds] = useState<Set<string>>(new Set());
+  const [openFolders, setOpenFolders] = useState<Set<string>>(new Set());
 
   // Fetch documents
   const { data: documents, isLoading } = useQuery({
@@ -138,13 +139,35 @@ export function LegalPracticeKB() {
 
       const { data, error } = await query;
       if (error) throw error;
-      // Transform the data to match our interface
       return (data || []).map((doc: any) => ({
         ...doc,
         applied_articles: Array.isArray(doc.applied_articles) ? doc.applied_articles : []
       })) as LegalPracticeDocument[];
     }
   });
+
+  // Group documents by source_name
+  const groupedDocuments = useMemo(() => {
+    if (!documents) return [];
+    const groups = new Map<string, LegalPracticeDocument[]>();
+    for (const doc of documents) {
+      const key = doc.source_name || '\u0531\u0575\u056C';
+      if (!groups.has(key)) groups.set(key, []);
+      groups.get(key)!.push(doc);
+    }
+    return Array.from(groups.entries()).sort((a, b) => a[0].localeCompare(b[0]));
+  }, [documents]);
+
+  const toggleFolder = (name: string) => {
+    setOpenFolders(prev => {
+      const next = new Set(prev);
+      if (next.has(name)) next.delete(name);
+      else next.add(name);
+      return next;
+    });
+  };
+
+
 
   // Create/Update mutation
   const saveMutation = useMutation({
@@ -542,84 +565,110 @@ export function LegalPracticeKB() {
           <div className="text-center py-8 text-muted-foreground">
             {'\u0532\u0565\u057C\u0576\u057E\u0578\u0582\u0574 \u0567...'}
           </div>
-        ) : documents && documents.length > 0 ? (
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>{'\u054E\u0565\u0580\u0576\u0561\u0563\u056B\u0580'}</TableHead>
-                <TableHead>{'\u053F\u0561\u057F\u0565\u0563\u0578\u0580\u056B\u0561'}</TableHead>
-                <TableHead>{'\u0531\u057F\u0575\u0561\u0576'}</TableHead>
-                <TableHead>{'\u0531\u0580\u0564\u0575\u0578\u0582\u0576\u0584'}</TableHead>
-                <TableHead>{'\u0531\u0574\u057D\u0561\u0569\u056B\u057E'}</TableHead>
-                <TableHead className="text-right">{'\u0533\u0578\u0580\u056E\u0578\u0572\u0578\u0582\u0569\u0575\u0578\u0582\u0576\u0576\u0565\u0580'}</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {documents.map((doc) => (
-                <TableRow key={doc.id}>
-                  <TableCell className="font-medium">
-                    <div className="flex items-center gap-2">
-                      <FileText className="h-4 w-4 text-muted-foreground" />
-                      {doc.title}
+        ) : groupedDocuments.length > 0 ? (
+          <div className="space-y-2">
+            {groupedDocuments.map(([sourceName, docs]) => {
+              const isOpen = openFolders.has(sourceName);
+              return (
+                <div key={sourceName}>
+                  <button
+                    onClick={() => toggleFolder(sourceName)}
+                    className="flex w-full items-center gap-2 rounded-lg border bg-card px-4 py-3 text-left transition-colors hover:bg-muted/50"
+                  >
+                    <ChevronRight className={`h-4 w-4 text-muted-foreground transition-transform ${isOpen ? 'rotate-90' : ''}`} />
+                    {isOpen ? (
+                      <FolderOpen className="h-5 w-5 text-primary" />
+                    ) : (
+                      <Folder className="h-5 w-5 text-primary" />
+                    )}
+                    <span className="flex-1 font-medium">{sourceName}</span>
+                    <span className="text-sm text-muted-foreground">{docs.length}</span>
+                  </button>
+                  {isOpen && (
+                    <div className="mt-1 ml-6">
+                      <Table>
+                        <TableHeader>
+                          <TableRow>
+                            <TableHead>{'\u054E\u0565\u0580\u0576\u0561\u0563\u056B\u0580'}</TableHead>
+                            <TableHead>{'\u053F\u0561\u057F\u0565\u0563\u0578\u0580\u056B\u0561'}</TableHead>
+                            <TableHead>{'\u0531\u057F\u0575\u0561\u0576'}</TableHead>
+                            <TableHead>{'\u0531\u0580\u0564\u0575\u0578\u0582\u0576\u0584'}</TableHead>
+                            <TableHead>{'\u0531\u0574\u057D\u0561\u0569\u056B\u057E'}</TableHead>
+                            <TableHead className="text-right">{'\u0533\u0578\u0580\u056E\u0578\u0572\u0578\u0582\u0569\u0575\u0578\u0582\u0576\u0576\u0565\u0580'}</TableHead>
+                          </TableRow>
+                        </TableHeader>
+                        <TableBody>
+                          {docs.map((doc) => (
+                            <TableRow key={doc.id}>
+                              <TableCell className="font-medium">
+                                <div className="flex items-center gap-2">
+                                  <FileText className="h-4 w-4 text-muted-foreground" />
+                                  {doc.title}
+                                </div>
+                              </TableCell>
+                              <TableCell>
+                                <Badge variant="outline">
+                                  {categoryLabels[doc.practice_category]}
+                                </Badge>
+                              </TableCell>
+                              <TableCell>{courtTypeLabels[doc.court_type]}</TableCell>
+                              <TableCell>
+                                <Badge
+                                  variant={
+                                    doc.outcome === 'granted' ? 'default' :
+                                    doc.outcome === 'rejected' ? 'destructive' :
+                                    'secondary'
+                                  }
+                                >
+                                  {outcomeLabels[doc.outcome]}
+                                </Badge>
+                              </TableCell>
+                              <TableCell>
+                                {doc.decision_date ? new Date(doc.decision_date).toLocaleDateString('hy-AM') : '-'}
+                              </TableCell>
+                              <TableCell className="text-right">
+                                <Button
+                                  variant="ghost"
+                                  size="icon"
+                                  onClick={() => handleEnrich(doc.id)}
+                                  disabled={enrichingIds.has(doc.id)}
+                                  title="AI Enrich"
+                                >
+                                  {enrichingIds.has(doc.id) ? (
+                                    <Loader2 className="h-4 w-4 animate-spin" />
+                                  ) : (
+                                    <Wand2 className="h-4 w-4" />
+                                  )}
+                                </Button>
+                                <Button
+                                  variant="ghost"
+                                  size="icon"
+                                  onClick={() => handleEdit(doc)}
+                                >
+                                  <Edit className="h-4 w-4" />
+                                </Button>
+                                <Button
+                                  variant="ghost"
+                                  size="icon"
+                                  onClick={() => {
+                                    if (confirm('\u054E\u057D\u057F\u0561\u0570 \u0565\u0584, \u0578\u0580 \u0578\u0582\u0566\u0578\u0582\u0574 \u0565\u0584 \u057B\u0576\u057B\u0565\u056C \u0561\u0575\u057D \u0583\u0561\u057D\u057F\u0561\u0569\u0578\u0582\u0572\u0569\u0568?')) {
+                                      deleteMutation.mutate(doc.id);
+                                    }
+                                  }}
+                                >
+                                  <Trash2 className="h-4 w-4" />
+                                </Button>
+                              </TableCell>
+                            </TableRow>
+                          ))}
+                        </TableBody>
+                      </Table>
                     </div>
-                  </TableCell>
-                  <TableCell>
-                    <Badge variant="outline">
-                      {categoryLabels[doc.practice_category]}
-                    </Badge>
-                  </TableCell>
-                  <TableCell>{courtTypeLabels[doc.court_type]}</TableCell>
-                  <TableCell>
-                    <Badge
-                      variant={
-                        doc.outcome === 'granted' ? 'default' :
-                        doc.outcome === 'rejected' ? 'destructive' :
-                        'secondary'
-                      }
-                    >
-                      {outcomeLabels[doc.outcome]}
-                    </Badge>
-                  </TableCell>
-                  <TableCell>
-                    {doc.decision_date ? new Date(doc.decision_date).toLocaleDateString('hy-AM') : '-'}
-                  </TableCell>
-                  <TableCell className="text-right">
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      onClick={() => handleEnrich(doc.id)}
-                      disabled={enrichingIds.has(doc.id)}
-                      title="AI Enrich"
-                    >
-                      {enrichingIds.has(doc.id) ? (
-                        <Loader2 className="h-4 w-4 animate-spin" />
-                      ) : (
-                        <Wand2 className="h-4 w-4" />
-                      )}
-                    </Button>
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      onClick={() => handleEdit(doc)}
-                    >
-                      <Edit className="h-4 w-4" />
-                    </Button>
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      onClick={() => {
-                        if (confirm('\u054E\u057D\u057F\u0561\u0570 \u0565\u0584, \u0578\u0580 \u0578\u0582\u0566\u0578\u0582\u0574 \u0565\u0584 \u057B\u0576\u057B\u0565\u056C \u0561\u0575\u057D \u0583\u0561\u057D\u057F\u0561\u0569\u0578\u0582\u0572\u0569\u0568?')) {
-                          deleteMutation.mutate(doc.id);
-                        }
-                      }}
-                    >
-                      <Trash2 className="h-4 w-4" />
-                    </Button>
-                  </TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
+                  )}
+                </div>
+              );
+            })}
+          </div>
         ) : (
           <div className="text-center py-8 text-muted-foreground">
             {'\u0553\u0561\u057D\u057F\u0561\u0569\u0572\u0569\u0565\u0580 \u0579\u0565\u0576 \u0563\u057F\u0576\u057E\u0565\u056C'}
