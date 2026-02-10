@@ -329,6 +329,7 @@ export function LegalPracticeBulkImport({ open, onOpenChange }: LegalPracticeBul
 
   const [chunkingStatus, setChunkingStatus] = useState<'idle' | 'running' | 'done' | 'error'>('idle');
   const [enrichmentStatus, setEnrichmentStatus] = useState<'idle' | 'running' | 'done' | 'error'>('idle');
+  const [enrichmentProgress, setEnrichmentProgress] = useState<{ enriched: number; remaining: number } | null>(null);
 
   const runChunking = async () => {
     setChunkingStatus('running');
@@ -347,13 +348,34 @@ export function LegalPracticeBulkImport({ open, onOpenChange }: LegalPracticeBul
 
   const runEnrichment = async () => {
     setEnrichmentStatus('running');
+    setEnrichmentProgress(null);
+    let totalEnriched = 0;
+    let totalErrors = 0;
+
     try {
-      const { data, error } = await supabase.functions.invoke('legal-practice-enrich', {
-        body: { limit: 50 },
-      });
-      if (error) throw error;
+      // Loop: call enrich in batches of 5 until no more remaining
+      while (true) {
+        const { data, error } = await supabase.functions.invoke('legal-practice-enrich', {
+          body: { limit: 5 },
+        });
+        if (error) throw error;
+
+        const batchEnriched = data?.enriched || 0;
+        const remaining = data?.remaining ?? 0;
+        totalEnriched += batchEnriched;
+        if (data?.errors) totalErrors += data.errors.length;
+
+        setEnrichmentProgress({ enriched: totalEnriched, remaining });
+
+        // Stop if nothing was enriched or nothing remaining
+        if (batchEnriched === 0 || remaining <= 0) break;
+      }
+
       setEnrichmentStatus('done');
-      toast.success(t('lp_bi_enrich_success', { count: data?.enriched || 0 }));
+      toast.success(t('lp_bi_enrich_success', { count: totalEnriched }));
+      if (totalErrors > 0) {
+        toast.warning(`${totalErrors} errors during enrichment`);
+      }
       queryClient.invalidateQueries({ queryKey: ['legal-practice-kb'] });
     } catch (e) {
       setEnrichmentStatus('error');
@@ -637,8 +659,14 @@ export function LegalPracticeBulkImport({ open, onOpenChange }: LegalPracticeBul
                   </div>
 
                   <div className="flex items-center gap-2">
-                    <Wand2 className="h-4 w-4 text-purple-500 shrink-0" />
-                    <span className="text-xs flex-1">{t('lp_bi_ai_enrich')}</span>
+                    <Wand2 className="h-4 w-4 text-primary shrink-0" />
+                    <span className="text-xs flex-1">
+                      {enrichmentStatus === 'running' && enrichmentProgress
+                        ? `${t('lp_bi_ai_enrich')} (${enrichmentProgress.enriched} done, ${enrichmentProgress.remaining} left)`
+                        : enrichmentStatus === 'done' && enrichmentProgress
+                        ? `\u2713 ${enrichmentProgress.enriched} enriched`
+                        : t('lp_bi_ai_enrich')}
+                    </span>
                     <Button
                       size="sm"
                       variant="outline"

@@ -35,35 +35,42 @@ serve(async (req) => {
     }
 
     const body = await req.json();
-    const limit = Math.min(body.limit || 20, 100);
+    const limit = Math.min(body.limit || 5, 20);
+    const countOnly = body.countOnly === true;
 
     const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
     const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
     const adminDb = createClient(supabaseUrl, supabaseServiceKey);
 
-    // Find documents with any missing metadata (including applied_articles)
+    // Count total needing enrichment using direct query
+    const { count: totalNeedEnrichment, error: countErr } = await adminDb
+      .from("legal_practice_kb")
+      .select("id", { count: "exact", head: true })
+      .eq("is_active", true)
+      .or("legal_reasoning_summary.is.null,key_violations.is.null,case_number_anonymized.is.null");
+
+    if (countErr) throw countErr;
+
+    const remaining = totalNeedEnrichment || 0;
+
+    if (countOnly) {
+      return new Response(JSON.stringify({ success: true, remaining }), {
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
+    // Get batch of docs needing enrichment
     const { data: docs, error: fetchErr } = await adminDb
       .from("legal_practice_kb")
-      .select("id, applied_articles, court_name, decision_date, practice_category, court_type, outcome, case_number_anonymized, key_violations, legal_reasoning_summary, title")
+      .select("id")
       .eq("is_active", true)
+      .or("legal_reasoning_summary.is.null,key_violations.is.null,case_number_anonymized.is.null")
       .order("created_at", { ascending: false })
-      .limit(500);
+      .limit(limit);
 
     if (fetchErr) throw fetchErr;
 
-    // Filter docs that have any missing field
-    const idsToEnrich: string[] = [];
-    for (const doc of (docs || [])) {
-      if (idsToEnrich.length >= limit) break;
-      const aa = doc.applied_articles as any;
-      const aaEmpty = !aa || (typeof aa === "object" && Array.isArray((aa as any).sources) && (aa as any).sources.length === 0);
-      const hasMissing = !doc.court_name || !doc.decision_date || !doc.case_number_anonymized
-        || !doc.legal_reasoning_summary || !doc.key_violations || (Array.isArray(doc.key_violations) && doc.key_violations.length === 0)
-        || aaEmpty;
-      if (hasMissing) {
-        idsToEnrich.push(doc.id);
-      }
-    }
+    const idsToEnrich = (docs || []).map(d => d.id);
 
     if (idsToEnrich.length === 0) {
       return new Response(JSON.stringify({ success: true, enriched: 0, message: "All documents already enriched" }), {
@@ -94,6 +101,7 @@ serve(async (req) => {
       success: true,
       enriched,
       total: idsToEnrich.length,
+      remaining: remaining - enriched,
       errors: errors.length > 0 ? errors : undefined,
     }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
