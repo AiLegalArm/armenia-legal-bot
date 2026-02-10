@@ -146,12 +146,12 @@ export function LegalPracticeKB() {
     }
   });
 
-  // Group documents by source_name
+  // Group documents by practice_category
   const groupedDocuments = useMemo(() => {
     if (!documents) return [];
     const groups = new Map<string, LegalPracticeDocument[]>();
     for (const doc of documents) {
-      const key = doc.source_name || '\u0531\u0575\u056C';
+      const key = categoryLabels[doc.practice_category] || doc.practice_category;
       if (!groups.has(key)) groups.set(key, []);
       groups.get(key)!.push(doc);
     }
