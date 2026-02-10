@@ -237,9 +237,11 @@ export function LegalPracticeKB() {
       toast.info('\u0532\u0578\u056C\u0578\u0580 \u0563\u0580\u0561\u057C\u0578\u0582\u0574\u0576\u0565\u0580\u0576 \u0561\u0580\u0564\u0565\u0576 \u0570\u0561\u0580\u057D\u057F\u0561\u0581\u057E\u0561\u056E \u0565\u0576');
       return;
     }
-    toast.info(`AI \u0570\u0561\u0580\u057D\u057F\u0561\u0581\u0576\u0578\u0582\u0574\u055D ${emptyDocs.length} \u0563\u0580\u0561\u057C\u0578\u0582\u0574...`);
-    for (const doc of emptyDocs) {
-      await handleEnrich(doc.id);
+    toast.info(`AI \u0570\u0561\u0580\u057D\u057F\u0561\u0581\u0576\u0578\u0582\u0574\u055D ${emptyDocs.length} \u0563\u0580\u0561\u057C\u0578\u0582\u0574... (\u0564\u0565\u057C 5-\u0561\u056F\u0561\u0576 \u056D\u0574\u0562\u0565\u0580\u0578\u057E)`);
+    const BATCH_SIZE = 5;
+    for (let i = 0; i < emptyDocs.length; i += BATCH_SIZE) {
+      const batch = emptyDocs.slice(i, i + BATCH_SIZE);
+      await Promise.all(batch.map(doc => handleEnrich(doc.id)));
     }
   };
 
