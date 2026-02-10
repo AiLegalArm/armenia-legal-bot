@@ -30,7 +30,8 @@ import {
   CheckCircle2, 
   XCircle,
   X,
-  FolderUp
+  FolderUp,
+  FileJson
 } from 'lucide-react';
 import { kbCategoryOptions, type KbCategory } from '@/components/kb/kbCategories';
 
@@ -42,15 +43,16 @@ interface KBBulkImportProps {
 
 type FileStatus = 'pending' | 'reading' | 'importing' | 'success' | 'error';
 
-interface TxtFileItem {
+interface JsonFileItem {
   id: string;
   file: File;
   status: FileStatus;
   progress: number;
   error?: string;
-  codeName: string;
+  fileName: string;
   category: KbCategory;
   imported?: number;
+  itemCount?: number;
 }
 
 const categories = kbCategoryOptions;
@@ -60,7 +62,7 @@ export function KBBulkImport({ open, onOpenChange, onSuccess }: KBBulkImportProp
   const { t } = useTranslation(['kb', 'common']);
   const fileInputRef = useRef<HTMLInputElement>(null);
   
-  const [files, setFiles] = useState<TxtFileItem[]>([]);
+  const [files, setFiles] = useState<JsonFileItem[]>([]);
   const [globalCategory, setGlobalCategory] = useState<KbCategory>('other');
   const [clearExisting, setClearExisting] = useState(false);
   const [skipOnError, setSkipOnError] = useState(true);
@@ -69,30 +71,27 @@ export function KBBulkImport({ open, onOpenChange, onSuccess }: KBBulkImportProp
 
   const addFiles = useCallback((newFiles: FileList | File[]) => {
     const fileArray = Array.from(newFiles);
-    const validFiles: TxtFileItem[] = [];
+    const validFiles: JsonFileItem[] = [];
     
     for (const file of fileArray) {
-      // Validate type
-      if (!file.name.endsWith('.txt')) {
-        toast.error(`${file.name}: ${t('common:error')}`);
+      if (!file.name.endsWith('.json')) {
+        toast.error(`${file.name}: Only .json files are accepted`);
         continue;
       }
       
-      // Validate size
       if (file.size > MAX_FILE_SIZE) {
         toast.error(`${file.name}: File too large (max 100MB)`);
         continue;
       }
       
-      // Auto-detect code name from filename
-      const codeName = file.name.replace('.txt', '').replace(/_/g, ' ');
+      const fileName = file.name.replace('.json', '');
       
       validFiles.push({
         id: crypto.randomUUID(),
         file,
         status: 'pending',
         progress: 0,
-        codeName,
+        fileName,
         category: globalCategory,
       });
     }
@@ -131,30 +130,34 @@ export function KBBulkImport({ open, onOpenChange, onSuccess }: KBBulkImportProp
     setFiles(prev => prev.filter(f => f.id !== id));
   };
 
-  const updateFile = (id: string, updates: Partial<TxtFileItem>) => {
+  const updateFile = (id: string, updates: Partial<JsonFileItem>) => {
     setFiles(prev => prev.map(f => f.id === id ? { ...f, ...updates } : f));
   };
 
-  const processFile = async (fileItem: TxtFileItem, isFirst: boolean): Promise<boolean> => {
-    const { id, file, codeName, category } = fileItem;
+  const processFile = async (fileItem: JsonFileItem, isFirst: boolean): Promise<boolean> => {
+    const { id, file, category } = fileItem;
     
     try {
-      // Step 1: Read file content
       updateFile(id, { status: 'reading', progress: 20 });
       
       const textContent = await file.text();
+      let jsonData: unknown;
+      try {
+        jsonData = JSON.parse(textContent);
+      } catch {
+        throw new Error('Invalid JSON format');
+      }
       
-      updateFile(id, { progress: 40 });
+      const items = Array.isArray(jsonData) ? jsonData : [jsonData];
+      updateFile(id, { progress: 40, itemCount: items.length });
       
-      // Step 2: Send to import function
       updateFile(id, { status: 'importing', progress: 60 });
       
       const { data, error: fnError } = await supabase.functions.invoke('kb-import', {
         body: {
-          textContent,
-          codeName,
+          jsonItems: items,
           category,
-          clearExisting: isFirst && clearExisting, // Only clear on first file
+          clearExisting: isFirst && clearExisting,
         },
       });
       
@@ -223,7 +226,6 @@ export function KBBulkImport({ open, onOpenChange, onSuccess }: KBBulkImportProp
 
   const handleGlobalCategoryChange = (newCategory: KbCategory) => {
     setGlobalCategory(newCategory);
-    // Update all pending files
     setFiles(prev => prev.map(f => 
       f.status === 'pending' ? { ...f, category: newCategory } : f
     ));
@@ -240,7 +242,7 @@ export function KBBulkImport({ open, onOpenChange, onSuccess }: KBBulkImportProp
   const getStatusIcon = (status: FileStatus) => {
     switch (status) {
       case 'pending':
-        return <FileText className="h-4 w-4 text-muted-foreground" />;
+        return <FileJson className="h-4 w-4 text-muted-foreground" />;
       case 'reading':
       case 'importing':
         return <Loader2 className="h-4 w-4 animate-spin text-primary" />;
@@ -251,16 +253,16 @@ export function KBBulkImport({ open, onOpenChange, onSuccess }: KBBulkImportProp
     }
   };
 
-  const getStatusText = (fileItem: TxtFileItem) => {
+  const getStatusText = (fileItem: JsonFileItem) => {
     switch (fileItem.status) {
       case 'pending':
         return t('multi_upload_status_pending');
       case 'reading':
         return t('common:loading');
       case 'importing':
-        return t('common:loading');
+        return `${fileItem.itemCount || '...'} items`;
       case 'success':
-        return `${fileItem.imported || 0} articles`;
+        return `${fileItem.imported || 0} imported`;
       case 'error':
         return fileItem.error || t('common:error');
     }
@@ -272,10 +274,10 @@ export function KBBulkImport({ open, onOpenChange, onSuccess }: KBBulkImportProp
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <FolderUp className="h-5 w-5" />
-            {t('bulk_txt_import_title', 'TXT Bulk Import')}
+            {t('bulk_json_import_title', 'JSON Bulk Import')}
           </DialogTitle>
           <DialogDescription>
-            {t('bulk_txt_import_description', 'Upload multiple TXT files for batch import')}
+            {t('bulk_json_import_description', 'Upload JSON files with arrays of knowledge base entries')}
           </DialogDescription>
         </DialogHeader>
 
@@ -298,7 +300,7 @@ export function KBBulkImport({ open, onOpenChange, onSuccess }: KBBulkImportProp
             <input
               ref={fileInputRef}
               type="file"
-              accept=".txt"
+              accept=".json"
               multiple
               onChange={handleFileSelect}
               className="hidden"
@@ -308,7 +310,7 @@ export function KBBulkImport({ open, onOpenChange, onSuccess }: KBBulkImportProp
               {t('multi_upload_drop_hint')}
             </p>
             <p className="mt-1 text-xs text-muted-foreground">
-              TXT (max 100MB)
+              JSON (max 100MB) — [{'{'}title, content_text, ...{'}'}]
             </p>
           </div>
 
@@ -385,7 +387,7 @@ export function KBBulkImport({ open, onOpenChange, onSuccess }: KBBulkImportProp
                     >
                       {getStatusIcon(fileItem.status)}
                       <div className="flex-1 min-w-0">
-                        <p className="truncate font-medium">{fileItem.codeName}</p>
+                        <p className="truncate font-medium">{fileItem.fileName}</p>
                         <p className="text-xs text-muted-foreground truncate">
                           {fileItem.file.name}
                         </p>
@@ -413,7 +415,7 @@ export function KBBulkImport({ open, onOpenChange, onSuccess }: KBBulkImportProp
                 <div className="flex gap-4 text-xs">
                   {successCount > 0 && (
                     <span className="text-green-600">
-                      {'\u2713'} {successCount} files ({totalImported} articles)
+                      {'\u2713'} {successCount} files ({totalImported} entries)
                     </span>
                   )}
                   {errorCount > 0 && (
