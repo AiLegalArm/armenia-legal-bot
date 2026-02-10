@@ -41,32 +41,29 @@ serve(async (req) => {
     const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
     const adminDb = createClient(supabaseUrl, supabaseServiceKey);
 
-    // Find documents with missing metadata
+    // Find documents with any missing metadata (including applied_articles)
     const { data: docs, error: fetchErr } = await adminDb
       .from("legal_practice_kb")
-      .select("id")
-      .is("court_name", null)
+      .select("id, applied_articles, court_name, decision_date, practice_category, court_type, outcome, case_number_anonymized, key_violations, legal_reasoning_summary, title")
       .eq("is_active", true)
       .order("created_at", { ascending: false })
-      .limit(limit);
+      .limit(500);
 
     if (fetchErr) throw fetchErr;
 
-    // Also get docs missing other fields
-    const { data: docs2 } = await adminDb
-      .from("legal_practice_kb")
-      .select("id")
-      .is("decision_date", null)
-      .eq("is_active", true)
-      .order("created_at", { ascending: false })
-      .limit(limit);
-
-    const allIds = new Set([
-      ...(docs || []).map((d: any) => d.id),
-      ...(docs2 || []).map((d: any) => d.id),
-    ]);
-
-    const idsToEnrich = Array.from(allIds).slice(0, limit);
+    // Filter docs that have any missing field
+    const idsToEnrich: string[] = [];
+    for (const doc of (docs || [])) {
+      if (idsToEnrich.length >= limit) break;
+      const aa = doc.applied_articles as any;
+      const aaEmpty = !aa || (typeof aa === "object" && Array.isArray((aa as any).sources) && (aa as any).sources.length === 0);
+      const hasMissing = !doc.court_name || !doc.decision_date || !doc.case_number_anonymized
+        || !doc.legal_reasoning_summary || !doc.key_violations || (Array.isArray(doc.key_violations) && doc.key_violations.length === 0)
+        || aaEmpty;
+      if (hasMissing) {
+        idsToEnrich.push(doc.id);
+      }
+    }
 
     if (idsToEnrich.length === 0) {
       return new Response(JSON.stringify({ success: true, enriched: 0, message: "All documents already enriched" }), {
