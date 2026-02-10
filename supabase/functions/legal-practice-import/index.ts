@@ -285,6 +285,93 @@ async function extractWithAI(textContent: string, apiKey: string): Promise<Extra
 }
 
 // =======================================
+// Targeted extraction for missing fields only
+// =======================================
+
+async function extractMissingWithAI(
+  textContent: string,
+  missingFields: string[],
+  apiKey: string
+): Promise<Record<string, unknown>> {
+  // Use only first 15K chars — metadata is usually in the header
+  const input = (textContent ?? "").trim().substring(0, 15000);
+  if (!input) return {};
+
+  const fieldInstructions: Record<string, string> = {
+    title: '"title": string — official header or concise descriptive title',
+    practice_category: '"practice_category": "criminal"|"civil"|"administrative"|"constitutional"|"echr"|null',
+    court_type: '"court_type": "first_instance"|"appeal"|"cassation"|"constitutional"|"echr"|null',
+    outcome: '"outcome": "granted"|"rejected"|"partial"|"remanded"|"discontinued"|null',
+    court_name: '"court_name": string — exact court name as written',
+    case_number_anonymized: '"case_number_anonymized": string — case number, anonymize personal data with X',
+    decision_date: '"decision_date": string — YYYY-MM-DD format or null',
+    applied_articles: '"applied_articles": [{"code":"criminal_code"|"civil_code"|"administrative_code"|"criminal_procedure_code"|"civil_procedure_code"|"administrative_procedure_code"|"constitution"|"echr","articles":["..."]}]',
+    key_violations: '"key_violations": ["..."] — explicit violation phrases from text',
+    legal_reasoning_summary: '"legal_reasoning_summary": string — 2-3 sentences of explicit reasoning',
+  };
+
+  const schema = missingFields.map((f) => fieldInstructions[f] || `"${f}": unknown`).join(",\n  ");
+
+  const prompt = `Extract ONLY these fields from the court decision text. Return valid JSON with exactly these keys. Use null for missing scalars, [] for missing arrays. No markdown, no extra keys.
+
+{
+  ${schema}
+}
+
+RULES: extraction-only, no guessing, preserve original language (HY/RU/EN). All string values must use actual UTF-8 characters.`;
+
+  const resp = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${apiKey}`,
+    },
+    body: JSON.stringify({
+      model: "google/gemini-2.5-flash-lite",
+      temperature: 0,
+      messages: [
+        { role: "system", content: prompt },
+        { role: "user", content: input },
+      ],
+    }),
+  });
+
+  if (!resp.ok) {
+    console.error(`AI extraction failed: ${resp.status}`);
+    return {};
+  }
+
+  const payload = await resp.json();
+  const content = payload?.choices?.[0]?.message?.content;
+  if (typeof content !== "string" || !content.trim()) return {};
+
+  let jsonStr = content.trim();
+  if (jsonStr.startsWith("```json")) jsonStr = jsonStr.slice(7);
+  if (jsonStr.startsWith("```")) jsonStr = jsonStr.slice(3);
+  if (jsonStr.endsWith("```")) jsonStr = jsonStr.slice(0, -3);
+  jsonStr = jsonStr.trim();
+
+  try {
+    const parsed = JSON.parse(jsonStr);
+    if (!isObject(parsed)) return {};
+    // Filter applied_articles to valid codes only
+    if (Array.isArray(parsed.applied_articles)) {
+      parsed.applied_articles = parsed.applied_articles.filter(
+        (item: unknown) => isObject(item) && typeof (item as Record<string,unknown>).code === "string" && APPLIED.has((item as Record<string,unknown>).code as string)
+      );
+    }
+    // Validate enums
+    if (parsed.practice_category && !PRACTICE.has(parsed.practice_category as string)) parsed.practice_category = null;
+    if (parsed.court_type && !COURT.has(parsed.court_type as string)) parsed.court_type = null;
+    if (parsed.outcome && !OUTCOME.has(parsed.outcome as string)) parsed.outcome = null;
+    if (parsed.decision_date && !isISODateOrNull(parsed.decision_date)) parsed.decision_date = null;
+    return parsed;
+  } catch {
+    return {};
+  }
+}
+
+// =======================================
 // HTTP handler
 // =======================================
 
@@ -321,11 +408,11 @@ serve(async (req) => {
     const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
     const adminDb = createClient(supabaseUrl, supabaseServiceKey);
 
-    // === ENRICH MODE: update existing record ===
+    // === ENRICH MODE: update existing record (only missing fields) ===
     if (enrichDocId) {
       const { data: existingDoc, error: fetchErr } = await adminDb
         .from("legal_practice_kb")
-        .select("id, content_text")
+        .select("id, content_text, title, practice_category, court_type, outcome, court_name, case_number_anonymized, decision_date, applied_articles, key_violations, legal_reasoning_summary")
         .eq("id", enrichDocId)
         .single();
 
@@ -336,21 +423,41 @@ serve(async (req) => {
         });
       }
 
-      console.log(`Enriching doc ${enrichDocId}, text length: ${existingDoc.content_text.length}`);
-      const extractedData = await extractWithAI(existingDoc.content_text, lovableApiKey);
-      console.log(`Enriched: title=${extractedData.title}, category=${extractedData.practice_category}`);
+      // Determine which fields are missing
+      const missingFields: string[] = [];
+      const ENRICHABLE = [
+        "title", "practice_category", "court_type", "outcome", "court_name",
+        "case_number_anonymized", "decision_date", "applied_articles",
+        "key_violations", "legal_reasoning_summary",
+      ] as const;
+
+      for (const f of ENRICHABLE) {
+        const v = existingDoc[f];
+        if (v === null || v === undefined || v === "" || (Array.isArray(v) && v.length === 0)) {
+          missingFields.push(f);
+        }
+      }
+
+      // Skip AI entirely if all fields are populated
+      if (missingFields.length === 0) {
+        return new Response(JSON.stringify({ success: true, enriched: false, message: "All fields already populated" }), {
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+
+      console.log(`Enriching doc ${enrichDocId}, missing: ${missingFields.join(", ")}, text length: ${existingDoc.content_text.length}`);
+
+      // Use targeted extraction for only missing fields
+      const extractedData = await extractMissingWithAI(existingDoc.content_text, missingFields, lovableApiKey);
+      console.log(`Enriched missing fields: ${JSON.stringify(extractedData)}`);
 
       const updatePayload: Record<string, unknown> = {};
-      if (extractedData.practice_category) updatePayload.practice_category = extractedData.practice_category;
-      if (extractedData.court_type) updatePayload.court_type = extractedData.court_type;
-      if (extractedData.outcome) updatePayload.outcome = extractedData.outcome;
-      if (extractedData.court_name) updatePayload.court_name = extractedData.court_name;
-      if (extractedData.case_number_anonymized) updatePayload.case_number_anonymized = extractedData.case_number_anonymized;
-      if (extractedData.decision_date) updatePayload.decision_date = extractedData.decision_date;
-      if (extractedData.applied_articles && extractedData.applied_articles.length > 0) updatePayload.applied_articles = extractedData.applied_articles;
-      if (extractedData.key_violations && extractedData.key_violations.length > 0) updatePayload.key_violations = extractedData.key_violations;
-      if (extractedData.legal_reasoning_summary) updatePayload.legal_reasoning_summary = extractedData.legal_reasoning_summary;
-      if (extractedData.title) updatePayload.title = extractedData.title;
+      for (const f of missingFields) {
+        const v = (extractedData as Record<string, unknown>)[f];
+        if (v !== null && v !== undefined && v !== "" && !(Array.isArray(v) && v.length === 0)) {
+          updatePayload[f] = v;
+        }
+      }
 
       if (Object.keys(updatePayload).length === 0) {
         return new Response(JSON.stringify({ success: true, enriched: false, message: "No metadata extracted" }), {
