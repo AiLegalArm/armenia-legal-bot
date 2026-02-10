@@ -150,21 +150,73 @@ export function LegalPracticeBulkImport({ open, onOpenChange }: LegalPracticeBul
     setFiles((prev) => prev.map((f) => (f.id === id ? { ...f, ...updates } : f)));
   };
 
+  const extractMetadata = (text: string) => {
+    const header = text.substring(0, 5000);
+
+    // Extract court name (Armenian court patterns)
+    let court_name: string | null = null;
+    const courtPatterns = [
+      /(\u0540\u0540\s+\u057E\u0573\u057C\u0561\u0562\u0565\u056F\s+\u0564\u0561\u057F\u0561\u0580\u0561\u0576)/i,
+      /(\u0540\u0540\s+[\u0531-\u058F\s]+\u0564\u0561\u057F\u0561\u0580\u0561\u0576)/i,
+      /(\u057E\u0573\u057C\u0561\u0562\u0565\u056F\s+\u0564\u0561\u057F\u0561\u0580\u0561\u0576)/i,
+      /(\u057E\u0565\u0580\u0561\u0584\u0576\u0576\u056B\u0579\s+\u0564\u0561\u057F\u0561\u0580\u0561\u0576)/i,
+    ];
+    for (const p of courtPatterns) {
+      const m = header.match(p);
+      if (m) { court_name = m[1].trim(); break; }
+    }
+
+    // Extract case number
+    let case_number: string | null = null;
+    const casePatterns = [
+      /\u0563\u0578\u0580\u056E\s*[\u2116N#]?\s*([\w\/\-\.]+\d[\w\/\-\.]*)/i,
+      /\u0533\u0578\u0580\u056E\s*[\u2116N#]?\s*([\w\/\-\.]+\d[\w\/\-\.]*)/i,
+      /([A-Z\u0531-\u054F]+\d{2,}[\d\/\-]*)/,
+    ];
+    for (const p of casePatterns) {
+      const m = header.match(p);
+      if (m) { case_number = m[1].trim(); break; }
+    }
+
+    // Extract decision date
+    let decision_date: string | null = null;
+    const ddmmyyyy = header.match(/(\d{2})\.(\d{2})\.(\d{4})/);
+    const isoDate = header.match(/(\d{4})-(\d{2})-(\d{2})/);
+    if (ddmmyyyy) {
+      decision_date = `${ddmmyyyy[3]}-${ddmmyyyy[2]}-${ddmmyyyy[1]}`;
+    } else if (isoDate) {
+      decision_date = isoDate[0];
+    }
+
+    // Extract applied articles
+    const articles: string[] = [];
+    const hyArt = text.matchAll(/\u0570\u0578\u0564\u057E\u0561\u056E\u056B?\s*(\d+(?:\.\d+)?)/gi);
+    for (const m of hyArt) articles.push(m[1]);
+    const ruArt = text.matchAll(/\u0441\u0442\.?\s*(\d+(?:\.\d+)?)/gi);
+    for (const m of ruArt) articles.push(m[1]);
+    const uniqueArticles = [...new Set(articles)];
+
+    return {
+      court_name,
+      case_number,
+      decision_date,
+      applied_articles: uniqueArticles.length > 0 ? uniqueArticles : null,
+    };
+  };
+
   const detectOutcome = (text: string): CaseOutcome => {
     const lower = text.toLowerCase();
-    // Armenian keywords for outcomes
     if (/\u0562\u0561\u057E\u0561\u0580\u0561\u0580\u0565\u056C|\u0570\u0561\u0575\u0581\u0568\u0576? \u0562\u0561\u057E\u0561\u0580\u0561\u0580\u0565\u056C|\u0570\u0561\u0575\u0581\u0568 \u0562\u0561\u057E\u0561\u0580\u0561\u0580\u0565\u056C/i.test(text)) return 'granted';
     if (/\u0574\u0565\u0580\u056A\u057E\u0565\u056C|\u0570\u0561\u0575\u0581\u0568\u0576? \u0574\u0565\u0580\u056A\u0565\u056C|\u0570\u0561\u0575\u0581\u0568 \u0574\u0565\u0580\u056A\u0565\u056C|\u0574\u0565\u0580\u056A\u057E\u0565\u056C \u0567/i.test(text)) return 'rejected';
     if (/\u0574\u0561\u057D\u0576\u0561\u056F\u056B\u0578\u0580\u0565\u0576|\u0574\u0561\u057D\u0576\u0561\u056F\u056B/i.test(text)) return 'partial';
     if (/\u057E\u0565\u0580\u0561\u0564\u0561\u0580\u0571\u057E\u0565\u056C|\u0576\u0578\u0580 \u0584\u0576\u0576\u0578\u0582\u0569\u0575\u0561\u0576/i.test(text)) return 'remanded';
     if (/\u056F\u0561\u0580\u0573\u057E\u0565\u056C|\u057E\u0561\u0580\u0578\u0582\u0575\u0569\u0568 \u056F\u0561\u0580\u0573\u057E\u0565\u056C/i.test(text)) return 'discontinued';
-    // Russian keywords
     if (/\u0443\u0434\u043e\u0432\u043b\u0435\u0442\u0432\u043e\u0440\u0438\u0442\u044c|\u0443\u0434\u043e\u0432\u043b\u0435\u0442\u0432\u043e\u0440\u0435\u043d/i.test(lower)) return 'granted';
     if (/\u043e\u0442\u043a\u0430\u0437\u0430\u0442\u044c|\u043e\u0442\u043a\u043b\u043e\u043d\u0438\u0442\u044c|\u043e\u0442\u043a\u0430\u0437\u0430\u043d\u043e/i.test(lower)) return 'rejected';
     if (/\u0447\u0430\u0441\u0442\u0438\u0447\u043d\u043e/i.test(lower)) return 'partial';
     if (/\u043d\u0430\u043f\u0440\u0430\u0432\u0438\u0442\u044c \u043d\u0430 \u043d\u043e\u0432\u043e\u0435|\u0432\u043e\u0437\u0432\u0440\u0430\u0442\u0438\u0442\u044c/i.test(lower)) return 'remanded';
     if (/\u043f\u0440\u0435\u043a\u0440\u0430\u0442\u0438\u0442\u044c|\u043f\u0440\u0435\u043a\u0440\u0430\u0449\u0435\u043d\u043e/i.test(lower)) return 'discontinued';
-    return 'granted'; // fallback
+    return 'granted';
   };
 
   const processFile = async (fileItem: TxtFileItem): Promise<boolean> => {
@@ -191,6 +243,7 @@ export function LegalPracticeBulkImport({ open, onOpenChange }: LegalPracticeBul
             const contentText = item.content_text || item.content || item.text || item.body || '';
             const title = item.title || item.name || fallbackTitle;
             if (!contentText) return null;
+            const extracted = extractMetadata(String(contentText));
             return {
               title: String(title),
               content_text: String(contentText),
@@ -201,10 +254,10 @@ export function LegalPracticeBulkImport({ open, onOpenChange }: LegalPracticeBul
               is_anonymized: item.is_anonymized ?? true,
               visibility: item.visibility || 'ai_only',
               source_name: item.source_name || file.name,
-              court_name: item.court_name || null,
-              case_number_anonymized: item.case_number_anonymized || null,
-              decision_date: item.decision_date || null,
-              applied_articles: item.applied_articles || null,
+              court_name: item.court_name || extracted.court_name,
+              case_number_anonymized: item.case_number_anonymized || extracted.case_number,
+              decision_date: item.decision_date || extracted.decision_date,
+              applied_articles: item.applied_articles || extracted.applied_articles,
               legal_reasoning_summary: item.legal_reasoning_summary || null,
               key_violations: item.key_violations || null,
               description: item.description || null,
@@ -213,9 +266,8 @@ export function LegalPracticeBulkImport({ open, onOpenChange }: LegalPracticeBul
           .filter(Boolean);
 
         if (rows.length === 0) {
-          // If it's a single object with no recognized content fields,
-          // treat the entire JSON as content
-          const fullContent = JSON.stringify(jsonData, null, 2);
+          const fullContent = typeof jsonData === 'string' ? jsonData : JSON.stringify(jsonData, null, 2);
+          const extracted = extractMetadata(fullContent);
           const { error } = await supabase.from('legal_practice_kb').insert({
             title: fallbackTitle,
             content_text: fullContent,
@@ -226,6 +278,10 @@ export function LegalPracticeBulkImport({ open, onOpenChange }: LegalPracticeBul
             is_anonymized: true,
             visibility: 'ai_only',
             source_name: file.name,
+            court_name: extracted.court_name,
+            case_number_anonymized: extracted.case_number,
+            decision_date: extracted.decision_date,
+            applied_articles: extracted.applied_articles,
           });
           if (error) throw error;
           updateFile(id, { status: 'success', progress: 100 });
@@ -243,6 +299,7 @@ export function LegalPracticeBulkImport({ open, onOpenChange }: LegalPracticeBul
         // TXT mode: single entry
         const title = file.name.replace(/\.txt$/i, '').replace(/_/g, ' ');
         const resolvedOutcome = autoDetectOutcome ? detectOutcome(textContent) : manualOutcome;
+        const extracted = extractMetadata(textContent);
 
         const { error } = await supabase.from('legal_practice_kb').insert({
           title,
@@ -254,8 +311,11 @@ export function LegalPracticeBulkImport({ open, onOpenChange }: LegalPracticeBul
           is_anonymized: true,
           visibility: 'ai_only',
           source_name: file.name,
+          court_name: extracted.court_name,
+          case_number_anonymized: extracted.case_number,
+          decision_date: extracted.decision_date,
+          applied_articles: extracted.applied_articles,
         });
-
         if (error) throw error;
         updateFile(id, { status: 'success', progress: 100 });
       }
