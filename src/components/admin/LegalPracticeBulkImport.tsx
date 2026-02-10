@@ -1,6 +1,7 @@
 import { useState, useCallback, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import { supabase } from '@/integrations/supabase/client';
+import { runBatchChunking } from '@/lib/batchChunking';
 import { useQueryClient } from '@tanstack/react-query';
 import { Button } from '@/components/ui/button';
 import { Progress } from '@/components/ui/progress';
@@ -359,15 +360,21 @@ export function LegalPracticeBulkImport({ open, onOpenChange }: LegalPracticeBul
   const [enrichmentStatus, setEnrichmentStatus] = useState<'idle' | 'running' | 'done' | 'error'>('idle');
   const [enrichmentProgress, setEnrichmentProgress] = useState<{ enriched: number; remaining: number } | null>(null);
 
+  const [chunkingProgress, setChunkingProgress] = useState<string>('');
+
   const runChunking = async () => {
     setChunkingStatus('running');
+    setChunkingProgress('');
     try {
-      const { data, error } = await supabase.functions.invoke('kb-backfill-chunks', {
-        body: { chunkSize: 8000 },
+      const result = await runBatchChunking({
+        chunkSize: 8000,
+        batchLimit: 10,
+        onProgress: (p) => {
+          setChunkingProgress(`${p.processedDocs} docs / ${p.totalChunksInserted} chunks (${p.totalRemaining} remaining)`);
+        },
       });
-      if (error) throw error;
       setChunkingStatus('done');
-      toast.success(t('lp_bi_chunk_success', { count: data?.totalChunksInserted || 0 }));
+      toast.success(t('lp_bi_chunk_success', { count: result.totalChunksInserted }));
     } catch (e) {
       setChunkingStatus('error');
       toast.error(t('lp_bi_chunk_fail'));
@@ -694,8 +701,9 @@ export function LegalPracticeBulkImport({ open, onOpenChange }: LegalPracticeBul
                   <div className="flex items-center gap-2">
                     <Zap className="h-4 w-4 text-primary shrink-0" />
                     <span className="text-xs flex-1">
-                      {chunkingStatus === 'running' ? t('lp_bi_chunking') :
-                       chunkingStatus === 'done' ? `\u2713 ${t('lp_bi_chunked')}` :
+                      {chunkingStatus === 'running'
+                        ? `${t('lp_bi_chunking')}${chunkingProgress ? ` (${chunkingProgress})` : ''}`
+                        : chunkingStatus === 'done' ? `\u2713 ${t('lp_bi_chunked')}` :
                        chunkingStatus === 'error' ? t('lp_bi_chunk_error') :
                        t('lp_bi_chunk_waiting')}
                     </span>
