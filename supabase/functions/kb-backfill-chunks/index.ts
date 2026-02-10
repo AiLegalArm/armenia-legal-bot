@@ -3,16 +3,15 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.4";
 
 type BackfillBody = {
   docId?: string;
-  chunkSize?: number; // chars
+  chunkSize?: number;
   dryRun?: boolean;
+  batchLimit?: number; // max docs per invocation (default 5)
 };
 
 type KbDoc = {
   id: string;
   title: string | null;
-  content_text: string | null; // full text
-  language?: string | null;
-  updated_at?: string | null;
+  content_text: string | null;
 };
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
@@ -23,8 +22,6 @@ const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
 };
-
-// ---- helpers ----
 
 function json(status: number, data: unknown) {
   return new Response(JSON.stringify(data), {
@@ -54,8 +51,6 @@ async function requireAdmin(req: Request) {
   }
 
   const user = userData.user;
-
-  // Check app_metadata first, then fall back to has_role RPC
   const role = (user.app_metadata as any)?.role;
   if (role === "admin") return { token, user };
 
@@ -81,10 +76,8 @@ function splitIntoChunks(text: string, chunkSize: number, overlap = 200): { idx:
   while (start < t.length) {
     const end = Math.min(start + chunkSize, t.length);
     const slice = t.slice(start, end);
-
     const chunkText = slice.trim();
     if (chunkText.length > 0) chunks.push({ idx: i++, text: chunkText });
-
     if (end === t.length) break;
     start = Math.max(0, end - overlap);
   }
@@ -116,6 +109,8 @@ serve(async (req) => {
     const docId = typeof body.docId === "string" && body.docId.trim() ? body.docId.trim() : undefined;
     const chunkSize = normalizeChunkSize(body.chunkSize);
     const dryRun = body.dryRun === true;
+    // Limit docs per invocation to avoid CPU timeout (default 5, max 10)
+    const batchLimit = Math.min(Math.max(typeof body.batchLimit === "number" ? body.batchLimit : 5, 1), 10);
 
     const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
 
@@ -125,7 +120,7 @@ serve(async (req) => {
     if (docId) {
       const { data, error } = await supabase
         .from("legal_practice_kb")
-        .select("id,title,content_text,updated_at")
+        .select("id,title,content_text")
         .eq("id", docId)
         .limit(1);
 
@@ -133,15 +128,16 @@ serve(async (req) => {
       docs = (data ?? []) as KbDoc[];
       if (docs.length === 0) return json(404, { error: "DOC_NOT_FOUND", docId });
     } else {
+      // Get docs that don't have chunks yet, limited to batchLimit
       const { data, error } = await supabase.rpc("kb_docs_without_chunks");
 
       if (error) {
-        // Fallback 2-step
+        // Fallback: 2-step approach
         const { data: allDocs, error: e1 } = await supabase
           .from("legal_practice_kb")
-          .select("id,title,content_text,updated_at")
+          .select("id,title,content_text")
           .order("updated_at", { ascending: false })
-          .limit(5000);
+          .limit(500);
         if (e1) throw { status: 500, code: "DB_ERROR", message: e1.message };
 
         const docList = (allDocs ?? []) as KbDoc[];
@@ -157,6 +153,12 @@ serve(async (req) => {
       } else {
         docs = (data ?? []) as KbDoc[];
       }
+    }
+
+    const totalRemaining = docs.length;
+    // Only process batchLimit docs in this invocation
+    if (!docId) {
+      docs = docs.slice(0, batchLimit);
     }
 
     // 2) plan chunks
@@ -178,13 +180,15 @@ serve(async (req) => {
       return json(200, {
         dryRun: true,
         docCount: docs.length,
+        totalRemaining,
         chunkSize,
+        batchLimit,
         plannedTotalChunks: totalChunks,
         plan,
       });
     }
 
-    // 3) write chunks (idempotent: delete existing, then insert)
+    // 3) write chunks
     const writeResults = [];
     for (const d of docs) {
       const text = (d.content_text ?? "").trim();
@@ -209,9 +213,9 @@ serve(async (req) => {
         title: d.title,
       }));
 
-      const batchSize = 200;
-      for (let i = 0; i < rows.length; i += batchSize) {
-        const batch = rows.slice(i, i + batchSize);
+      const insertBatchSize = 200;
+      for (let i = 0; i < rows.length; i += insertBatchSize) {
+        const batch = rows.slice(i, i + insertBatchSize);
         const { error: insErr } = await supabase.from("legal_practice_kb_chunks").insert(batch);
         if (insErr) throw { status: 500, code: "DB_ERROR", message: insErr.message };
       }
@@ -222,9 +226,14 @@ serve(async (req) => {
     return json(200, {
       dryRun: false,
       processedDocs: docs.length,
+      totalRemaining: totalRemaining - docs.length,
       chunkSize,
+      batchLimit,
       totalChunksInserted: writeResults.reduce((s, r: any) => s + (r.inserted ?? 0), 0),
       results: writeResults,
+      hint: totalRemaining > docs.length
+        ? "More documents remain. Call again to process the next batch."
+        : "All documents processed.",
     });
   } catch (e) {
     const status = typeof (e as any)?.status === "number" ? (e as any).status : 500;
