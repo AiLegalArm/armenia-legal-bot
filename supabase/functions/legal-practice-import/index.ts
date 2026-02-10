@@ -30,7 +30,7 @@ interface ExtractedData {
   court_type: CourtType | null;
   outcome: Outcome | null;
   court_name: string | null;
-  case_number_anonymized: string | null;
+  case_number: string | null;
   decision_date: string | null;
   applied_articles: Record<string, unknown>;
   key_violations: string[];
@@ -95,7 +95,7 @@ function validateExtractedData(raw: unknown): ExtractedData {
     "court_type",
     "outcome",
     "court_name",
-    "case_number_anonymized",
+    "case_number",
     "decision_date",
     "applied_articles",
     "key_violations",
@@ -118,7 +118,7 @@ function validateExtractedData(raw: unknown): ExtractedData {
   if (!isEnumOrNull(raw.court_type, COURT)) throw new Error("Invalid: court_type");
   if (!isEnumOrNull(raw.outcome, OUTCOME)) throw new Error("Invalid: outcome");
   if (!isStringOrNull(raw.court_name)) throw new Error("Invalid: court_name");
-  if (!isStringOrNull(raw.case_number_anonymized)) throw new Error("Invalid: case_number_anonymized");
+  if (!isStringOrNull(raw.case_number)) throw new Error("Invalid: case_number");
   if (!isISODateOrNull(raw.decision_date)) throw new Error("Invalid: decision_date");
   if (!isStringOrNull(raw.legal_reasoning_summary)) throw new Error("Invalid: legal_reasoning_summary");
   if (typeof raw.content_text !== "string") throw new Error("Invalid: content_text");
@@ -189,7 +189,7 @@ CATEGORIZATION POLICY (STRICT KEYWORD MATCHING ONLY; do not assume)
 FIELD INSTRUCTIONS
 - title: prefer official header; otherwise create a concise descriptive title using ONLY explicit text; keep language consistent with the decision.
 - court_name: exact court name as written.
-- case_number_anonymized: extract the main case number as written; anonymize ONLY if personal data is embedded inside the case-number string; redact minimally with "X" preserving structure.
+- case_number: extract the main case number exactly as written in the text. Do NOT anonymize or redact any part of it.
 - decision_date: pick the explicit decision/act issuance date (e.g., "\u0578\u0580\u0578\u0577\u0578\u0582\u0574", "\u057E\u0573\u056B\u057C"). If unclear or multiple conflicting dates -> null.
 - applied_articles: extract only explicit references (e.g. "61-\u0580\u0564 \u0570\u0578\u0564\u057E\u0561\u056E", "\u0570\u0578\u0564\u057E\u0561\u056E 61", "61-\u0580\u0564 \u0570\u0578\u0564\u057E\u0561\u056E\u056B 1-\u056B\u0576 \u0574\u0561\u057D"). Do NOT invent articles. Group by legal act name. For each article include 1-2 sentences of context from surrounding text (max 300 chars). Remove duplicates.
   Output format for applied_articles:
@@ -197,7 +197,7 @@ FIELD INSTRUCTIONS
   Use the actual Armenian name of the legal act as it appears in the text. If no articles found: {"sources":[]}
 - key_violations: include only explicit violation/issue phrases present in text; otherwise [].
 - legal_reasoning_summary: 2\u20133 sentences, faithful, strictly based on explicit reasoning; no new facts; if insufficient text -> null.
-- content_text: full text with minimal cleanup; preserve breaks and citations.
+- content_text: full text with minimal cleanup; preserve breaks, citations, names and all personal data as-is. Do NOT anonymize or redact anything.
 
 CRITICAL: All string values in your JSON output MUST use actual UTF-8 Armenian characters, NOT unicode escape sequences like \\u0555. Write real Armenian letters.
 
@@ -208,7 +208,7 @@ OUTPUT SCHEMA (EXACT KEYS, NO EXTRA KEYS)
   "court_type": "first_instance"|"appeal"|"cassation"|"constitutional"|"echr"|null,
   "outcome": "granted"|"rejected"|"partial"|"remanded"|"discontinued"|null,
   "court_name": string|null,
-  "case_number_anonymized": string|null,
+  "case_number": string|null,
   "decision_date": string|null,
   "applied_articles": {"sources":[{"act":"...","articles":[{"article":"...","part":"...","point":"...","context":"..."}]}]},
   "key_violations": ["..."],
@@ -229,7 +229,7 @@ async function extractWithAI(textContent: string, apiKey: string): Promise<Extra
       court_type: null,
       outcome: null,
       court_name: null,
-      case_number_anonymized: null,
+      case_number: null,
       decision_date: null,
       applied_articles: { sources: [] },
       key_violations: [],
@@ -307,7 +307,7 @@ async function extractMissingWithAI(
     court_type: '"court_type": "first_instance"|"appeal"|"cassation"|"constitutional"|"echr"|null',
     outcome: '"outcome": "granted"|"rejected"|"partial"|"remanded"|"discontinued"|null',
     court_name: '"court_name": string — exact court name as written',
-    case_number_anonymized: '"case_number_anonymized": string — case number, anonymize personal data with X',
+    case_number: '"case_number": string — case number exactly as written, no anonymization',
     decision_date: '"decision_date": string — YYYY-MM-DD format or null',
     applied_articles: '"applied_articles": {"sources":[{"act":"<legal act name>","articles":[{"article":"<number>","part":"<number or empty>","point":"<number or empty>","context":"<max 300 chars>"}]}]}',
     key_violations: '"key_violations": ["..."] — explicit violation phrases from text',
@@ -437,12 +437,17 @@ serve(async (req) => {
       const missingFields: string[] = [];
       const ENRICHABLE = [
         "title", "practice_category", "court_type", "outcome", "court_name",
-        "case_number_anonymized", "decision_date", "applied_articles",
+        "case_number", "decision_date", "applied_articles",
         "key_violations", "legal_reasoning_summary",
       ] as const;
 
+      // Map DB column names to AI field names
+      const dbToAi: Record<string, string> = { case_number_anonymized: "case_number" };
+      const aiToDb: Record<string, string> = { case_number: "case_number_anonymized" };
+
       for (const f of ENRICHABLE) {
-        const v = existingDoc[f];
+        const dbCol = aiToDb[f] || f;
+        const v = existingDoc[dbCol];
         if (v === null || v === undefined || v === "" || (Array.isArray(v) && v.length === 0)) {
           missingFields.push(f);
         } else if (f === "applied_articles" && typeof v === "object" && !Array.isArray(v)) {
@@ -471,7 +476,8 @@ serve(async (req) => {
       for (const f of missingFields) {
         const v = (extractedData as Record<string, unknown>)[f];
         if (v !== null && v !== undefined && v !== "" && !(Array.isArray(v) && v.length === 0)) {
-          updatePayload[f] = v;
+          const dbCol = aiToDb[f] || f;
+          updatePayload[dbCol] = v;
         }
       }
 
@@ -514,13 +520,13 @@ serve(async (req) => {
         court_type: extractedData.court_type || 'cassation',
         outcome: extractedData.outcome || 'granted',
         court_name: extractedData.court_name,
-        case_number_anonymized: extractedData.case_number_anonymized,
+        case_number_anonymized: extractedData.case_number,
         decision_date: extractedData.decision_date,
         applied_articles: extractedData.applied_articles,
         key_violations: extractedData.key_violations.length > 0 ? extractedData.key_violations : null,
         legal_reasoning_summary: extractedData.legal_reasoning_summary,
         is_active: true,
-        is_anonymized: true,
+        is_anonymized: false,
         visibility: 'ai_only',
         source_name: fileName || null,
       })
