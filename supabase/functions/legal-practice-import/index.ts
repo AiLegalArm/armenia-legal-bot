@@ -318,7 +318,10 @@ async function extractMissingWithAI(
   ${schema}
 }
 
-RULES: extraction-only, no guessing, preserve original language (HY/RU/EN). All string values must use actual UTF-8 characters.`;
+CRITICAL RULES:
+1. Extraction-only, no guessing, no translation.
+2. PRESERVE THE ORIGINAL LANGUAGE of the document in ALL values. If the text is in Armenian, all extracted strings MUST be in Armenian. If in Russian, keep Russian. NEVER translate to English.
+3. All string values must use actual UTF-8 characters, not unicode escapes.`;
 
   const resp = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
     method: "POST",
