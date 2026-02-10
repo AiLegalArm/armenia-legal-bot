@@ -30,6 +30,8 @@ import {
   XCircle,
   X,
   FolderUp,
+  Wand2,
+  Zap,
 } from 'lucide-react';
 
 type PracticeCategory = 'criminal' | 'civil' | 'administrative' | 'echr';
@@ -331,11 +333,47 @@ export function LegalPracticeBulkImport({ open, onOpenChange }: LegalPracticeBul
     }
   };
 
+  const [chunkingStatus, setChunkingStatus] = useState<'idle' | 'running' | 'done' | 'error'>('idle');
+  const [enrichmentStatus, setEnrichmentStatus] = useState<'idle' | 'running' | 'done' | 'error'>('idle');
+
+  const runChunking = async () => {
+    setChunkingStatus('running');
+    try {
+      const { data, error } = await supabase.functions.invoke('kb-backfill-chunks', {
+        body: { chunkSize: 8000 },
+      });
+      if (error) throw error;
+      setChunkingStatus('done');
+      toast.success(`\u0549\u0561\u0576\u056F\u056B\u0580\u0578\u057E\u0561\u0576\u0568\u055D ${data?.totalChunksInserted || 0} \u0586\u0580\u0561\u0563\u0574\u0565\u0576\u057F`);
+    } catch (e) {
+      setChunkingStatus('error');
+      toast.error('\u0549\u0561\u0576\u056F\u056B\u0580\u0578\u057E\u0574\u0561\u0576 \u057D\u056D\u0561\u056C');
+    }
+  };
+
+  const runEnrichment = async () => {
+    setEnrichmentStatus('running');
+    try {
+      const { data, error } = await supabase.functions.invoke('legal-practice-enrich', {
+        body: { limit: 50 },
+      });
+      if (error) throw error;
+      setEnrichmentStatus('done');
+      toast.success(`AI \u0570\u0561\u0580\u057D\u057F\u0561\u0581\u0578\u0582\u0574\u055D ${data?.enriched || 0} \u0583\u0561\u057D\u057F\u0561\u0569\u0578\u0582\u0572\u0569`);
+      queryClient.invalidateQueries({ queryKey: ['legal-practice-kb'] });
+    } catch (e) {
+      setEnrichmentStatus('error');
+      toast.error('AI \u0570\u0561\u0580\u057D\u057F\u0561\u0581\u0574\u0561\u0576 \u057D\u056D\u0561\u056C');
+    }
+  };
+
   const handleStartImport = async () => {
     const pendingFiles = files.filter((f) => f.status === 'pending');
     if (pendingFiles.length === 0) return;
 
     setIsProcessing(true);
+    setChunkingStatus('idle');
+    setEnrichmentStatus('idle');
     let successCount = 0;
     let errorCount = 0;
 
@@ -353,6 +391,8 @@ export function LegalPracticeBulkImport({ open, onOpenChange }: LegalPracticeBul
     if (successCount > 0) {
       toast.success(`\u053B\u0574\u057A\u0578\u0580\u057F\u057E\u0565\u0581\u055D ${successCount} \u0586\u0561\u0575\u056C`);
       queryClient.invalidateQueries({ queryKey: ['legal-practice-kb'] });
+      // Auto-start chunking
+      runChunking();
     }
   };
 
@@ -584,6 +624,44 @@ export function LegalPracticeBulkImport({ open, onOpenChange }: LegalPracticeBul
                   {errorCount > 0 && (
                     <span className="text-destructive">{'\u2717'} {errorCount}</span>
                   )}
+                </div>
+              )}
+
+              {/* Post-import actions */}
+              {successCount > 0 && !isProcessing && (
+                <div className="space-y-2 rounded-lg border border-primary/20 bg-primary/5 p-3">
+                  <p className="text-xs font-medium">{'\u0540\u0565\u057F\u0576\u0565\u0580\u056F\u0561\u0575\u0561\u0581\u0578\u0582\u0574\u0576\u0565\u0580\u055D'}</p>
+                  
+                  <div className="flex items-center gap-2">
+                    <Zap className="h-4 w-4 text-primary shrink-0" />
+                    <span className="text-xs flex-1">
+                      {chunkingStatus === 'running' ? '\u0549\u0561\u0576\u056F\u056B\u0580\u0578\u057E\u0578\u0582\u0574...' :
+                       chunkingStatus === 'done' ? '\u2713 \u0549\u0561\u0576\u056F\u056B\u0580\u0578\u057E\u057E\u0561\u056E \u0567' :
+                       chunkingStatus === 'error' ? '\u054D\u056D\u0561\u056C' :
+                       '\u054D\u057A\u0561\u057D\u0578\u0582\u0574...'}
+                    </span>
+                    {chunkingStatus === 'running' && <Loader2 className="h-3 w-3 animate-spin" />}
+                  </div>
+
+                  <div className="flex items-center gap-2">
+                    <Wand2 className="h-4 w-4 text-purple-500 shrink-0" />
+                    <span className="text-xs flex-1">AI {'\u0570\u0561\u0580\u057D\u057F\u0561\u0581\u0578\u0582\u0574'}</span>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="h-6 text-xs px-2"
+                      disabled={enrichmentStatus === 'running' || chunkingStatus === 'running'}
+                      onClick={runEnrichment}
+                    >
+                      {enrichmentStatus === 'running' ? (
+                        <Loader2 className="h-3 w-3 animate-spin" />
+                      ) : enrichmentStatus === 'done' ? (
+                        '\u2713'
+                      ) : (
+                        '\u0533\u0578\u0580\u056E\u0561\u0580\u056F\u0565\u056C'
+                      )}
+                    </Button>
+                  </div>
                 </div>
               )}
             </div>

@@ -212,6 +212,10 @@ export function KBBulkImport({ open, onOpenChange, onSuccess }: KBBulkImportProp
     if (successCount > 0) {
       toast.success(`${t('document_uploaded')}: ${successCount} files, ${totalImported} articles`);
       onSuccess();
+      // Auto-chunking for KB
+      try {
+        await supabase.functions.invoke('kb-backfill-chunks', { body: { chunkSize: 8000 } });
+      } catch { /* silent */ }
     }
   };
 

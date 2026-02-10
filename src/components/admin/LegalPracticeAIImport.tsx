@@ -60,8 +60,10 @@ export function LegalPracticeAIImport({ open, onOpenChange }: LegalPracticeAIImp
     const validFiles: TxtFileItem[] = [];
     
     for (const file of fileArray) {
-      if (!file.name.endsWith('.txt')) {
-        toast.error(`${file.name}: ${t('common:error')}`);
+      const isTxt = file.name.endsWith('.txt');
+      const isJson = file.name.endsWith('.json');
+      if (!isTxt && !isJson) {
+        toast.error(`${file.name}: ${t('common:error')} - TXT/JSON only`);
         continue;
       }
       
@@ -120,20 +122,29 @@ export function LegalPracticeAIImport({ open, onOpenChange }: LegalPracticeAIImp
     const { id, file } = fileItem;
     
     try {
-      // Step 1: Read file content
       updateFile(id, { status: 'reading', progress: 20 });
-      
-      const textContent = await file.text();
-      
+      const rawContent = await file.text();
       updateFile(id, { progress: 40 });
       
-      // Step 2: Send to AI import function
+      // For JSON files, extract content_text or stringify
+      let textContent = rawContent;
+      if (file.name.endsWith('.json')) {
+        try {
+          const parsed = JSON.parse(rawContent);
+          if (typeof parsed === 'object' && parsed !== null) {
+            textContent = parsed.content_text || parsed.content || parsed.text || parsed.body || JSON.stringify(parsed, null, 2);
+          }
+        } catch {
+          // Use raw content if JSON parsing fails
+        }
+      }
+      
       updateFile(id, { status: 'analyzing', progress: 60 });
       
       const { data, error: fnError } = await supabase.functions.invoke('legal-practice-import', {
         body: {
           textContent,
-          fileName: file.name.replace('.txt', ''),
+          fileName: file.name.replace(/\.(txt|json)$/i, ''),
         },
       });
       
@@ -182,6 +193,11 @@ export function LegalPracticeAIImport({ open, onOpenChange }: LegalPracticeAIImp
     if (successCount > 0) {
       toast.success(`AI Import: ${successCount} ${'\u0583\u0561\u057D\u057F\u0561\u0569\u0578\u0582\u0572\u0569'}`);
       queryClient.invalidateQueries({ queryKey: ['legal-practice-kb'] });
+      // Auto-chunking
+      try {
+        await supabase.functions.invoke('kb-backfill-chunks', { body: { chunkSize: 8000 } });
+        toast.success('\u0549\u0561\u0576\u056F\u056B\u0580\u0578\u057E\u0574\u0561\u0576 \u0561\u057E\u0561\u0580\u057F\u057E\u0565\u0581');
+      } catch { /* silent */ }
     }
   };
 
@@ -261,14 +277,14 @@ export function LegalPracticeAIImport({ open, onOpenChange }: LegalPracticeAIImp
             <input
               ref={fileInputRef}
               type="file"
-              accept=".txt"
+              accept=".txt,.json"
               multiple
               onChange={handleFileSelect}
               className="hidden"
             />
             <Brain className="mx-auto h-10 w-10 text-purple-500" />
             <p className="mt-2 text-sm font-medium">
-              {'\u0554\u0561\u0577\u0565\u0584 \u056F\u0561\u0574 \u0562\u0565\u0580\u0565\u0584 TXT \u0586\u0561\u0575\u056C\u0565\u0580'}
+              {'\u0554\u0561\u0577\u0565\u0584 \u056F\u0561\u0574 \u0562\u0565\u0580\u0565\u0584 TXT / JSON \u0586\u0561\u0575\u056C\u0565\u0580'}
             </p>
             <p className="mt-1 text-xs text-muted-foreground">
               AI-{'\u0568 \u0561\u057E\u057F\u0578\u0574\u0561\u057F \u056C\u0580\u0561\u0581\u0576\u0565\u056C\u0578\u0582 \u0567 \u0562\u0578\u056C\u0578\u0580 \u0564\u0561\u0577\u057F\u0565\u0580\u0568'}
