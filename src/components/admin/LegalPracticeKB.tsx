@@ -120,27 +120,46 @@ export function LegalPracticeKB() {
   const [enrichingIds, setEnrichingIds] = useState<Set<string>>(new Set());
   const [openFolders, setOpenFolders] = useState<Set<string>>(new Set());
 
-  // Fetch documents
+  // Fetch documents in batches to overcome 1000-row limit
   const { data: documents, isLoading } = useQuery({
     queryKey: ['legal-practice-kb', searchTerm, filterCategory],
     queryFn: async () => {
-      let query = supabase
-        .from('legal_practice_kb')
-        .select('*')
-        .order('created_at', { ascending: false });
+      const selectFields = 'id,title,description,court_type,practice_category,court_name,case_number_anonymized,decision_date,outcome,key_violations,legal_reasoning_summary,applied_articles,source_name,source_url,is_anonymized,visibility,is_active,created_at,updated_at';
+      const batchSize = 1000;
+      let allData: any[] = [];
+      let offset = 0;
+      let hasMore = true;
 
-      if (filterCategory !== 'all') {
-        query = query.eq('practice_category', filterCategory);
+      while (hasMore) {
+        let query = supabase
+          .from('legal_practice_kb')
+          .select(selectFields)
+          .order('created_at', { ascending: false })
+          .range(offset, offset + batchSize - 1);
+
+        if (filterCategory !== 'all') {
+          query = query.eq('practice_category', filterCategory);
+        }
+
+        if (searchTerm) {
+          query = query.or(`title.ilike.%${searchTerm}%`);
+        }
+
+        const { data, error } = await query;
+        if (error) throw error;
+
+        if (data && data.length > 0) {
+          allData.push(...data);
+          offset += batchSize;
+          hasMore = data.length === batchSize;
+        } else {
+          hasMore = false;
+        }
       }
 
-      if (searchTerm) {
-        query = query.or(`title.ilike.%${searchTerm}%,content_text.ilike.%${searchTerm}%`);
-      }
-
-      const { data, error } = await query;
-      if (error) throw error;
-      return (data || []).map((doc: any) => ({
+      return allData.map((doc: any) => ({
         ...doc,
+        content_text: '', // not fetched in list view
         applied_articles: doc.applied_articles ?? null
       })) as LegalPracticeDocument[];
     }
