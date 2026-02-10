@@ -37,7 +37,7 @@ import { LegalPracticeBulkImport } from './LegalPracticeBulkImport';
 
 // Types matching database schema
 type CourtType = 'first_instance' | 'appeal' | 'cassation' | 'constitutional' | 'echr';
-type PracticeCategory = 'criminal' | 'civil' | 'administrative' | 'echr';
+type PracticeCategory = 'criminal' | 'civil' | 'administrative' | 'echr' | 'constitutional';
 type CaseOutcome = 'granted' | 'rejected' | 'partial' | 'remanded' | 'discontinued';
 
 interface LegalPracticeDocument {
@@ -75,7 +75,8 @@ const categoryKeys: Record<PracticeCategory, string> = {
   criminal: 'lp_cat_criminal',
   civil: 'lp_cat_civil',
   administrative: 'lp_cat_administrative',
-  echr: 'lp_cat_echr'
+  echr: 'lp_cat_echr',
+  constitutional: 'lp_cat_constitutional',
 };
 
 const outcomeKeys: Record<CaseOutcome, string> = {

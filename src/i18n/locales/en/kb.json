@@ -123,6 +123,7 @@
   "lp_cat_civil": "Civil",
   "lp_cat_administrative": "Administrative",
   "lp_cat_echr": "ECHR",
+  "lp_cat_constitutional": "Constitutional Court",
   "lp_outcome_granted": "\u0532\u0561\u057E\u0561\u0580\u0561\u0580\u057E\u0561\u056E",
   "lp_outcome_rejected": "\u0544\u0565\u0580\u056A\u057E\u0561\u056E",
   "lp_outcome_partial": "\u0532\u0561\u057E\u0561\u0580\u0561\u0580\u057E\u0561\u056E \u0574\u0561\u057D\u0576\u0561\u056F\u056B\u0578\u0580\u0565\u0576",
