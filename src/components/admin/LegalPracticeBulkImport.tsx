@@ -1,4 +1,5 @@
 import { useState, useCallback, useRef } from 'react';
+import { useTranslation } from 'react-i18next';
 import { supabase } from '@/integrations/supabase/client';
 import { useQueryClient } from '@tanstack/react-query';
 import { Button } from '@/components/ui/button';
@@ -48,27 +49,27 @@ interface TxtFileItem {
   error?: string;
 }
 
-const categoryLabels: Record<PracticeCategory, string> = {
-  criminal: '\u0554\u0580\u0565\u0561\u056F\u0561\u0576',
-  civil: '\u0554\u0561\u0572\u0561\u0584\u0561\u0581\u056B\u0561\u056F\u0561\u0576',
-  administrative: '\u054E\u0561\u0580\u0579\u0561\u056F\u0561\u0576',
-  echr: '\u0535\u054D\u054A\u053F',
+const categoryKeys: Record<PracticeCategory, string> = {
+  criminal: 'lp_cat_criminal',
+  civil: 'lp_cat_civil',
+  administrative: 'lp_cat_administrative',
+  echr: 'lp_cat_echr',
 };
 
-const courtTypeLabels: Record<CourtType, string> = {
-  first_instance: '\u0531\u057C\u0561\u057B\u056B\u0576 \u0561\u057F\u0575\u0561\u0576',
-  appeal: '\u054E\u0565\u0580\u0561\u0584\u0576\u0576\u056B\u0579',
-  cassation: '\u054E\u0573\u057C\u0561\u0562\u0565\u056F',
-  constitutional: '\u054D\u0561\u0570\u0574\u0561\u0576\u0561\u0564\u0580\u0561\u056F\u0561\u0576',
-  echr: '\u0535\u054D\u054A\u053F',
+const courtTypeKeys: Record<CourtType, string> = {
+  first_instance: 'lp_court_first_instance',
+  appeal: 'lp_court_appeal',
+  cassation: 'lp_court_cassation',
+  constitutional: 'lp_court_constitutional',
+  echr: 'lp_court_echr',
 };
 
-const outcomeLabels: Record<CaseOutcome, string> = {
-  granted: '\u0532\u0561\u057E\u0561\u0580\u0561\u0580\u057E\u0561\u056E',
-  rejected: '\u0544\u0565\u0580\u056A\u057E\u0561\u056E',
-  partial: '\u0532\u0561\u057E\u0561\u0580\u0561\u0580\u057E\u0561\u056E \u0574\u0561\u057D\u0576\u0561\u056F\u056B\u0578\u0580\u0565\u0576',
-  remanded: '\u054E\u0565\u0580\u0561\u0564\u0561\u0580\u0571\u057E\u0565\u056C',
-  discontinued: '\u053F\u0561\u0580\u0573\u057E\u0565\u056C',
+const outcomeKeys: Record<CaseOutcome, string> = {
+  granted: 'lp_outcome_granted',
+  rejected: 'lp_outcome_rejected',
+  partial: 'lp_outcome_partial',
+  remanded: 'lp_outcome_remanded',
+  discontinued: 'lp_outcome_discontinued',
 };
 
 interface LegalPracticeBulkImportProps {
@@ -79,6 +80,7 @@ interface LegalPracticeBulkImportProps {
 const MAX_FILE_SIZE = 50 * 1024 * 1024; // 50MB
 
 export function LegalPracticeBulkImport({ open, onOpenChange }: LegalPracticeBulkImportProps) {
+  const { t } = useTranslation('kb');
   const queryClient = useQueryClient();
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -99,11 +101,11 @@ export function LegalPracticeBulkImport({ open, onOpenChange }: LegalPracticeBul
       const isTxt = file.name.endsWith('.txt');
       const isJson = file.name.endsWith('.json');
       if (!isTxt && !isJson) {
-        toast.error(`${file.name}: \u0544\u056B\u0561\u0575\u0576 TXT \u056F\u0561\u0574 JSON \u0586\u0561\u0575\u056C\u0565\u0580`);
+        toast.error(`${file.name}: ${t('lp_bi_only_txt_json')}`);
         continue;
       }
       if (file.size > MAX_FILE_SIZE) {
-        toast.error(`${file.name}: \u0546\u056B\u0577\u0568 \u0579\u0561\u0583\u0561\u0566\u0561\u0576\u0581 \u0574\u0565\u056E \u0567 (max 50MB)`);
+        toast.error(`${file.name}: ${t('lp_bi_file_too_large')}`);
         continue;
       }
       validFiles.push({
@@ -115,7 +117,7 @@ export function LegalPracticeBulkImport({ open, onOpenChange }: LegalPracticeBul
     }
 
     setFiles((prev) => [...prev, ...validFiles]);
-  }, []);
+  }, [t]);
 
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files.length > 0) {
@@ -155,7 +157,6 @@ export function LegalPracticeBulkImport({ open, onOpenChange }: LegalPracticeBul
   const extractMetadata = (text: string) => {
     const header = text.substring(0, 5000);
 
-    // Extract court name (Armenian court patterns)
     let court_name: string | null = null;
     const courtPatterns = [
       /(\u0540\u0540\s+\u057E\u0573\u057C\u0561\u0562\u0565\u056F\s+\u0564\u0561\u057F\u0561\u0580\u0561\u0576)/i,
@@ -168,7 +169,6 @@ export function LegalPracticeBulkImport({ open, onOpenChange }: LegalPracticeBul
       if (m) { court_name = m[1].trim(); break; }
     }
 
-    // Extract case number
     let case_number: string | null = null;
     const casePatterns = [
       /\u0563\u0578\u0580\u056E\s*[\u2116N#]?\s*([\w\/\-\.]+\d[\w\/\-\.]*)/i,
@@ -180,7 +180,6 @@ export function LegalPracticeBulkImport({ open, onOpenChange }: LegalPracticeBul
       if (m) { case_number = m[1].trim(); break; }
     }
 
-    // Extract decision date
     let decision_date: string | null = null;
     const ddmmyyyy = header.match(/(\d{2})\.(\d{2})\.(\d{4})/);
     const isoDate = header.match(/(\d{4})-(\d{2})-(\d{2})/);
@@ -190,7 +189,6 @@ export function LegalPracticeBulkImport({ open, onOpenChange }: LegalPracticeBul
       decision_date = isoDate[0];
     }
 
-    // Extract applied articles
     const articles: string[] = [];
     const hyArt = text.matchAll(/\u0570\u0578\u0564\u057E\u0561\u056E\u056B?\s*(\d+(?:\.\d+)?)/gi);
     for (const m of hyArt) articles.push(m[1]);
@@ -230,7 +228,6 @@ export function LegalPracticeBulkImport({ open, onOpenChange }: LegalPracticeBul
       updateFile(id, { status: 'importing', progress: 60 });
 
       if (file.name.endsWith('.json')) {
-        // JSON mode: array of entries or single object
         let jsonData: unknown;
         try {
           jsonData = JSON.parse(textContent);
@@ -241,7 +238,6 @@ export function LegalPracticeBulkImport({ open, onOpenChange }: LegalPracticeBul
         const fallbackTitle = file.name.replace(/\.json$/i, '').replace(/_/g, ' ');
         const rows = items
           .map((item: any) => {
-            // Flexible field resolution
             const contentText = item.content_text || item.content || item.text || item.body || '';
             const title = item.title || item.name || fallbackTitle;
             if (!contentText) return null;
@@ -288,7 +284,6 @@ export function LegalPracticeBulkImport({ open, onOpenChange }: LegalPracticeBul
           if (error) throw error;
           updateFile(id, { status: 'success', progress: 100 });
         } else {
-          // Insert in batches
           const batchSize = 50;
           for (let i = 0; i < rows.length; i += batchSize) {
             const batch = rows.slice(i, i + batchSize);
@@ -298,7 +293,6 @@ export function LegalPracticeBulkImport({ open, onOpenChange }: LegalPracticeBul
           updateFile(id, { status: 'success', progress: 100 });
         }
       } else {
-        // TXT mode: single entry
         const title = file.name.replace(/\.txt$/i, '').replace(/_/g, ' ');
         const resolvedOutcome = autoDetectOutcome ? detectOutcome(textContent) : manualOutcome;
         const extracted = extractMetadata(textContent);
@@ -344,10 +338,10 @@ export function LegalPracticeBulkImport({ open, onOpenChange }: LegalPracticeBul
       });
       if (error) throw error;
       setChunkingStatus('done');
-      toast.success(`\u0549\u0561\u0576\u056F\u056B\u0580\u0578\u057E\u0561\u0576\u0568\u055D ${data?.totalChunksInserted || 0} \u0586\u0580\u0561\u0563\u0574\u0565\u0576\u057F`);
+      toast.success(t('lp_bi_chunk_success', { count: data?.totalChunksInserted || 0 }));
     } catch (e) {
       setChunkingStatus('error');
-      toast.error('\u0549\u0561\u0576\u056F\u056B\u0580\u0578\u057E\u0574\u0561\u0576 \u057D\u056D\u0561\u056C');
+      toast.error(t('lp_bi_chunk_fail'));
     }
   };
 
@@ -359,11 +353,11 @@ export function LegalPracticeBulkImport({ open, onOpenChange }: LegalPracticeBul
       });
       if (error) throw error;
       setEnrichmentStatus('done');
-      toast.success(`AI \u0570\u0561\u0580\u057D\u057F\u0561\u0581\u0578\u0582\u0574\u055D ${data?.enriched || 0} \u0583\u0561\u057D\u057F\u0561\u0569\u0578\u0582\u0572\u0569`);
+      toast.success(t('lp_bi_enrich_success', { count: data?.enriched || 0 }));
       queryClient.invalidateQueries({ queryKey: ['legal-practice-kb'] });
     } catch (e) {
       setEnrichmentStatus('error');
-      toast.error('AI \u0570\u0561\u0580\u057D\u057F\u0561\u0581\u0574\u0561\u0576 \u057D\u056D\u0561\u056C');
+      toast.error(t('lp_bi_enrich_fail'));
     }
   };
 
@@ -389,9 +383,8 @@ export function LegalPracticeBulkImport({ open, onOpenChange }: LegalPracticeBul
 
     setIsProcessing(false);
     if (successCount > 0) {
-      toast.success(`\u053B\u0574\u057A\u0578\u0580\u057F\u057E\u0565\u0581\u055D ${successCount} \u0586\u0561\u0575\u056C`);
+      toast.success(t('lp_bi_imported', { count: successCount }));
       queryClient.invalidateQueries({ queryKey: ['legal-practice-kb'] });
-      // Auto-start chunking
       runChunking();
     }
   };
@@ -426,15 +419,15 @@ export function LegalPracticeBulkImport({ open, onOpenChange }: LegalPracticeBul
   const getStatusText = (fi: TxtFileItem) => {
     switch (fi.status) {
       case 'pending':
-        return '\u054D\u057A\u0561\u057D\u0578\u0582\u0574 \u0567';
+        return t('lp_bi_status_pending');
       case 'reading':
-        return '\u053F\u0561\u0580\u0564\u0561\u0581\u0578\u0582\u0574...';
+        return t('lp_bi_status_reading');
       case 'importing':
-        return '\u054A\u0561\u0570\u057A\u0561\u0576\u0574\u0561\u0576...';
+        return t('lp_bi_status_importing');
       case 'success':
-        return '\u0540\u0561\u057B\u0578\u0572\u057E\u0565\u0581';
+        return t('lp_bi_status_success');
       case 'error':
-        return fi.error || '\u054D\u056D\u0561\u056C';
+        return fi.error || t('lp_bi_status_error');
     }
   };
 
@@ -444,10 +437,10 @@ export function LegalPracticeBulkImport({ open, onOpenChange }: LegalPracticeBul
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <FolderUp className="h-5 w-5" />
-            {'\u0544\u0561\u057D\u057D\u0561\u0575\u0561\u056F\u0561\u0576 \u056B\u0574\u057A\u0578\u0580\u057F (TXT / JSON)'}
+            {t('lp_bi_title')}
           </DialogTitle>
           <DialogDescription>
-            {'\u054E\u0565\u0580\u0562\u0565\u057C\u0576\u0565\u0584 TXT \u056F\u0561\u0574 JSON \u0586\u0561\u0575\u056C\u0565\u0580: JSON\u055D [{title, content_text, ...}]'}
+            {t('lp_bi_description')}
           </DialogDescription>
         </DialogHeader>
 
@@ -474,17 +467,17 @@ export function LegalPracticeBulkImport({ open, onOpenChange }: LegalPracticeBul
             />
             <Upload className="mx-auto h-10 w-10 text-muted-foreground" />
             <p className="mt-2 text-sm font-medium">
-              {'\u0554\u0561\u0577\u0565\u0584 \u056F\u0561\u0574 \u0562\u0565\u0580\u0565\u0584 TXT / JSON \u0586\u0561\u0575\u056C\u0565\u0580'}
+              {t('lp_bi_drop_hint')}
             </p>
             <p className="mt-1 text-xs text-muted-foreground">
-              {'TXT: 1 \u0586\u0561\u0575\u056C = 1 \u0578\u0580\u0578\u0577\u0578\u0582\u0574 | JSON: [{title, content_text, ...}] (max 50MB)'}
+              {t('lp_bi_drop_format')}
             </p>
           </div>
 
           {/* Settings */}
           <div className="grid gap-3 sm:grid-cols-3">
             <div className="space-y-1.5">
-              <Label>{'\u053F\u0561\u057F\u0565\u0563\u0578\u0580\u056B\u0561'}</Label>
+              <Label>{t('lp_category')}</Label>
               <Select
                 value={category}
                 onValueChange={(v) => setCategory(v as PracticeCategory)}
@@ -494,9 +487,9 @@ export function LegalPracticeBulkImport({ open, onOpenChange }: LegalPracticeBul
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  {Object.entries(categoryLabels).map(([value, label]) => (
+                  {(Object.keys(categoryKeys) as PracticeCategory[]).map((value) => (
                     <SelectItem key={value} value={value}>
-                      {label}
+                      {t(categoryKeys[value])}
                     </SelectItem>
                   ))}
                 </SelectContent>
@@ -504,7 +497,7 @@ export function LegalPracticeBulkImport({ open, onOpenChange }: LegalPracticeBul
             </div>
 
             <div className="space-y-1.5">
-              <Label>{'\u0531\u057F\u0575\u0561\u0576'}</Label>
+              <Label>{t('lp_court_type')}</Label>
               <Select
                 value={courtType}
                 onValueChange={(v) => setCourtType(v as CourtType)}
@@ -514,9 +507,9 @@ export function LegalPracticeBulkImport({ open, onOpenChange }: LegalPracticeBul
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  {Object.entries(courtTypeLabels).map(([value, label]) => (
+                  {(Object.keys(courtTypeKeys) as CourtType[]).map((value) => (
                     <SelectItem key={value} value={value}>
-                      {label}
+                      {t(courtTypeKeys[value])}
                     </SelectItem>
                   ))}
                 </SelectContent>
@@ -525,7 +518,7 @@ export function LegalPracticeBulkImport({ open, onOpenChange }: LegalPracticeBul
 
             <div className="space-y-1.5">
               <div className="flex items-center justify-between">
-                <Label>{'\u0531\u0580\u0564\u0575\u0578\u0582\u0576\u0584'}</Label>
+                <Label>{t('lp_outcome')}</Label>
                 <div className="flex items-center gap-1.5">
                   <Checkbox
                     id="autoDetectOutcome"
@@ -534,13 +527,13 @@ export function LegalPracticeBulkImport({ open, onOpenChange }: LegalPracticeBul
                     disabled={isProcessing}
                   />
                   <Label htmlFor="autoDetectOutcome" className="text-xs cursor-pointer text-muted-foreground">
-                    {'\u0531\u057E\u057F\u0578'}
+                    {t('lp_bi_auto')}
                   </Label>
                 </div>
               </div>
               {autoDetectOutcome ? (
                 <p className="text-xs text-muted-foreground border rounded-md px-3 py-2">
-                  {'\u054F\u0565\u0584\u057D\u057F\u056B\u0581 \u0561\u057E\u057F\u0578\u0574\u0561\u057F \u056F\u0578\u0580\u0578\u0577\u0565\u056C\u0578\u0582 \u0567 (\u0562\u0561\u057E\u0561\u0580\u0561\u0580\u057E\u0565\u056C/\u0574\u0565\u0580\u056A\u057E\u0565\u056C/\u0574\u0561\u057D\u0576\u0561\u056F\u056B...)'}
+                  {t('lp_bi_auto_detect_hint')}
                 </p>
               ) : (
                 <Select
@@ -552,9 +545,9 @@ export function LegalPracticeBulkImport({ open, onOpenChange }: LegalPracticeBul
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    {Object.entries(outcomeLabels).map(([value, label]) => (
+                    {(Object.keys(outcomeKeys) as CaseOutcome[]).map((value) => (
                       <SelectItem key={value} value={value}>
-                        {label}
+                        {t(outcomeKeys[value])}
                       </SelectItem>
                     ))}
                   </SelectContent>
@@ -571,7 +564,7 @@ export function LegalPracticeBulkImport({ open, onOpenChange }: LegalPracticeBul
               disabled={isProcessing}
             />
             <Label htmlFor="skipOnErrorBulk" className="text-sm cursor-pointer">
-              {'\u054D\u056D\u0561\u056C\u056B \u0564\u0565\u057A\u0584\u0578\u0582\u0574 \u0577\u0561\u0580\u0578\u0582\u0576\u0561\u056F\u0565\u056C'}
+              {t('lp_bi_skip_errors')}
             </Label>
           </div>
 
@@ -579,7 +572,7 @@ export function LegalPracticeBulkImport({ open, onOpenChange }: LegalPracticeBul
           {files.length > 0 && (
             <div className="space-y-2">
               <div className="flex items-center justify-between">
-                <Label>{files.length} {'\u0586\u0561\u0575\u056C'}</Label>
+                <Label>{t('lp_bi_files_count', { count: files.length })}</Label>
                 {isProcessing && (
                   <span className="text-xs text-muted-foreground">{Math.round(totalProgress)}%</span>
                 )}
@@ -630,22 +623,22 @@ export function LegalPracticeBulkImport({ open, onOpenChange }: LegalPracticeBul
               {/* Post-import actions */}
               {successCount > 0 && !isProcessing && (
                 <div className="space-y-2 rounded-lg border border-primary/20 bg-primary/5 p-3">
-                  <p className="text-xs font-medium">{'\u0540\u0565\u057F\u0576\u0565\u0580\u056F\u0561\u0575\u0561\u0581\u0578\u0582\u0574\u0576\u0565\u0580\u055D'}</p>
+                  <p className="text-xs font-medium">{t('lp_bi_post_actions')}</p>
                   
                   <div className="flex items-center gap-2">
                     <Zap className="h-4 w-4 text-primary shrink-0" />
                     <span className="text-xs flex-1">
-                      {chunkingStatus === 'running' ? '\u0549\u0561\u0576\u056F\u056B\u0580\u0578\u057E\u0578\u0582\u0574...' :
-                       chunkingStatus === 'done' ? '\u2713 \u0549\u0561\u0576\u056F\u056B\u0580\u0578\u057E\u057E\u0561\u056E \u0567' :
-                       chunkingStatus === 'error' ? '\u054D\u056D\u0561\u056C' :
-                       '\u054D\u057A\u0561\u057D\u0578\u0582\u0574...'}
+                      {chunkingStatus === 'running' ? t('lp_bi_chunking') :
+                       chunkingStatus === 'done' ? `\u2713 ${t('lp_bi_chunked')}` :
+                       chunkingStatus === 'error' ? t('lp_bi_chunk_error') :
+                       t('lp_bi_chunk_waiting')}
                     </span>
                     {chunkingStatus === 'running' && <Loader2 className="h-3 w-3 animate-spin" />}
                   </div>
 
                   <div className="flex items-center gap-2">
                     <Wand2 className="h-4 w-4 text-purple-500 shrink-0" />
-                    <span className="text-xs flex-1">AI {'\u0570\u0561\u0580\u057D\u057F\u0561\u0581\u0578\u0582\u0574'}</span>
+                    <span className="text-xs flex-1">{t('lp_bi_ai_enrich')}</span>
                     <Button
                       size="sm"
                       variant="outline"
@@ -658,7 +651,7 @@ export function LegalPracticeBulkImport({ open, onOpenChange }: LegalPracticeBul
                       ) : enrichmentStatus === 'done' ? (
                         '\u2713'
                       ) : (
-                        '\u0533\u0578\u0580\u056E\u0561\u0580\u056F\u0565\u056C'
+                        t('lp_bi_run')
                       )}
                     </Button>
                   </div>
@@ -670,18 +663,18 @@ export function LegalPracticeBulkImport({ open, onOpenChange }: LegalPracticeBul
 
         <DialogFooter className="gap-2 sm:gap-0">
           <Button variant="outline" onClick={handleClose} disabled={isProcessing}>
-            {'\u0549\u0565\u0572\u0561\u0580\u056F\u0565\u056C'}
+            {t('lp_cancel')}
           </Button>
           <Button onClick={handleStartImport} disabled={pendingCount === 0 || isProcessing}>
             {isProcessing ? (
               <>
                 <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                {'\u053B\u0574\u057A\u0578\u0580\u057F\u057E\u0578\u0582\u0574 \u0567...'}
+                {t('lp_bi_importing')}
               </>
             ) : (
               <>
                 <Upload className="mr-2 h-4 w-4" />
-                {'\u053B\u0574\u057A\u0578\u0580\u057F'} ({pendingCount})
+                {t('lp_bi_import')} ({pendingCount})
               </>
             )}
           </Button>
