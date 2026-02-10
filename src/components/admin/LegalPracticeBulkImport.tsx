@@ -255,7 +255,7 @@ export function LegalPracticeBulkImport({ open, onOpenChange }: LegalPracticeBul
               court_name: item.court_name || extracted.court_name,
               case_number_anonymized: item.case_number_anonymized || extracted.case_number,
               decision_date: item.decision_date || extracted.decision_date,
-              applied_articles: item.applied_articles || extracted.applied_articles,
+              // applied_articles left null — filled by AI enrichment
               legal_reasoning_summary: item.legal_reasoning_summary || null,
               key_violations: item.key_violations || null,
               description: item.description || null,
@@ -279,7 +279,7 @@ export function LegalPracticeBulkImport({ open, onOpenChange }: LegalPracticeBul
             court_name: extracted.court_name,
             case_number_anonymized: extracted.case_number,
             decision_date: extracted.decision_date,
-            applied_articles: extracted.applied_articles,
+            // applied_articles left null — filled by AI enrichment
           });
           if (error) throw error;
           updateFile(id, { status: 'success', progress: 100 });
@@ -310,7 +310,7 @@ export function LegalPracticeBulkImport({ open, onOpenChange }: LegalPracticeBul
           court_name: extracted.court_name,
           case_number_anonymized: extracted.case_number,
           decision_date: extracted.decision_date,
-          applied_articles: extracted.applied_articles,
+          // applied_articles left null — filled by AI enrichment
         });
         if (error) throw error;
         updateFile(id, { status: 'success', progress: 100 });

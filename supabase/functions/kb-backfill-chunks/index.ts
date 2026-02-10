@@ -50,8 +50,12 @@ async function requireAdmin(req: Request) {
 
   const user = userData.user;
 
+  // Check app_metadata first, then fall back to has_role RPC
   const role = (user.app_metadata as any)?.role;
   if (role === "admin") return { token, user };
+
+  const { data: isAdmin } = await supabaseAuth.rpc("has_role", { _user_id: user.id, _role: "admin" });
+  if (isAdmin) return { token, user };
 
   throw { status: 403, code: "FORBIDDEN", message: "Admin only" };
 }
