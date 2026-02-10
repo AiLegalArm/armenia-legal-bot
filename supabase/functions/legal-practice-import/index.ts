@@ -124,11 +124,15 @@ function validateExtractedData(raw: unknown): ExtractedData {
   if (typeof raw.content_text !== "string") throw new Error("Invalid: content_text");
 
   if (!Array.isArray(raw.applied_articles)) throw new Error("Invalid: applied_articles");
-  for (const item of raw.applied_articles) {
-    if (!isObject(item)) throw new Error("Invalid: applied_articles[] item not object");
-    if (typeof item.code !== "string" || !APPLIED.has(item.code)) throw new Error("Invalid: applied_articles[].code");
-    if (!isStringArray(item.articles)) throw new Error("Invalid: applied_articles[].articles");
+  // Filter out invalid articles instead of throwing — AI may return unexpected codes
+  const validArticles: Array<{ code: string; articles: string[] }> = [];
+  for (const item of raw.applied_articles as unknown[]) {
+    if (!isObject(item)) continue;
+    if (typeof item.code !== "string" || !APPLIED.has(item.code)) continue;
+    if (!isStringArray(item.articles)) continue;
+    validArticles.push(item as { code: string; articles: string[] });
   }
+  (raw as Record<string, unknown>).applied_articles = validArticles;
 
   if (!isStringArray(raw.key_violations)) throw new Error("Invalid: key_violations");
 
