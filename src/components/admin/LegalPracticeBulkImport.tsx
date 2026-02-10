@@ -83,7 +83,8 @@ export function LegalPracticeBulkImport({ open, onOpenChange }: LegalPracticeBul
   const [files, setFiles] = useState<TxtFileItem[]>([]);
   const [category, setCategory] = useState<PracticeCategory>('criminal');
   const [courtType, setCourtType] = useState<CourtType>('cassation');
-  const [outcome, setOutcome] = useState<CaseOutcome>('granted');
+  const [autoDetectOutcome, setAutoDetectOutcome] = useState(true);
+  const [manualOutcome, setManualOutcome] = useState<CaseOutcome>('granted');
   const [skipOnError, setSkipOnError] = useState(true);
   const [isProcessing, setIsProcessing] = useState(false);
   const [isDragOver, setIsDragOver] = useState(false);
@@ -147,6 +148,23 @@ export function LegalPracticeBulkImport({ open, onOpenChange }: LegalPracticeBul
     setFiles((prev) => prev.map((f) => (f.id === id ? { ...f, ...updates } : f)));
   };
 
+  const detectOutcome = (text: string): CaseOutcome => {
+    const lower = text.toLowerCase();
+    // Armenian keywords for outcomes
+    if (/\u0562\u0561\u057E\u0561\u0580\u0561\u0580\u0565\u056C|\u0570\u0561\u0575\u0581\u0568\u0576? \u0562\u0561\u057E\u0561\u0580\u0561\u0580\u0565\u056C|\u0570\u0561\u0575\u0581\u0568 \u0562\u0561\u057E\u0561\u0580\u0561\u0580\u0565\u056C/i.test(text)) return 'granted';
+    if (/\u0574\u0565\u0580\u056A\u057E\u0565\u056C|\u0570\u0561\u0575\u0581\u0568\u0576? \u0574\u0565\u0580\u056A\u0565\u056C|\u0570\u0561\u0575\u0581\u0568 \u0574\u0565\u0580\u056A\u0565\u056C|\u0574\u0565\u0580\u056A\u057E\u0565\u056C \u0567/i.test(text)) return 'rejected';
+    if (/\u0574\u0561\u057D\u0576\u0561\u056F\u056B\u0578\u0580\u0565\u0576|\u0574\u0561\u057D\u0576\u0561\u056F\u056B/i.test(text)) return 'partial';
+    if (/\u057E\u0565\u0580\u0561\u0564\u0561\u0580\u0571\u057E\u0565\u056C|\u0576\u0578\u0580 \u0584\u0576\u0576\u0578\u0582\u0569\u0575\u0561\u0576/i.test(text)) return 'remanded';
+    if (/\u056F\u0561\u0580\u0573\u057E\u0565\u056C|\u057E\u0561\u0580\u0578\u0582\u0575\u0569\u0568 \u056F\u0561\u0580\u0573\u057E\u0565\u056C/i.test(text)) return 'discontinued';
+    // Russian keywords
+    if (/\u0443\u0434\u043e\u0432\u043b\u0435\u0442\u0432\u043e\u0440\u0438\u0442\u044c|\u0443\u0434\u043e\u0432\u043b\u0435\u0442\u0432\u043e\u0440\u0435\u043d/i.test(lower)) return 'granted';
+    if (/\u043e\u0442\u043a\u0430\u0437\u0430\u0442\u044c|\u043e\u0442\u043a\u043b\u043e\u043d\u0438\u0442\u044c|\u043e\u0442\u043a\u0430\u0437\u0430\u043d\u043e/i.test(lower)) return 'rejected';
+    if (/\u0447\u0430\u0441\u0442\u0438\u0447\u043d\u043e/i.test(lower)) return 'partial';
+    if (/\u043d\u0430\u043f\u0440\u0430\u0432\u0438\u0442\u044c \u043d\u0430 \u043d\u043e\u0432\u043e\u0435|\u0432\u043e\u0437\u0432\u0440\u0430\u0442\u0438\u0442\u044c/i.test(lower)) return 'remanded';
+    if (/\u043f\u0440\u0435\u043a\u0440\u0430\u0442\u0438\u0442\u044c|\u043f\u0440\u0435\u043a\u0440\u0430\u0449\u0435\u043d\u043e/i.test(lower)) return 'discontinued';
+    return 'granted'; // fallback
+  };
+
   const processFile = async (fileItem: TxtFileItem): Promise<boolean> => {
     const { id, file } = fileItem;
     try {
@@ -156,13 +174,14 @@ export function LegalPracticeBulkImport({ open, onOpenChange }: LegalPracticeBul
       updateFile(id, { status: 'importing', progress: 60 });
 
       const title = file.name.replace(/\.txt$/i, '').replace(/_/g, ' ');
+      const resolvedOutcome = autoDetectOutcome ? detectOutcome(textContent) : manualOutcome;
 
       const { error } = await supabase.from('legal_practice_kb').insert({
         title,
         content_text: textContent,
         practice_category: category,
         court_type: courtType,
-        outcome,
+        outcome: resolvedOutcome,
         is_active: true,
         is_anonymized: true,
         visibility: 'ai_only',
@@ -336,23 +355,42 @@ export function LegalPracticeBulkImport({ open, onOpenChange }: LegalPracticeBul
             </div>
 
             <div className="space-y-1.5">
-              <Label>{'\u0531\u0580\u0564\u0575\u0578\u0582\u0576\u0584'}</Label>
-              <Select
-                value={outcome}
-                onValueChange={(v) => setOutcome(v as CaseOutcome)}
-                disabled={isProcessing}
-              >
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {Object.entries(outcomeLabels).map(([value, label]) => (
-                    <SelectItem key={value} value={value}>
-                      {label}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              <div className="flex items-center justify-between">
+                <Label>{'\u0531\u0580\u0564\u0575\u0578\u0582\u0576\u0584'}</Label>
+                <div className="flex items-center gap-1.5">
+                  <Checkbox
+                    id="autoDetectOutcome"
+                    checked={autoDetectOutcome}
+                    onCheckedChange={(v) => setAutoDetectOutcome(v === true)}
+                    disabled={isProcessing}
+                  />
+                  <Label htmlFor="autoDetectOutcome" className="text-xs cursor-pointer text-muted-foreground">
+                    {'\u0531\u057E\u057F\u0578'}
+                  </Label>
+                </div>
+              </div>
+              {autoDetectOutcome ? (
+                <p className="text-xs text-muted-foreground border rounded-md px-3 py-2">
+                  {'\u054F\u0565\u0584\u057D\u057F\u056B\u0581 \u0561\u057E\u057F\u0578\u0574\u0561\u057F \u056F\u0578\u0580\u0578\u0577\u0565\u056C\u0578\u0582 \u0567 (\u0562\u0561\u057E\u0561\u0580\u0561\u0580\u057E\u0565\u056C/\u0574\u0565\u0580\u056A\u057E\u0565\u056C/\u0574\u0561\u057D\u0576\u0561\u056F\u056B...)'}
+                </p>
+              ) : (
+                <Select
+                  value={manualOutcome}
+                  onValueChange={(v) => setManualOutcome(v as CaseOutcome)}
+                  disabled={isProcessing}
+                >
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {Object.entries(outcomeLabels).map(([value, label]) => (
+                      <SelectItem key={value} value={value}>
+                        {label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              )}
             </div>
           </div>
 
