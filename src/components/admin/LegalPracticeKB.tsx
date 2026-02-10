@@ -31,7 +31,7 @@ import {
 import { Badge } from '@/components/ui/badge';
 import { Label } from '@/components/ui/label';
 import { toast } from 'sonner';
-import { Plus, Trash2, Edit, Search, FileText, Scale, AlertTriangle, Sparkles, FolderUp } from 'lucide-react';
+import { Plus, Trash2, Edit, Search, FileText, Scale, AlertTriangle, Sparkles, FolderUp, Wand2, Loader2 } from 'lucide-react';
 import { LegalPracticeAIImport } from './LegalPracticeAIImport';
 import { LegalPracticeBulkImport } from './LegalPracticeBulkImport';
 
@@ -117,6 +117,7 @@ export function LegalPracticeKB() {
   const [articlesInput, setArticlesInput] = useState('');
   const [aiImportOpen, setAiImportOpen] = useState(false);
   const [bulkImportOpen, setBulkImportOpen] = useState(false);
+  const [enrichingIds, setEnrichingIds] = useState<Set<string>>(new Set());
 
   // Fetch documents
   const { data: documents, isLoading } = useQuery({
@@ -202,6 +203,45 @@ export function LegalPracticeKB() {
       toast.error('\u054D\u056D\u0561\u056C \u057B\u0576\u057B\u0574\u0561\u0576 \u056A\u0561\u0574\u0561\u0576\u0561\u056F');
     }
   });
+
+  // AI Enrich mutation
+  const handleEnrich = async (docId: string) => {
+    setEnrichingIds(prev => new Set(prev).add(docId));
+    try {
+      const { data, error } = await supabase.functions.invoke('legal-practice-import', {
+        body: { enrichDocId: docId },
+      });
+      if (error) throw error;
+      if (data?.enriched) {
+        toast.success(`AI \u0570\u0561\u0580\u057D\u057F\u0561\u0581\u0580\u0565\u0581\u055D ${(data.updated_fields as string[]).length} \u0564\u0561\u0577\u057F`);
+        queryClient.invalidateQueries({ queryKey: ['legal-practice-kb'] });
+      } else {
+        toast.info('\u0544\u0565\u057F\u0561\u057F\u057E\u0575\u0561\u056C\u0576\u0565\u0580 \u0579\u0565\u0576 \u0570\u0561\u0575\u057F\u0576\u0561\u0562\u0565\u0580\u057E\u0565\u056C');
+      }
+    } catch (err) {
+      console.error('Enrich error:', err);
+      toast.error('AI \u0570\u0561\u0580\u057D\u057F\u0561\u0581\u0574\u0561\u0576 \u057D\u056D\u0561\u056C');
+    } finally {
+      setEnrichingIds(prev => {
+        const next = new Set(prev);
+        next.delete(docId);
+        return next;
+      });
+    }
+  };
+
+  const handleBulkEnrich = async () => {
+    if (!documents) return;
+    const emptyDocs = documents.filter(d => !d.court_name && !d.case_number_anonymized && !d.decision_date);
+    if (emptyDocs.length === 0) {
+      toast.info('\u0532\u0578\u056C\u0578\u0580 \u0563\u0580\u0561\u057C\u0578\u0582\u0574\u0576\u0565\u0580\u0576 \u0561\u0580\u0564\u0565\u0576 \u0570\u0561\u0580\u057D\u057F\u0561\u0581\u057E\u0561\u056E \u0565\u0576');
+      return;
+    }
+    toast.info(`AI \u0570\u0561\u0580\u057D\u057F\u0561\u0581\u0576\u0578\u0582\u0574\u055D ${emptyDocs.length} \u0563\u0580\u0561\u057C\u0578\u0582\u0574...`);
+    for (const doc of emptyDocs) {
+      await handleEnrich(doc.id);
+    }
+  };
 
   const resetForm = () => {
     setFormData(defaultFormData);
@@ -308,6 +348,14 @@ export function LegalPracticeKB() {
           >
             <FolderUp className="h-4 w-4 mr-2" />
             {'\u0544\u0561\u057D\u057D\u0561\u0575\u0561\u056F\u0561\u0576'}
+          </Button>
+          <Button 
+            variant="outline" 
+            onClick={handleBulkEnrich}
+            className="border-amber-500/50 text-amber-600 hover:bg-amber-500/10"
+          >
+            <Wand2 className="h-4 w-4 mr-2" />
+            AI {'\u0540\u0561\u0580\u057D\u057F\u0561\u0581\u0576\u0565\u056C'}
           </Button>
           <Button 
             variant="outline" 
@@ -517,6 +565,19 @@ export function LegalPracticeKB() {
                     {doc.decision_date ? new Date(doc.decision_date).toLocaleDateString('hy-AM') : '-'}
                   </TableCell>
                   <TableCell className="text-right">
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      onClick={() => handleEnrich(doc.id)}
+                      disabled={enrichingIds.has(doc.id)}
+                      title="AI Enrich"
+                    >
+                      {enrichingIds.has(doc.id) ? (
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                      ) : (
+                        <Wand2 className="h-4 w-4" />
+                      )}
+                    </Button>
                     <Button
                       variant="ghost"
                       size="icon"

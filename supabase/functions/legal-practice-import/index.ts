@@ -306,32 +306,79 @@ serve(async (req) => {
     }
     // === END AUTH GUARD ===
 
-    const { textContent, fileName } = await req.json();
-
-    if (!textContent) {
-      return new Response(JSON.stringify({ 
-        error: "textContent is required" 
-      }), {
-        status: 400,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
-    }
+    const { textContent, fileName, enrichDocId } = await req.json();
 
     const lovableApiKey = Deno.env.get("LOVABLE_API_KEY");
     if (!lovableApiKey) {
       throw new Error("LOVABLE_API_KEY not configured");
     }
 
+    const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
+    const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+    const adminDb = createClient(supabaseUrl, supabaseServiceKey);
+
+    // === ENRICH MODE: update existing record ===
+    if (enrichDocId) {
+      const { data: existingDoc, error: fetchErr } = await adminDb
+        .from("legal_practice_kb")
+        .select("id, content_text")
+        .eq("id", enrichDocId)
+        .single();
+
+      if (fetchErr || !existingDoc) {
+        return new Response(JSON.stringify({ error: "Document not found" }), {
+          status: 404,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+
+      console.log(`Enriching doc ${enrichDocId}, text length: ${existingDoc.content_text.length}`);
+      const extractedData = await extractWithAI(existingDoc.content_text, lovableApiKey);
+      console.log(`Enriched: title=${extractedData.title}, category=${extractedData.practice_category}`);
+
+      const updatePayload: Record<string, unknown> = {};
+      if (extractedData.practice_category) updatePayload.practice_category = extractedData.practice_category;
+      if (extractedData.court_type) updatePayload.court_type = extractedData.court_type;
+      if (extractedData.outcome) updatePayload.outcome = extractedData.outcome;
+      if (extractedData.court_name) updatePayload.court_name = extractedData.court_name;
+      if (extractedData.case_number_anonymized) updatePayload.case_number_anonymized = extractedData.case_number_anonymized;
+      if (extractedData.decision_date) updatePayload.decision_date = extractedData.decision_date;
+      if (extractedData.applied_articles && extractedData.applied_articles.length > 0) updatePayload.applied_articles = extractedData.applied_articles;
+      if (extractedData.key_violations && extractedData.key_violations.length > 0) updatePayload.key_violations = extractedData.key_violations;
+      if (extractedData.legal_reasoning_summary) updatePayload.legal_reasoning_summary = extractedData.legal_reasoning_summary;
+      if (extractedData.title) updatePayload.title = extractedData.title;
+
+      if (Object.keys(updatePayload).length === 0) {
+        return new Response(JSON.stringify({ success: true, enriched: false, message: "No metadata extracted" }), {
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+
+      const { error: updateErr } = await adminDb
+        .from("legal_practice_kb")
+        .update(updatePayload)
+        .eq("id", enrichDocId);
+
+      if (updateErr) throw updateErr;
+
+      return new Response(JSON.stringify({ success: true, enriched: true, updated_fields: Object.keys(updatePayload) }), {
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
+    // === STANDARD IMPORT MODE ===
+    if (!textContent) {
+      return new Response(JSON.stringify({ error: "textContent is required" }), {
+        status: 400,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
     console.log(`Processing file: ${fileName}, length: ${textContent.length}`);
     const extractedData = await extractWithAI(textContent, lovableApiKey);
     console.log(`Extracted title: ${extractedData.title}`);
 
-    // Insert into database
-    const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
-    const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
-    const supabase = createClient(supabaseUrl, supabaseServiceKey);
-
-    const { data: insertedDoc, error: insertError } = await supabase
+    const { data: insertedDoc, error: insertError } = await adminDb
       .from("legal_practice_kb")
       .insert({
         title: extractedData.title || 'Untitled',
