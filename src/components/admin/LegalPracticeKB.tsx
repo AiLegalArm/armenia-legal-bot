@@ -205,22 +205,34 @@ export function LegalPracticeKB() {
   });
 
   // AI Enrich mutation
-  const handleEnrich = async (docId: string) => {
+  const handleEnrich = async (docId: string, silent = false) => {
     setEnrichingIds(prev => new Set(prev).add(docId));
     try {
-      const { data, error } = await supabase.functions.invoke('legal-practice-import', {
-        body: { enrichDocId: docId },
-      });
-      if (error) throw error;
-      if (data?.enriched) {
-        toast.success(`AI \u0570\u0561\u0580\u057D\u057F\u0561\u0581\u0580\u0565\u0581\u055D ${(data.updated_fields as string[]).length} \u0564\u0561\u0577\u057F`);
-        queryClient.invalidateQueries({ queryKey: ['legal-practice-kb'] });
-      } else {
-        toast.info('\u0544\u0565\u057F\u0561\u057F\u057E\u0575\u0561\u056C\u0576\u0565\u0580 \u0579\u0565\u0576 \u0570\u0561\u0575\u057F\u0576\u0561\u0562\u0565\u0580\u057E\u0565\u056C');
+      // Retry up to 2 times on transient errors
+      let lastErr: unknown;
+      for (let attempt = 0; attempt < 3; attempt++) {
+        try {
+          const { data, error } = await supabase.functions.invoke('legal-practice-import', {
+            body: { enrichDocId: docId },
+          });
+          if (error) throw error;
+          if (data?.enriched) {
+            if (!silent) toast.success(`AI \u0570\u0561\u0580\u057D\u057F\u0561\u0581\u0580\u0565\u0581\u055D ${(data.updated_fields as string[]).length} \u0564\u0561\u0577\u057F`);
+            queryClient.invalidateQueries({ queryKey: ['legal-practice-kb'] });
+          } else {
+            if (!silent) toast.info('\u0544\u0565\u057F\u0561\u057F\u057E\u0575\u0561\u056C\u0576\u0565\u0580 \u0579\u0565\u0576 \u0570\u0561\u0575\u057F\u0576\u0561\u0562\u0565\u0580\u057E\u0565\u056C');
+          }
+          return true;
+        } catch (e) {
+          lastErr = e;
+          if (attempt < 2) await new Promise(r => setTimeout(r, 2000 * (attempt + 1)));
+        }
       }
+      throw lastErr;
     } catch (err) {
       console.error('Enrich error:', err);
-      toast.error('AI \u0570\u0561\u0580\u057D\u057F\u0561\u0581\u0574\u0561\u0576 \u057D\u056D\u0561\u056C');
+      if (!silent) toast.error('AI \u0570\u0561\u0580\u057D\u057F\u0561\u0581\u0574\u0561\u0576 \u057D\u056D\u0561\u056C');
+      return false;
     } finally {
       setEnrichingIds(prev => {
         const next = new Set(prev);
@@ -237,12 +249,17 @@ export function LegalPracticeKB() {
       toast.info('\u0532\u0578\u056C\u0578\u0580 \u0563\u0580\u0561\u057C\u0578\u0582\u0574\u0576\u0565\u0580\u0576 \u0561\u0580\u0564\u0565\u0576 \u0570\u0561\u0580\u057D\u057F\u0561\u0581\u057E\u0561\u056E \u0565\u0576');
       return;
     }
-    toast.info(`AI \u0570\u0561\u0580\u057D\u057F\u0561\u0581\u0576\u0578\u0582\u0574\u055D ${emptyDocs.length} \u0563\u0580\u0561\u057C\u0578\u0582\u0574... (\u0564\u0565\u057C 5-\u0561\u056F\u0561\u0576 \u056D\u0574\u0562\u0565\u0580\u0578\u057E)`);
-    const BATCH_SIZE = 5;
-    for (let i = 0; i < emptyDocs.length; i += BATCH_SIZE) {
-      const batch = emptyDocs.slice(i, i + BATCH_SIZE);
-      await Promise.all(batch.map(doc => handleEnrich(doc.id)));
+    toast.info(`AI \u0570\u0561\u0580\u057D\u057F\u0561\u0581\u0576\u0578\u0582\u0574\u055D ${emptyDocs.length} \u0563\u0580\u0561\u057C\u0578\u0582\u0574...`);
+    let success = 0;
+    let fail = 0;
+    for (const doc of emptyDocs) {
+      const ok = await handleEnrich(doc.id, true);
+      if (ok) success++; else fail++;
+      // Small delay between sequential calls to avoid overwhelming edge functions
+      await new Promise(r => setTimeout(r, 500));
     }
+    if (success > 0) toast.success(`\u0540\u0561\u0580\u057D\u057F\u0561\u0581\u057E\u0565\u0581\u055D ${success} \u0563\u0580\u0561\u057C\u0578\u0582\u0574`);
+    if (fail > 0) toast.error(`\u054D\u056D\u0561\u056C\u057E\u0565\u0581\u055D ${fail} \u0563\u0580\u0561\u057C\u0578\u0582\u0574`);
   };
 
   const resetForm = () => {
