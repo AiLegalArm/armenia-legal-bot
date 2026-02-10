@@ -219,6 +219,16 @@ export function LegalPracticeBulkImport({ open, onOpenChange }: LegalPracticeBul
     return 'granted';
   };
 
+  /** Check if a document with the same title already exists */
+  const isDuplicate = async (title: string): Promise<boolean> => {
+    const { count } = await supabase
+      .from('legal_practice_kb')
+      .select('id', { count: 'exact', head: true })
+      .eq('title', title)
+      .eq('is_active', true);
+    return (count ?? 0) > 0;
+  };
+
   const processFile = async (fileItem: TxtFileItem): Promise<boolean> => {
     const { id, file } = fileItem;
     try {
@@ -255,7 +265,6 @@ export function LegalPracticeBulkImport({ open, onOpenChange }: LegalPracticeBul
               court_name: item.court_name || extracted.court_name,
               case_number_anonymized: item.case_number_anonymized || extracted.case_number,
               decision_date: item.decision_date || extracted.decision_date,
-              // applied_articles left null — filled by AI enrichment
               legal_reasoning_summary: item.legal_reasoning_summary || null,
               key_violations: item.key_violations || null,
               description: item.description || null,
@@ -265,6 +274,11 @@ export function LegalPracticeBulkImport({ open, onOpenChange }: LegalPracticeBul
 
         if (rows.length === 0) {
           const fullContent = typeof jsonData === 'string' ? jsonData : JSON.stringify(jsonData, null, 2);
+          const titleCheck = fallbackTitle;
+          if (await isDuplicate(titleCheck)) {
+            updateFile(id, { status: 'success', progress: 100, error: 'skipped (duplicate)' });
+            return true;
+          }
           const extracted = extractMetadata(fullContent);
           const { error } = await supabase.from('legal_practice_kb').insert({
             title: fallbackTitle,
@@ -279,21 +293,36 @@ export function LegalPracticeBulkImport({ open, onOpenChange }: LegalPracticeBul
             court_name: extracted.court_name,
             case_number_anonymized: extracted.case_number,
             decision_date: extracted.decision_date,
-            // applied_articles left null — filled by AI enrichment
           });
           if (error) throw error;
           updateFile(id, { status: 'success', progress: 100 });
         } else {
-          const batchSize = 50;
-          for (let i = 0; i < rows.length; i += batchSize) {
-            const batch = rows.slice(i, i + batchSize);
-            const { error } = await supabase.from('legal_practice_kb').insert(batch);
-            if (error) throw error;
+          // Filter out duplicates from batch
+          const uniqueRows = [];
+          let skipped = 0;
+          for (const row of rows) {
+            if (row && await isDuplicate((row as any).title)) {
+              skipped++;
+              continue;
+            }
+            uniqueRows.push(row);
           }
-          updateFile(id, { status: 'success', progress: 100 });
+          if (uniqueRows.length > 0) {
+            const batchSize = 50;
+            for (let i = 0; i < uniqueRows.length; i += batchSize) {
+              const batch = uniqueRows.slice(i, i + batchSize);
+              const { error } = await supabase.from('legal_practice_kb').insert(batch);
+              if (error) throw error;
+            }
+          }
+          updateFile(id, { status: 'success', progress: 100, error: skipped > 0 ? `skipped ${skipped} duplicates` : undefined });
         }
       } else {
         const title = file.name.replace(/\.txt$/i, '').replace(/_/g, ' ');
+        if (await isDuplicate(title)) {
+          updateFile(id, { status: 'success', progress: 100, error: 'skipped (duplicate)' });
+          return true;
+        }
         const resolvedOutcome = autoDetectOutcome ? detectOutcome(textContent) : manualOutcome;
         const extracted = extractMetadata(textContent);
 
@@ -310,7 +339,6 @@ export function LegalPracticeBulkImport({ open, onOpenChange }: LegalPracticeBul
           court_name: extracted.court_name,
           case_number_anonymized: extracted.case_number,
           decision_date: extracted.decision_date,
-          // applied_articles left null — filled by AI enrichment
         });
         if (error) throw error;
         updateFile(id, { status: 'success', progress: 100 });
