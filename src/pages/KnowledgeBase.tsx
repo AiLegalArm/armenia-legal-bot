@@ -76,9 +76,14 @@ const KnowledgeBasePage = () => {
   const groupedDocuments = useMemo(() => {
     const groups = new Map<string, Array<(typeof documents)[number]>>();
     for (const doc of documents) {
-      const key = ('source_name' in doc && doc.source_name) ? doc.source_name : t('common:other', 'Other');
-      if (!groups.has(key)) groups.set(key, []);
-      groups.get(key)!.push(doc);
+      let raw = ('source_name' in doc && doc.source_name) ? doc.source_name : t('common:other', 'Other');
+      // Truncate folder name at "գործ" (case) if present
+      const idx = raw.toLowerCase().indexOf('\u0563\u0578\u0580\u056e');
+      if (idx !== -1) {
+        raw = raw.substring(0, idx + 4).trim();
+      }
+      if (!groups.has(raw)) groups.set(raw, []);
+      groups.get(raw)!.push(doc);
     }
     return Array.from(groups.entries()).sort((a, b) => a[0].localeCompare(b[0]));
   }, [documents, t]);
