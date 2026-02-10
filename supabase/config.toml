@@ -25,3 +25,4 @@ project_id = "nrmmgcgwriyrlbcpoqvk"
 [functions.analyze-files-for-complaint]
 
 [functions.legal-practice-import]
+verify_jwt = false
