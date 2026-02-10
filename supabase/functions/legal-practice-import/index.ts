@@ -508,8 +508,38 @@ serve(async (req) => {
     }
 
     console.log(`Processing file: ${fileName}, length: ${textContent.length}`);
+
+    // Check for duplicate by title before AI extraction
+    const titleGuess = fileName?.replace(/\.(txt|json)$/i, '').replace(/_/g, ' ') || '';
+    if (titleGuess) {
+      const { count } = await adminDb
+        .from("legal_practice_kb")
+        .select("id", { count: "exact", head: true })
+        .eq("title", titleGuess)
+        .eq("is_active", true);
+      if ((count ?? 0) > 0) {
+        return new Response(JSON.stringify({ success: true, skipped: true, reason: "duplicate" }), {
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+    }
+
     const extractedData = await extractWithAI(textContent, lovableApiKey);
     console.log(`Extracted title: ${extractedData.title}`);
+
+    // Check duplicate by extracted title too
+    if (extractedData.title) {
+      const { count } = await adminDb
+        .from("legal_practice_kb")
+        .select("id", { count: "exact", head: true })
+        .eq("title", extractedData.title)
+        .eq("is_active", true);
+      if ((count ?? 0) > 0) {
+        return new Response(JSON.stringify({ success: true, skipped: true, reason: "duplicate" }), {
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+    }
 
     const { data: insertedDoc, error: insertError } = await adminDb
       .from("legal_practice_kb")
