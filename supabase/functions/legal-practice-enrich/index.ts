@@ -37,17 +37,21 @@ serve(async (req) => {
     const body = await req.json();
     const limit = Math.min(body.limit || 5, 20);
     const countOnly = body.countOnly === true;
+    const category = body.category || null; // e.g. 'criminal', 'civil', etc.
 
     const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
     const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
     const adminDb = createClient(supabaseUrl, supabaseServiceKey);
 
-    // Count total needing enrichment using direct query
-    const { count: totalNeedEnrichment, error: countErr } = await adminDb
+    // Count total needing enrichment
+    let countQuery = adminDb
       .from("legal_practice_kb")
       .select("id", { count: "exact", head: true })
       .eq("is_active", true)
       .or("legal_reasoning_summary.is.null,key_violations.is.null,case_number_anonymized.is.null");
+    if (category) countQuery = countQuery.eq("practice_category", category);
+
+    const { count: totalNeedEnrichment, error: countErr } = await countQuery;
 
     if (countErr) throw countErr;
 
@@ -60,13 +64,16 @@ serve(async (req) => {
     }
 
     // Get batch of docs needing enrichment
-    const { data: docs, error: fetchErr } = await adminDb
+    let fetchQuery = adminDb
       .from("legal_practice_kb")
       .select("id")
       .eq("is_active", true)
       .or("legal_reasoning_summary.is.null,key_violations.is.null,case_number_anonymized.is.null")
       .order("created_at", { ascending: false })
       .limit(limit);
+    if (category) fetchQuery = fetchQuery.eq("practice_category", category);
+
+    const { data: docs, error: fetchErr } = await fetchQuery;
 
     if (fetchErr) throw fetchErr;
 
