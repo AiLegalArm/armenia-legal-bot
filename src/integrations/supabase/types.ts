@@ -1871,7 +1871,12 @@ export type Database = {
         | "government_decisions"
         | "central_electoral_commission_decisions"
         | "prime_minister_decisions"
-      practice_category: "criminal" | "civil" | "administrative" | "echr"
+      practice_category:
+        | "criminal"
+        | "civil"
+        | "administrative"
+        | "echr"
+        | "constitutional"
       reminder_status: "active" | "completed" | "dismissed"
       reminder_type: "court_hearing" | "deadline" | "task" | "meeting" | "other"
     }
@@ -2105,7 +2110,13 @@ export const Constants = {
         "central_electoral_commission_decisions",
         "prime_minister_decisions",
       ],
-      practice_category: ["criminal", "civil", "administrative", "echr"],
+      practice_category: [
+        "criminal",
+        "civil",
+        "administrative",
+        "echr",
+        "constitutional",
+      ],
       reminder_status: ["active", "completed", "dismissed"],
       reminder_type: ["court_hearing", "deadline", "task", "meeting", "other"],
     },
