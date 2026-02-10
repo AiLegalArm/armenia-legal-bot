@@ -1,6 +1,7 @@
 import { useState, useCallback, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import { supabase } from '@/integrations/supabase/client';
+import { runBatchChunking } from '@/lib/batchChunking';
 import { useQueryClient } from '@tanstack/react-query';
 import { Button } from '@/components/ui/button';
 import { Progress } from '@/components/ui/progress';
@@ -193,10 +194,12 @@ export function LegalPracticeAIImport({ open, onOpenChange }: LegalPracticeAIImp
     if (successCount > 0) {
       toast.success(`AI Import: ${successCount} ${'\u0583\u0561\u057D\u057F\u0561\u0569\u0578\u0582\u0572\u0569'}`);
       queryClient.invalidateQueries({ queryKey: ['legal-practice-kb'] });
-      // Auto-chunking
+      // Auto-chunking (batch loop)
       try {
-        await supabase.functions.invoke('kb-backfill-chunks', { body: { chunkSize: 8000 } });
-        toast.success('\u0549\u0561\u0576\u056F\u056B\u0580\u0578\u057E\u0574\u0561\u0576 \u0561\u057E\u0561\u0580\u057F\u057E\u0565\u0581');
+        const chunkResult = await runBatchChunking({ chunkSize: 8000, batchLimit: 10 });
+        if (chunkResult.totalChunksInserted > 0) {
+          toast.success(`\u0549\u0561\u0576\u056F\u056B\u0580\u0578\u057E\u0574\u0561\u0576: ${chunkResult.totalChunksInserted} chunks`);
+        }
       } catch { /* silent */ }
     }
   };
