@@ -94,8 +94,10 @@ export function LegalPracticeBulkImport({ open, onOpenChange }: LegalPracticeBul
     const validFiles: TxtFileItem[] = [];
 
     for (const file of fileArray) {
-      if (!file.name.endsWith('.txt')) {
-        toast.error(`${file.name}: \u0544\u056B\u0561\u0575\u0576 TXT \u0586\u0561\u0575\u056C\u0565\u0580`);
+      const isTxt = file.name.endsWith('.txt');
+      const isJson = file.name.endsWith('.json');
+      if (!isTxt && !isJson) {
+        toast.error(`${file.name}: \u0544\u056B\u0561\u0575\u0576 TXT \u056F\u0561\u0574 JSON \u0586\u0561\u0575\u056C\u0565\u0580`);
         continue;
       }
       if (file.size > MAX_FILE_SIZE) {
@@ -173,24 +175,68 @@ export function LegalPracticeBulkImport({ open, onOpenChange }: LegalPracticeBul
 
       updateFile(id, { status: 'importing', progress: 60 });
 
-      const title = file.name.replace(/\.txt$/i, '').replace(/_/g, ' ');
-      const resolvedOutcome = autoDetectOutcome ? detectOutcome(textContent) : manualOutcome;
+      if (file.name.endsWith('.json')) {
+        // JSON mode: array of entries
+        let jsonData: unknown;
+        try {
+          jsonData = JSON.parse(textContent);
+        } catch {
+          throw new Error('Invalid JSON format');
+        }
+        const items = Array.isArray(jsonData) ? jsonData : [jsonData];
+        const rows = items
+          .filter((item: any) => item.title && item.content_text)
+          .map((item: any) => ({
+            title: String(item.title),
+            content_text: String(item.content_text),
+            practice_category: item.practice_category || category,
+            court_type: item.court_type || courtType,
+            outcome: item.outcome || (autoDetectOutcome ? detectOutcome(String(item.content_text)) : manualOutcome),
+            is_active: true,
+            is_anonymized: item.is_anonymized ?? true,
+            visibility: item.visibility || 'ai_only',
+            source_name: item.source_name || file.name,
+            court_name: item.court_name || null,
+            case_number_anonymized: item.case_number_anonymized || null,
+            decision_date: item.decision_date || null,
+            applied_articles: item.applied_articles || null,
+            legal_reasoning_summary: item.legal_reasoning_summary || null,
+            key_violations: item.key_violations || null,
+            description: item.description || null,
+          }));
 
-      const { error } = await supabase.from('legal_practice_kb').insert({
-        title,
-        content_text: textContent,
-        practice_category: category,
-        court_type: courtType,
-        outcome: resolvedOutcome,
-        is_active: true,
-        is_anonymized: true,
-        visibility: 'ai_only',
-        source_name: file.name,
-      });
+        if (rows.length === 0) throw new Error('No valid entries in JSON');
 
-      if (error) throw error;
+        // Insert in batches
+        const batchSize = 50;
+        for (let i = 0; i < rows.length; i += batchSize) {
+          const batch = rows.slice(i, i + batchSize);
+          const { error } = await supabase.from('legal_practice_kb').insert(batch);
+          if (error) throw error;
+        }
 
-      updateFile(id, { status: 'success', progress: 100 });
+        updateFile(id, { status: 'success', progress: 100 });
+      } else {
+        // TXT mode: single entry
+        const title = file.name.replace(/\.txt$/i, '').replace(/_/g, ' ');
+        const resolvedOutcome = autoDetectOutcome ? detectOutcome(textContent) : manualOutcome;
+
+        const { error } = await supabase.from('legal_practice_kb').insert({
+          title,
+          content_text: textContent,
+          practice_category: category,
+          court_type: courtType,
+          outcome: resolvedOutcome,
+          is_active: true,
+          is_anonymized: true,
+          visibility: 'ai_only',
+          source_name: file.name,
+        });
+
+        if (error) throw error;
+        updateFile(id, { status: 'success', progress: 100 });
+      }
+
       return true;
     } catch (error) {
       updateFile(id, {
@@ -275,10 +321,10 @@ export function LegalPracticeBulkImport({ open, onOpenChange }: LegalPracticeBul
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <FolderUp className="h-5 w-5" />
-            {'\u0544\u0561\u057D\u057D\u0561\u0575\u0561\u056F\u0561\u0576 \u056B\u0574\u057A\u0578\u0580\u057F (TXT)'}
+            {'\u0544\u0561\u057D\u057D\u0561\u0575\u0561\u056F\u0561\u0576 \u056B\u0574\u057A\u0578\u0580\u057F (TXT / JSON)'}
           </DialogTitle>
           <DialogDescription>
-            {'\u054E\u0565\u0580\u0562\u0565\u057C\u0576\u0565\u0584 TXT \u0586\u0561\u0575\u056C\u0565\u0580 \u0587 \u0576\u0577\u0565\u0584 \u056F\u0561\u057F\u0565\u0563\u0578\u0580\u056B\u0561\u0576\u055D \u0561\u057C\u0561\u0576\u0581 AI \u057E\u0565\u0580\u056C\u0578\u0582\u056E\u0578\u0582\u0569\u0575\u0561\u0576: \u0556\u0561\u0575\u056C\u056B \u0561\u0576\u0578\u0582\u0576\u0568 \u056F\u0564\u0561\u057C\u0576\u0561 \u057E\u0565\u0580\u0576\u0561\u0563\u056B\u0580\u0568:'}
+            {'\u054E\u0565\u0580\u0562\u0565\u057C\u0576\u0565\u0584 TXT \u056F\u0561\u0574 JSON \u0586\u0561\u0575\u056C\u0565\u0580: JSON\u055D [{title, content_text, ...}]'}
           </DialogDescription>
         </DialogHeader>
 
@@ -298,17 +344,17 @@ export function LegalPracticeBulkImport({ open, onOpenChange }: LegalPracticeBul
             <input
               ref={fileInputRef}
               type="file"
-              accept=".txt"
+              accept=".txt,.json"
               multiple
               onChange={handleFileSelect}
               className="hidden"
             />
             <Upload className="mx-auto h-10 w-10 text-muted-foreground" />
             <p className="mt-2 text-sm font-medium">
-              {'\u0554\u0561\u0577\u0565\u0584 \u056F\u0561\u0574 \u0562\u0565\u0580\u0565\u0584 TXT \u0586\u0561\u0575\u056C\u0565\u0580'}
+              {'\u0554\u0561\u0577\u0565\u0584 \u056F\u0561\u0574 \u0562\u0565\u0580\u0565\u0584 TXT / JSON \u0586\u0561\u0575\u056C\u0565\u0580'}
             </p>
             <p className="mt-1 text-xs text-muted-foreground">
-              {'\u0544\u0565\u056F \u0586\u0561\u0575\u056C = \u0574\u0565\u056F \u0578\u0580\u0578\u0577\u0578\u0582\u0574 (max 50MB)'}
+              {'TXT: 1 \u0586\u0561\u0575\u056C = 1 \u0578\u0580\u0578\u0577\u0578\u0582\u0574 | JSON: [{title, content_text, ...}] (max 50MB)'}
             </p>
           </div>
 
