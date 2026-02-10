@@ -379,12 +379,13 @@ export function LegalPracticeBulkImport({ open, onOpenChange }: LegalPracticeBul
     setEnrichmentProgress(null);
     let totalEnriched = 0;
     let totalErrors = 0;
+    let consecutiveZero = 0;
+    const MAX_CONSECUTIVE_ZERO = 5; // stop after 5 batches with 0 enriched
 
     try {
-      // Loop: call enrich in batches of 5 until no more remaining
       while (true) {
         const { data, error } = await supabase.functions.invoke('legal-practice-enrich', {
-          body: { limit: 5 },
+          body: { limit: 3 },
         });
         if (error) throw error;
 
@@ -395,12 +396,27 @@ export function LegalPracticeBulkImport({ open, onOpenChange }: LegalPracticeBul
 
         setEnrichmentProgress({ enriched: totalEnriched, remaining });
 
-        // Stop if nothing was enriched or nothing remaining
-        if (batchEnriched === 0 || remaining <= 0) break;
+        // Stop if nothing remaining
+        if (remaining <= 0) break;
+
+        // Track consecutive zero-enriched batches (all failed/timed out)
+        if (batchEnriched === 0) {
+          consecutiveZero++;
+          if (consecutiveZero >= MAX_CONSECUTIVE_ZERO) {
+            toast.warning(`${remaining} documents could not be enriched (AI errors). Try again later.`);
+            break;
+          }
+          // Small delay before retry
+          await new Promise(r => setTimeout(r, 2000));
+        } else {
+          consecutiveZero = 0;
+        }
       }
 
       setEnrichmentStatus('done');
-      toast.success(t('lp_bi_enrich_success', { count: totalEnriched }));
+      if (totalEnriched > 0) {
+        toast.success(t('lp_bi_enrich_success', { count: totalEnriched }));
+      }
       if (totalErrors > 0) {
         toast.warning(`${totalErrors} errors during enrichment`);
       }
