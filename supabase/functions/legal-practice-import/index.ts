@@ -32,7 +32,7 @@ interface ExtractedData {
   court_name: string | null;
   case_number_anonymized: string | null;
   decision_date: string | null;
-  applied_articles: Array<{ code: AppliedCode; articles: string[] }>;
+  applied_articles: Record<string, unknown>;
   key_violations: string[];
   legal_reasoning_summary: string | null;
   content_text: string;
@@ -123,16 +123,19 @@ function validateExtractedData(raw: unknown): ExtractedData {
   if (!isStringOrNull(raw.legal_reasoning_summary)) throw new Error("Invalid: legal_reasoning_summary");
   if (typeof raw.content_text !== "string") throw new Error("Invalid: content_text");
 
-  if (!Array.isArray(raw.applied_articles)) throw new Error("Invalid: applied_articles");
-  // Filter out invalid articles instead of throwing — AI may return unexpected codes
-  const validArticles: Array<{ code: string; articles: string[] }> = [];
-  for (const item of raw.applied_articles as unknown[]) {
-    if (!isObject(item)) continue;
-    if (typeof item.code !== "string" || !APPLIED.has(item.code)) continue;
-    if (!isStringArray(item.articles)) continue;
-    validArticles.push(item as { code: string; articles: string[] });
+  // Validate applied_articles — accept new {sources:[...]} format or legacy array format
+  if (isObject(raw.applied_articles)) {
+    // New format: {sources: [{act, articles: [{article, part, point, context}]}]}
+    const aa = raw.applied_articles as Record<string, unknown>;
+    if (!Array.isArray(aa.sources)) {
+      (raw as Record<string, unknown>).applied_articles = { sources: [] };
+    }
+  } else if (Array.isArray(raw.applied_articles)) {
+    // Legacy format — wrap or keep as-is (stored as JSON anyway)
+    (raw as Record<string, unknown>).applied_articles = { sources: [] };
+  } else {
+    (raw as Record<string, unknown>).applied_articles = { sources: [] };
   }
-  (raw as Record<string, unknown>).applied_articles = validArticles;
 
   if (!isStringArray(raw.key_violations)) throw new Error("Invalid: key_violations");
 
@@ -188,9 +191,10 @@ FIELD INSTRUCTIONS
 - court_name: exact court name as written.
 - case_number_anonymized: extract the main case number as written; anonymize ONLY if personal data is embedded inside the case-number string; redact minimally with "X" preserving structure.
 - decision_date: pick the explicit decision/act issuance date (e.g., "\u0578\u0580\u0578\u0577\u0578\u0582\u0574", "\u057E\u0573\u056B\u057C"). If unclear or multiple conflicting dates -> null.
-- applied_articles: extract only explicit references. Group by "code" and list article strings as they appear (keep ranges like "379-387"). Do not invent codes/articles.
-  Allowed applied_articles.code:
-  "criminal_code" | "civil_code" | "administrative_code" | "criminal_procedure_code" | "civil_procedure_code" | "administrative_procedure_code" | "constitution" | "echr"
+- applied_articles: extract only explicit references (e.g. "61-\u0580\u0564 \u0570\u0578\u0564\u057E\u0561\u056E", "\u0570\u0578\u0564\u057E\u0561\u056E 61", "61-\u0580\u0564 \u0570\u0578\u0564\u057E\u0561\u056E\u056B 1-\u056B\u0576 \u0574\u0561\u057D"). Do NOT invent articles. Group by legal act name. For each article include 1-2 sentences of context from surrounding text (max 300 chars). Remove duplicates.
+  Output format for applied_articles:
+  {"sources":[{"act":"<legal act name e.g. \u0554\u0580\u0565\u0561\u056F\u0561\u0576 \u0585\u0580\u0565\u0576\u057D\u0563\u056B\u0580\u0584>","articles":[{"article":"<number only>","part":"<number or empty>","point":"<number or empty>","context":"<max 300 chars from text>"}]}]}
+  Use the actual Armenian name of the legal act as it appears in the text. If no articles found: {"sources":[]}
 - key_violations: include only explicit violation/issue phrases present in text; otherwise [].
 - legal_reasoning_summary: 2\u20133 sentences, faithful, strictly based on explicit reasoning; no new facts; if insufficient text -> null.
 - content_text: full text with minimal cleanup; preserve breaks and citations.
@@ -206,7 +210,7 @@ OUTPUT SCHEMA (EXACT KEYS, NO EXTRA KEYS)
   "court_name": string|null,
   "case_number_anonymized": string|null,
   "decision_date": string|null,
-  "applied_articles": [{"code": "...", "articles": ["..."]}],
+  "applied_articles": {"sources":[{"act":"...","articles":[{"article":"...","part":"...","point":"...","context":"..."}]}]},
   "key_violations": ["..."],
   "legal_reasoning_summary": string|null,
   "content_text": string
@@ -227,7 +231,7 @@ async function extractWithAI(textContent: string, apiKey: string): Promise<Extra
       court_name: null,
       case_number_anonymized: null,
       decision_date: null,
-      applied_articles: [],
+      applied_articles: { sources: [] },
       key_violations: [],
       legal_reasoning_summary: null,
       content_text: "",
@@ -305,7 +309,7 @@ async function extractMissingWithAI(
     court_name: '"court_name": string — exact court name as written',
     case_number_anonymized: '"case_number_anonymized": string — case number, anonymize personal data with X',
     decision_date: '"decision_date": string — YYYY-MM-DD format or null',
-    applied_articles: '"applied_articles": [{"code":"criminal_code"|"civil_code"|"administrative_code"|"criminal_procedure_code"|"civil_procedure_code"|"administrative_procedure_code"|"constitution"|"echr","articles":["..."]}]',
+    applied_articles: '"applied_articles": {"sources":[{"act":"<legal act name>","articles":[{"article":"<number>","part":"<number or empty>","point":"<number or empty>","context":"<max 300 chars>"}]}]}',
     key_violations: '"key_violations": ["..."] — explicit violation phrases from text',
     legal_reasoning_summary: '"legal_reasoning_summary": string — 2-3 sentences of explicit reasoning',
   };
@@ -357,11 +361,14 @@ CRITICAL RULES:
   try {
     const parsed = JSON.parse(jsonStr);
     if (!isObject(parsed)) return {};
-    // Filter applied_articles to valid codes only
-    if (Array.isArray(parsed.applied_articles)) {
-      parsed.applied_articles = parsed.applied_articles.filter(
-        (item: unknown) => isObject(item) && typeof (item as Record<string,unknown>).code === "string" && APPLIED.has((item as Record<string,unknown>).code as string)
-      );
+    // Validate applied_articles — accept new {sources:[...]} format
+    if (isObject(parsed.applied_articles)) {
+      const aa = parsed.applied_articles as Record<string, unknown>;
+      if (!Array.isArray(aa.sources)) {
+        parsed.applied_articles = { sources: [] };
+      }
+    } else if (!Array.isArray(parsed.applied_articles)) {
+      parsed.applied_articles = { sources: [] };
     }
     // Validate enums
     if (parsed.practice_category && !PRACTICE.has(parsed.practice_category as string)) parsed.practice_category = null;
