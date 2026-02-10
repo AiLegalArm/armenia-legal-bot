@@ -31,8 +31,9 @@ import {
 import { Badge } from '@/components/ui/badge';
 import { Label } from '@/components/ui/label';
 import { toast } from 'sonner';
-import { Plus, Trash2, Edit, Search, FileText, Scale, AlertTriangle, Sparkles } from 'lucide-react';
+import { Plus, Trash2, Edit, Search, FileText, Scale, AlertTriangle, Sparkles, FolderUp } from 'lucide-react';
 import { LegalPracticeAIImport } from './LegalPracticeAIImport';
+import { LegalPracticeBulkImport } from './LegalPracticeBulkImport';
 
 // Types matching database schema
 type CourtType = 'first_instance' | 'appeal' | 'cassation' | 'constitutional' | 'echr';
@@ -115,6 +116,7 @@ export function LegalPracticeKB() {
   const [keyViolationsInput, setKeyViolationsInput] = useState('');
   const [articlesInput, setArticlesInput] = useState('');
   const [aiImportOpen, setAiImportOpen] = useState(false);
+  const [bulkImportOpen, setBulkImportOpen] = useState(false);
 
   // Fetch documents
   const { data: documents, isLoading } = useQuery({
@@ -300,6 +302,13 @@ export function LegalPracticeKB() {
               ))}
             </SelectContent>
           </Select>
+          <Button 
+            variant="outline" 
+            onClick={() => setBulkImportOpen(true)}
+          >
+            <FolderUp className="h-4 w-4 mr-2" />
+            {'\u0544\u0561\u057D\u057D\u0561\u0575\u0561\u056F\u0561\u0576'}
+          </Button>
           <Button 
             variant="outline" 
             onClick={() => setAiImportOpen(true)}
@@ -537,6 +546,12 @@ export function LegalPracticeKB() {
           </div>
         )}
       </CardContent>
+
+      {/* Bulk Import Dialog */}
+      <LegalPracticeBulkImport
+        open={bulkImportOpen}
+        onOpenChange={setBulkImportOpen}
+      />
 
       {/* AI Import Dialog */}
       <LegalPracticeAIImport 
