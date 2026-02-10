@@ -241,7 +241,7 @@ async function extractWithAI(textContent: string, apiKey: string): Promise<Extra
       Authorization: `Bearer ${apiKey}`,
     },
     body: JSON.stringify({
-      model: "google/gemini-2.5-flash",
+      model: "google/gemini-2.5-flash-lite",
       temperature: 0,
       messages: [
         { role: "system", content: DECISION_EXTRACTOR_SYSTEM_PROMPT },
