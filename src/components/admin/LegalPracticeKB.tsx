@@ -282,23 +282,68 @@ export function LegalPracticeKB() {
     }
   };
 
+  const [bulkEnrichRunning, setBulkEnrichRunning] = useState(false);
+  const [bulkEnrichProgress, setBulkEnrichProgress] = useState({ done: 0, remaining: 0 });
+
   const handleBulkEnrich = async () => {
-    if (!documents) return;
-    const emptyDocs = documents.filter(d => !d.court_name && !d.case_number_anonymized && !d.decision_date);
-    if (emptyDocs.length === 0) {
+    if (bulkEnrichRunning) return;
+    
+    // First check how many need enrichment
+    const { data: countData, error: countErr } = await supabase.functions.invoke('legal-practice-enrich', {
+      body: { countOnly: true },
+    });
+    
+    if (countErr || !countData?.success) {
+      toast.error(t('lp_enrich_error'));
+      return;
+    }
+    
+    if (countData.remaining === 0) {
       toast.info(t('lp_bulk_enrich_all_done'));
       return;
     }
-    toast.info(t('lp_bulk_enrich_start', { count: emptyDocs.length }));
-    let success = 0;
-    let fail = 0;
-    for (const doc of emptyDocs) {
-      const ok = await handleEnrich(doc.id, true);
-      if (ok) success++; else fail++;
-      await new Promise(r => setTimeout(r, 500));
+    
+    setBulkEnrichRunning(true);
+    setBulkEnrichProgress({ done: 0, remaining: countData.remaining });
+    toast.info(t('lp_bulk_enrich_start', { count: countData.remaining }));
+    
+    let totalEnriched = 0;
+    let consecutiveErrors = 0;
+    const maxConsecutiveErrors = 5;
+    
+    while (consecutiveErrors < maxConsecutiveErrors) {
+      try {
+        const { data, error } = await supabase.functions.invoke('legal-practice-enrich', {
+          body: { limit: 3 },
+        });
+        
+        if (error) throw error;
+        if (!data?.success) throw new Error(data?.error || 'Unknown error');
+        
+        if (data.enriched === 0 && data.remaining === 0) break;
+        
+        totalEnriched += data.enriched;
+        consecutiveErrors = data.enriched > 0 ? 0 : consecutiveErrors + 1;
+        setBulkEnrichProgress({ done: totalEnriched, remaining: data.remaining });
+        
+        // Small delay between batches
+        await new Promise(r => setTimeout(r, 1000));
+      } catch (err) {
+        console.error('Bulk enrich batch error:', err);
+        consecutiveErrors++;
+        await new Promise(r => setTimeout(r, 3000));
+      }
     }
-    if (success > 0) toast.success(t('lp_bulk_enrich_success', { count: success }));
-    if (fail > 0) toast.error(t('lp_bulk_enrich_fail', { count: fail }));
+    
+    setBulkEnrichRunning(false);
+    queryClient.invalidateQueries({ queryKey: ['legal-practice-kb'] });
+    
+    if (totalEnriched > 0) {
+      toast.success(t('lp_bulk_enrich_success', { count: totalEnriched }));
+    }
+    if (consecutiveErrors >= maxConsecutiveErrors) {
+      toast.error(t('lp_bulk_enrich_fail', { count: consecutiveErrors }));
+    }
   };
 
   const resetForm = () => {
@@ -408,10 +453,17 @@ export function LegalPracticeKB() {
           <Button 
             variant="outline" 
             onClick={handleBulkEnrich}
+            disabled={bulkEnrichRunning}
             className="border-amber-500/50 text-amber-600 hover:bg-amber-500/10"
           >
-            <Wand2 className="h-4 w-4 mr-2" />
-            {t('lp_ai_enrich')}
+            {bulkEnrichRunning ? (
+              <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+            ) : (
+              <Wand2 className="h-4 w-4 mr-2" />
+            )}
+            {bulkEnrichRunning 
+              ? `AI: ${bulkEnrichProgress.done} / ${bulkEnrichProgress.done + bulkEnrichProgress.remaining}`
+              : t('lp_ai_enrich')}
           </Button>
           <Button 
             variant="outline" 
