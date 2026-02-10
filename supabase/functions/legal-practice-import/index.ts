@@ -191,6 +191,8 @@ FIELD INSTRUCTIONS
 - legal_reasoning_summary: 2\u20133 sentences, faithful, strictly based on explicit reasoning; no new facts; if insufficient text -> null.
 - content_text: full text with minimal cleanup; preserve breaks and citations.
 
+CRITICAL: All string values in your JSON output MUST use actual UTF-8 Armenian characters, NOT unicode escape sequences like \\u0555. Write real Armenian letters.
+
 OUTPUT SCHEMA (EXACT KEYS, NO EXTRA KEYS)
 {
   "title": string|null,
