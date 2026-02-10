@@ -23,7 +23,7 @@ export interface KBSearchResult {
   category: KbCategory;
   source_name: string | null;
   version_date: string | null;
-  rank: number;
+  rank: number | null;
 }
 
 export function useKnowledgeBase(filters: KBFilters = {}) {
