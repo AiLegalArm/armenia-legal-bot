@@ -221,11 +221,11 @@ const Dashboard = () => {
                     <TabsList className="mb-4 w-full">
                       <TabsTrigger value="legislation" className="gap-1.5 flex-1">
                         <BookOpen className="h-4 w-4" />
-                        {t('kb:tab_legislation', 'Օրենdelays')}
+                        {t('kb:tab_legislation', '\u0555\u0580\u0565\u0576\u057D\u0564\u0580\u0578\u0582\u0569\u0575\u0578\u0582\u0576')}
                       </TabsTrigger>
                       <TabsTrigger value="practice" className="gap-1.5 flex-1">
                         <Gavel className="h-4 w-4" />
-                        {t('kb:tab_practice', 'Practice')}
+                        {t('kb:tab_practice', '\u0534\u0561\u057F\u0561\u056F\u0561\u0576 \u057A\u0580\u0561\u056F\u057F\u056B\u056F\u0561')}
                       </TabsTrigger>
                     </TabsList>
                     <TabsContent value="legislation" className="space-y-4">
