@@ -246,29 +246,23 @@ serve(async (req) => {
 
     console.log(`Legal chat request from user: ${userId}, message length: ${message.length}`);
 
-    // Search knowledge base for relevant context (RAG)
-    // NOTE: PostgreSQL full-text search doesn't work well for Armenian text (no stemmer)
-    // So we primarily use ILIKE keyword search
+    // Search knowledge base for relevant context (RAG) — server-side, full coverage
     let kbContext = "";
     try {
       let topResults: KBSearchResult[] = [];
       
-      // Extract keywords (words longer than 2 chars)
       const keywords = message
         .split(/\s+/)
-        .filter((w) => w.length > 2 && !/^[0-9]+$/.test(w))
-        .slice(0, 8); // Take first 8 keywords
+        .filter((w: string) => w.length > 2 && !/^[0-9]+$/.test(w))
+        .slice(0, 8);
       
-      console.log(`Searching KB with keywords: ${keywords.join(', ')}`);
+      const safeKeywords = keywords.map(sanitizeForPostgrest).filter((k: string) => k.length > 0);
+      console.log(`Searching KB with ${safeKeywords.length} keywords: ${safeKeywords.join(', ')}`);
       
-      if (keywords.length > 0) {
-        // Sanitize each keyword to prevent PostgREST/SQL injection
-        const safeKeywords = keywords.map(sanitizeForPostgrest).filter(k => k.length > 0);
-        
-        if (safeKeywords.length > 0) {
-        // Build OR conditions for each keyword searching in title and content
+      if (safeKeywords.length > 0) {
+        // Server-side ILIKE on title and content_text — no arbitrary cap
         const orConditions = safeKeywords
-          .map((k) => `title.ilike.%${k}%,content_text.ilike.%${k}%`)
+          .map((k: string) => `title.ilike.%${k}%,content_text.ilike.%${k}%`)
           .join(',');
         
         const { data: keywordResults, error: kwError } = await supabase
@@ -276,48 +270,41 @@ serve(async (req) => {
           .select("id, title, content_text, category, source_name")
           .eq("is_active", true)
           .or(orConditions)
-          .limit(15);
+          .limit(50);
 
         if (!kwError && keywordResults && keywordResults.length > 0) {
-          // Score results by how many keywords they match
-          interface ScoredResult extends KBSearchResult {
-            rank: number;
-          }
-          
-          const scoredResults: ScoredResult[] = keywordResults.map((r) => {
+          const scoredResults = keywordResults.map((r) => {
             let score = 0;
             const titleLower = (r.title || '').toLowerCase();
             const contentLower = (r.content_text || '').toLowerCase();
             
             for (const kw of keywords) {
               const kwLower = kw.toLowerCase();
-              if (titleLower.includes(kwLower)) score += 2; // Title match is worth more
+              if (titleLower.includes(kwLower)) score += 3;
               if (contentLower.includes(kwLower)) score += 1;
             }
-            return { ...r, rank: score / (keywords.length * 3) };
+            return { ...r, rank: score };
           });
           
-          // Sort by score and take top 5
           topResults = scoredResults
             .sort((a, b) => b.rank - a.rank)
-            .slice(0, 5);
+            .slice(0, 8);
           
-          console.log(`Found ${keywordResults.length} results, using top ${topResults.length}`);
+          console.log(`KB ILIKE found ${keywordResults.length} results, using top ${topResults.length}`);
         }
-        } // end safeKeywords.length > 0
       }
       
-      // Fallback: try full-text search if keyword search found nothing
+      // Fallback: full-text search if ILIKE found nothing
       if (topResults.length === 0) {
         const { data: searchResults, error: searchError } = await supabase.rpc(
           "search_knowledge_base",
-          { search_query: message, result_limit: 10 }
+          { search_query: message, result_limit: 20 }
         );
         
         if (!searchError && searchResults && searchResults.length > 0) {
           topResults = searchResults
             .filter((r: KBSearchResult) => r.rank > 0.001)
-            .slice(0, 5);
+            .slice(0, 8);
           console.log(`Fallback FTS found ${topResults.length} results`);
         }
       }
@@ -325,7 +312,7 @@ serve(async (req) => {
       if (topResults.length > 0) {
         console.log(`Final KB context: ${topResults.length} documents`);
         kbContext = topResults.map((r: KBSearchResult, i: number) => 
-          `[${i + 1}] ${r.title} (${r.category}, ${r.source_name || "N/A"}):\n${r.content_text.substring(0, 2000)}`
+          `[${i + 1}] ${r.title} (${r.category}, ${r.source_name || "N/A"}):\n${r.content_text.substring(0, 4000)}`
         ).join("\n\n---\n\n");
       } else {
         console.log("No KB results found for query");
