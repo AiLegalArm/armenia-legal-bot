@@ -227,7 +227,7 @@ function findRelevantChunks(
   // Return top chunks
   return scored.slice(0, limit).map((s) => ({
     chunkIndex: s.index,
-    text: s.text.substring(0, 2000), // Limit chunk preview size
+    text: s.text, // Return full chunk text
   }));
 }
 
