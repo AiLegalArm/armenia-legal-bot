@@ -1,5 +1,6 @@
 import jsPDF from "jspdf";
 import { registerArmenianFont, setArmenianFont, containsArmenian, containsCyrillic } from "./pdf/fontLoader";
+import { loadLogoForPDF, addLogoToPage } from "./pdf/logoLoader";
 
 interface AnalysisExportData {
   caseNumber: string;
@@ -107,35 +108,37 @@ function selectBoldFont(doc: jsPDF, text: string, hasArmenianFont: boolean): voi
 }
 
 // Helper function to add header with case number and export date
-function addHeader(doc: jsPDF, caseNumber: string, exportDate: Date, language: "hy" | "en" = "hy", hasArmenianFont: boolean = false) {
+function addHeader(doc: jsPDF, caseNumber: string, exportDate: Date, language: "hy" | "en" = "hy", hasArmenianFont: boolean = false, logoData?: string | null) {
   const pageWidth = doc.internal.pageSize.getWidth();
   const margin = 20;
   
+  // Add centered logo
+  if (logoData) {
+    addLogoToPage(doc, logoData);
+  }
+  
   doc.saveGraphicsState();
   doc.setFontSize(9);
-  doc.setTextColor(100, 100, 100);
+  doc.setTextColor(0, 0, 0);
   
-  // Brand name - latin only
+  // Brand name
   doc.setFont("helvetica", "normal");
-  doc.text("Ai Legal Armenia", margin, 12);
+  doc.text("AI Legal Armenia", margin, 28);
   
   const locale = language === 'hy' ? 'hy-AM' : 'en-US';
   const dateStr = exportDate.toLocaleDateString(locale);
-  // Use proper Armenian word for "Case" with № symbol
   const caseLabel = language === 'hy' ? '\u0533\u0578\u0580\u056E \u2116' : 'Case #';
   const caseHeaderText = `${caseLabel} ${caseNumber}`;
   
-  // Force Armenian font for case header if it contains Armenian/Cyrillic
   if (hasArmenianFont && (containsArmenian(caseHeaderText) || containsCyrillic(caseHeaderText) || containsArmenian(caseNumber))) {
     setArmenianFont(doc);
   } else {
     doc.setFont("helvetica", "normal");
   }
-  doc.text(caseHeaderText, pageWidth / 2, 12, { align: "center" });
+  doc.text(caseHeaderText, pageWidth / 2, 28, { align: "center" });
   
-  // Date - latin numerals
   doc.setFont("helvetica", "normal");
-  doc.text(dateStr, pageWidth - margin, 12, { align: "right" });
+  doc.text(dateStr, pageWidth - margin, 28, { align: "right" });
   doc.restoreGraphicsState();
 }
 
@@ -211,8 +214,11 @@ export async function exportAnalysisToPDF(data: AnalysisExportData): Promise<voi
     console.warn("Could not load Armenian font, using fallback:", error);
   }
   
+  // Load logo
+  const logoData = await loadLogoForPDF();
+  
   // Add header to first page
-  addHeader(doc, data.caseNumber, exportDate, lang, hasArmenianFont);
+  addHeader(doc, data.caseNumber, exportDate, lang, hasArmenianFont, logoData);
   
   // Title
   doc.setFontSize(18);
@@ -278,7 +284,7 @@ export async function exportAnalysisToPDF(data: AnalysisExportData): Promise<voi
   for (const line of analysisLines) {
     if (yPosition > pageHeight - contentBottomMargin) {
       doc.addPage();
-      addHeader(doc, data.caseNumber, exportDate, lang, hasArmenianFont);
+      addHeader(doc, data.caseNumber, exportDate, lang, hasArmenianFont, logoData);
       yPosition = contentTopMargin;
       doc.setFontSize(10);
       doc.setTextColor(0, 0, 0);
@@ -297,7 +303,7 @@ export async function exportAnalysisToPDF(data: AnalysisExportData): Promise<voi
     
     if (yPosition > pageHeight - contentBottomMargin - 20) {
       doc.addPage();
-      addHeader(doc, data.caseNumber, exportDate, lang, hasArmenianFont);
+      addHeader(doc, data.caseNumber, exportDate, lang, hasArmenianFont, logoData);
       yPosition = contentTopMargin;
     }
     
@@ -313,7 +319,7 @@ export async function exportAnalysisToPDF(data: AnalysisExportData): Promise<voi
     data.sources.forEach((source, index) => {
       if (yPosition > pageHeight - contentBottomMargin) {
         doc.addPage();
-        addHeader(doc, data.caseNumber, exportDate, lang, hasArmenianFont);
+        addHeader(doc, data.caseNumber, exportDate, lang, hasArmenianFont, logoData);
         yPosition = contentTopMargin;
         doc.setFontSize(9);
         doc.setTextColor(0, 0, 0);
@@ -365,8 +371,11 @@ export async function exportMultipleAnalysesToPDF(
     console.warn("Could not load Armenian font, using fallback:", error);
   }
   
+  // Load logo
+  const logoData = await loadLogoForPDF();
+  
   // Title page
-  addHeader(doc, caseNumber, exportDate, language, hasArmenianFont);
+  addHeader(doc, caseNumber, exportDate, language, hasArmenianFont, logoData);
   
   // Brand name - use bold helvetica
   doc.setFontSize(24);
@@ -410,7 +419,7 @@ export async function exportMultipleAnalysesToPDF(
     doc.addPage();
     
     // Header
-    addHeader(doc, caseNumber, exportDate, language, hasArmenianFont);
+    addHeader(doc, caseNumber, exportDate, language, hasArmenianFont, logoData);
     
     // Analysis Title
     doc.setFontSize(16);
@@ -430,7 +439,7 @@ export async function exportMultipleAnalysesToPDF(
     for (const line of analysisLines) {
       if (yPosition > pageHeight - contentBottomMargin) {
         doc.addPage();
-        addHeader(doc, caseNumber, exportDate, language, hasArmenianFont);
+        addHeader(doc, caseNumber, exportDate, language, hasArmenianFont, logoData);
         yPosition = contentTopMargin;
         doc.setFontSize(10);
         doc.setTextColor(0, 0, 0);
@@ -448,7 +457,7 @@ export async function exportMultipleAnalysesToPDF(
       
       if (yPosition > pageHeight - contentBottomMargin - 20) {
         doc.addPage();
-        addHeader(doc, caseNumber, exportDate, language, hasArmenianFont);
+        addHeader(doc, caseNumber, exportDate, language, hasArmenianFont, logoData);
         yPosition = contentTopMargin;
       }
       
@@ -464,7 +473,7 @@ export async function exportMultipleAnalysesToPDF(
       analysis.sources.forEach((source, index) => {
         if (yPosition > pageHeight - contentBottomMargin) {
           doc.addPage();
-          addHeader(doc, caseNumber, exportDate, language, hasArmenianFont);
+          addHeader(doc, caseNumber, exportDate, language, hasArmenianFont, logoData);
           yPosition = contentTopMargin;
           doc.setFontSize(9);
           doc.setTextColor(0, 0, 0);
@@ -512,8 +521,11 @@ export async function exportCaseDetailToPDF(data: CaseDetailExportData): Promise
     console.warn("Could not load Armenian font, using fallback:", error);
   }
   
+  // Load logo
+  const logoData = await loadLogoForPDF();
+  
   // Add header
-  addHeader(doc, data.caseNumber, exportDate, lang, hasArmenianFont);
+  addHeader(doc, data.caseNumber, exportDate, lang, hasArmenianFont, logoData);
   
   let yPosition = 20;
   
@@ -521,7 +533,7 @@ export async function exportCaseDetailToPDF(data: CaseDetailExportData): Promise
   const checkPageOverflow = (requiredSpace: number) => {
     if (yPosition + requiredSpace > pageHeight - contentBottomMargin) {
       doc.addPage();
-      addHeader(doc, data.caseNumber, exportDate, lang, hasArmenianFont);
+      addHeader(doc, data.caseNumber, exportDate, lang, hasArmenianFont, logoData);
       yPosition = contentTopMargin;
       doc.setFontSize(10);
       doc.setTextColor(0, 0, 0);

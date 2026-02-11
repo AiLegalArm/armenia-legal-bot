@@ -1,5 +1,6 @@
 import jsPDF from "jspdf";
 import { registerArmenianFont, setArmenianFont, containsArmenian, containsCyrillic } from "./pdf/fontLoader";
+import { loadLogoForPDF, addLogoToPage } from "./pdf/logoLoader";
 
 interface DocumentExportData {
   title: string;
@@ -74,20 +75,26 @@ function addWatermark(doc: jsPDF) {
   doc.restoreGraphicsState();
 }
 
-function addHeader(doc: jsPDF, title: string, exportDate: Date, language: "hy" | "ru" | "en", hasArmenianFont: boolean) {
+function addHeader(doc: jsPDF, title: string, exportDate: Date, language: "hy" | "ru" | "en", hasArmenianFont: boolean, logoData?: string | null) {
   const pageWidth = doc.internal.pageSize.getWidth();
   const margin = 20;
   
+  // Add centered logo
+  if (logoData) {
+    addLogoToPage(doc, logoData);
+  }
+  
   doc.saveGraphicsState();
   doc.setFontSize(9);
-  doc.setTextColor(100, 100, 100);
+  doc.setTextColor(0, 0, 0);
   
+  // Brand name
   doc.setFont("helvetica", "normal");
-  doc.text("Ai Legal Armenia", margin, 12);
+  doc.text("AI Legal Armenia", margin, 28);
   
   const locale = language === 'hy' ? 'hy-AM' : language === 'ru' ? 'ru-RU' : 'en-US';
   const dateStr = exportDate.toLocaleDateString(locale);
-  doc.text(dateStr, pageWidth - margin, 12, { align: "right" });
+  doc.text(dateStr, pageWidth - margin, 28, { align: "right" });
   
   doc.restoreGraphicsState();
 }
@@ -139,13 +146,16 @@ export async function exportDocumentToPDF(data: DocumentExportData): Promise<voi
     console.warn("Could not load Armenian font, using fallback:", error);
   }
   
+  // Load logo
+  const logoData = await loadLogoForPDF();
+  
   // Add watermark
   addWatermark(doc);
   
-  // Add header
-  addHeader(doc, data.title, exportDate, lang, hasArmenianFont);
+  // Add header with logo
+  addHeader(doc, data.title, exportDate, lang, hasArmenianFont, logoData);
   
-  let yPosition = 30;
+  let yPosition = 35;
   
   // Title
   doc.setFontSize(16);
@@ -199,8 +209,8 @@ export async function exportDocumentToPDF(data: DocumentExportData): Promise<voi
     if (yPosition > pageHeight - contentBottomMargin) {
       doc.addPage();
       addWatermark(doc);
-      addHeader(doc, data.title, exportDate, lang, hasArmenianFont);
-      yPosition = contentTopMargin;
+      addHeader(doc, data.title, exportDate, lang, hasArmenianFont, logoData);
+      yPosition = 25;
       doc.setFontSize(11);
       doc.setTextColor(0, 0, 0);
       if (hasArmenianFont) {
