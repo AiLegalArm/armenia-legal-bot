@@ -151,6 +151,11 @@ serve(async (req) => {
         limitChunksPerDoc
       );
 
+      // If no chunks available, create a single chunk from content_text
+      const finalTopChunks = topChunks.length > 0 ? topChunks : 
+        (doc.content_text ? [{ chunkIndex: 0, text: doc.content_text }] : []);
+      const finalTotalChunks = totalChunks > 0 ? totalChunks : (doc.content_text ? 1 : 0);
+
       return {
         id: doc.id,
         title: doc.title,
@@ -162,8 +167,8 @@ serve(async (req) => {
         legal_reasoning_summary: doc.legal_reasoning_summary,
         decision_map: doc.decision_map,
         key_paragraphs: doc.key_paragraphs || [],
-        top_chunks: topChunks,
-        totalChunks,
+        top_chunks: finalTopChunks,
+        totalChunks: finalTotalChunks,
       };
     });
 

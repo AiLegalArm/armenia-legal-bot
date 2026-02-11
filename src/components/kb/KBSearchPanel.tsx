@@ -478,7 +478,7 @@ function KBDocumentCard({
             </div>
           )}
 
-          {document.top_chunks.length > 0 && (
+          {document.top_chunks.length > 0 ? (
             <div className="space-y-2">
               <div className="text-xs font-medium text-muted-foreground">
                 {"\u0540\u0561\u0574\u0561\u057A\u0561\u057F\u0561\u057D\u056D\u0561\u0576 \u0570\u0561\u057F\u057E\u0561\u056E\u0576\u0565\u0580"} ({document.top_chunks.length}/{document.totalChunks})
@@ -494,7 +494,17 @@ function KBDocumentCard({
                 />
               ))}
             </div>
-          )}
+          ) : document.legal_reasoning_summary ? (
+            <div className="border rounded-lg p-3 bg-secondary/20 space-y-2">
+              <span className="font-semibold text-xs text-primary flex items-center gap-1.5">
+                <Gavel className="h-3 w-3" />
+                {"\u053b\u0580\u0561\u057e\u0561\u056f\u0561\u0576 \u0570\u056b\u0574\u0576\u0561\u057e\u0578\u0580\u0578\u0582\u0574"}
+              </span>
+              <div className="text-sm text-foreground/90 whitespace-pre-wrap leading-relaxed">
+                {document.legal_reasoning_summary}
+              </div>
+            </div>
+          ) : null}
 
           {loadedChunkIndexes.map((idx) => {
             const chunk = getCachedChunk(document.id, idx);
