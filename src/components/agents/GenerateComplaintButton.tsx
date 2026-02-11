@@ -165,13 +165,15 @@ ${aggregatedReport.recommendations || ""}
       </Button>
 
       <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
-        <DialogContent className="max-w-4xl max-h-[90vh] w-[95vw] sm:w-full p-4 sm:p-6">
-          <DialogHeader>
+        <DialogContent className="max-w-4xl max-h-[85vh] w-[95vw] sm:w-full p-0 sm:p-0 flex flex-col overflow-hidden">
+          <DialogHeader className="px-4 pt-4 sm:px-6 sm:pt-6 pb-2 flex-shrink-0">
             <DialogTitle className="text-base sm:text-lg">{t("ai:generate_complaint_from_analysis")}</DialogTitle>
             <DialogDescription className="text-xs sm:text-sm">
               {t("ai:complaint_from_analysis_description")}
             </DialogDescription>
           </DialogHeader>
+
+          <ScrollArea className="flex-1 min-h-0 px-4 sm:px-6">
 
           {!generatedContent ? (
             <div className="space-y-3 sm:space-y-4 py-2 sm:py-4">
@@ -244,8 +246,9 @@ ${aggregatedReport.recommendations || ""}
               </div>
             </ScrollArea>
           )}
+          </ScrollArea>
 
-          <DialogFooter className="flex-col sm:flex-row gap-2 sm:gap-0">
+          <DialogFooter className="flex-col sm:flex-row gap-2 sm:gap-0 px-4 pb-4 sm:px-6 sm:pb-6 pt-2 flex-shrink-0">
             {generatedContent ? (
               <>
                 <Button variant="outline" onClick={() => setGeneratedContent(null)} className="w-full sm:w-auto">
