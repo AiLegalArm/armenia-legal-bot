@@ -334,35 +334,68 @@ serve(async (req) => {
       console.error("Knowledge base search error:", searchErr);
     }
 
-    // Search legal practice database for relevant court decisions
+    // Search legal practice database for relevant court decisions (server-side, NO limit cap)
     let practiceContext = "";
     try {
-      const keywords = message
+      const practiceKeywords = message
         .split(/\s+/)
-        .filter((w) => w.length > 2 && !/^[0-9]+$/.test(w))
-        .slice(0, 6);
+        .filter((w: string) => w.length > 2 && !/^[0-9]+$/.test(w))
+        .slice(0, 8);
 
-      console.log(`Searching legal practice with keywords: ${keywords.join(', ')}`);
+      const safePracticeKw = practiceKeywords.map(sanitizeForPostgrest).filter((k: string) => k.length > 0);
 
-      // First, get all active practice items (limited) - ILIKE with Armenian Unicode has issues
-      // So we'll fetch and filter in memory
-      const { data: practiceResults, error: practiceErr } = await supabase
-        .from("legal_practice_kb")
-        .select("id, title, content_text, practice_category, court_type, outcome, legal_reasoning_summary, applied_articles, key_violations")
-        .eq("is_active", true)
-        .limit(50);
+      console.log(`Searching legal practice with ${safePracticeKw.length} keywords: ${safePracticeKw.join(', ')}`);
 
-      console.log(`Legal practice fetched: ${practiceResults?.length || 0} items, error: ${practiceErr?.message || 'none'}`);
+      let practiceResults: LegalPracticeResult[] = [];
 
-      if (!practiceErr && practiceResults && practiceResults.length > 0) {
-        // Score and sort by relevance - search in memory
+      if (safePracticeKw.length > 0) {
+        // Server-side ILIKE search across title, legal_reasoning_summary, and key_violations
+        const orConditions = safePracticeKw
+          .map((k: string) => `title.ilike.%${k}%,legal_reasoning_summary.ilike.%${k}%`)
+          .join(',');
+
+        const { data: ilikeResults, error: ilikeErr } = await supabase
+          .from("legal_practice_kb")
+          .select("id, title, content_text, practice_category, court_type, outcome, legal_reasoning_summary, applied_articles, key_violations")
+          .eq("is_active", true)
+          .or(orConditions)
+          .limit(30);
+
+        if (!ilikeErr && ilikeResults && ilikeResults.length > 0) {
+          practiceResults = ilikeResults;
+          console.log(`ILIKE search found ${practiceResults.length} practice items`);
+        }
+
+        // If ILIKE found nothing, try content_text search (heavier but catches more)
+        if (practiceResults.length === 0) {
+          const contentOrConditions = safePracticeKw
+            .slice(0, 4) // limit to 4 keywords for content search
+            .map((k: string) => `content_text.ilike.%${k}%`)
+            .join(',');
+
+          const { data: contentResults, error: contentErr } = await supabase
+            .from("legal_practice_kb")
+            .select("id, title, content_text, practice_category, court_type, outcome, legal_reasoning_summary, applied_articles, key_violations")
+            .eq("is_active", true)
+            .or(contentOrConditions)
+            .limit(20);
+
+          if (!contentErr && contentResults && contentResults.length > 0) {
+            practiceResults = contentResults;
+            console.log(`Content search found ${practiceResults.length} practice items`);
+          }
+        }
+      }
+
+      // Score results by keyword relevance
+      if (practiceResults.length > 0) {
         const scored = practiceResults.map((r: LegalPracticeResult) => {
           let score = 0;
           const titleLower = (r.title || '').toLowerCase();
-          const contentLower = (r.content_text || '').toLowerCase();
           const reasoningLower = (r.legal_reasoning_summary || '').toLowerCase();
+          const contentLower = (r.content_text || '').toLowerCase();
 
-          for (const kw of keywords) {
+          for (const kw of practiceKeywords) {
             const kwLower = kw.toLowerCase();
             if (titleLower.includes(kwLower)) score += 3;
             if (reasoningLower.includes(kwLower)) score += 2;
@@ -371,38 +404,27 @@ serve(async (req) => {
           return { ...r, score };
         });
 
-        console.log(`Scored ${scored.length} practice items, scores: ${scored.map(s => s.score).join(', ')}`);
-
-        let topPractice = scored
-          .filter((r) => r.score > 0)
+        const topPractice = scored
           .sort((a, b) => b.score - a.score)
-          .slice(0, 3);
+          .slice(0, 5); // top 5 most relevant
 
-        // Fallback: if no keyword matches but we have practice items, include top 3 anyway
-        // This ensures users can get practice info even with non-matching queries
-        if (topPractice.length === 0 && scored.length > 0) {
-          console.log("No keyword matches in practice, using fallback (first 3 items)");
-          topPractice = scored.slice(0, 3);
-        }
+        console.log(`Using ${topPractice.length} legal practice results (scores: ${topPractice.map(s => s.score).join(', ')})`);
 
-        if (topPractice.length > 0) {
-          console.log(`Using ${topPractice.length} legal practice results`);
-          
-          practiceContext = topPractice.map((r, i) => {
-            const articles = r.applied_articles ? JSON.stringify(r.applied_articles) : "\u0546/\u0531";
-            const violations = r.key_violations?.join(", ") || "\u0546/\u0531";
-            // Include full decision text for comprehensive analysis
-            const fullText = r.content_text || '';
-            return `[\u054A\u0580\u0561\u056F\u057F\u056B\u056F\u0561 ${i + 1}] ${r.title}
+        practiceContext = topPractice.map((r, i) => {
+          const articles = r.applied_articles ? JSON.stringify(r.applied_articles) : "\u0546/\u0531";
+          const violations = r.key_violations?.join(", ") || "\u0546/\u0531";
+          const fullText = r.content_text || '';
+          return `[\u054A\u0580\u0561\u056F\u057F\u056B\u056F\u0561 ${i + 1}] ${r.title}
 \u0534\u0561\u057F\u0561\u0580\u0561\u0576: ${r.court_type} | \u053F\u0561\u057F\u0565\u0563\u0578\u0580\u056B\u0561: ${r.practice_category} | \u0535\u056C\u0584: ${r.outcome}
 \u053F\u056B\u0580\u0561\u057C\u057E\u0561\u056E \u0570\u0578\u0564\u057E\u0561\u056E\u0576\u0565\u0580: ${articles}
 \u0540\u056B\u0574\u0576\u0561\u056F\u0561\u0576 \u056D\u0561\u056D\u057F\u0578\u0582\u0574\u0576\u0565\u0580: ${violations}
 \u053B\u0580\u0561\u057E\u0561\u056F\u0561\u0576 \u0570\u056B\u0574\u0576\u0561\u057E\u0578\u0580\u0578\u0582\u0574: ${r.legal_reasoning_summary || "\u0546/\u0531"}
 
-**\u0548\u0550\u0548\u0547\u0544\u0531\u0546 \u053C\u053B\u0531\u0550\u053A\u0531\u053F\u0531\u0546 \u054F\u0535\u053F\u054D\u054F:**
+**\u0548\u0550\u0548\u0547\u0544\u0531\u0546 \u053C\u053B\u0531\u0550\u053a\u0531\u053f\u0531\u0546 \u054f\u0535\u053f\u054d\u054f:**
 ${fullText}`;
-          }).join("\n\n---\n\n");
-        }
+        }).join("\n\n---\n\n");
+      } else {
+        console.log("No legal practice results found");
       }
     } catch (practiceErr) {
       console.error("Legal practice search error:", practiceErr);
