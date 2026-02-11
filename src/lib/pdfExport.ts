@@ -201,7 +201,7 @@ export async function exportAnalysisToPDF(data: AnalysisExportData): Promise<voi
   const pageHeight = doc.internal.pageSize.getHeight();
   const margin = 20;
   const maxWidth = pageWidth - margin * 2;
-  const contentTopMargin = 18;
+  const contentTopMargin = 35;
   const contentBottomMargin = 35;
   
   // Try to load Armenian font
@@ -220,60 +220,27 @@ export async function exportAnalysisToPDF(data: AnalysisExportData): Promise<voi
   // Add header to first page
   addHeader(doc, data.caseNumber, exportDate, lang, hasArmenianFont, logoData);
   
-  // Title
-  doc.setFontSize(18);
+  // Title - "Վերdelays" centered under logo
+  doc.setFontSize(14);
   doc.setTextColor(0, 0, 0);
-  selectBoldFont(doc, labels.legalAnalysisReport, hasArmenianFont);
-  doc.text(labels.legalAnalysisReport, pageWidth / 2, 25, { align: "center" });
+  selectBoldFont(doc, labels.analysis, hasArmenianFont);
+  doc.text(labels.analysis, pageWidth / 2, 35, { align: "center" });
   
-  // Case info
-  doc.setFontSize(12);
-  doc.setTextColor(0, 0, 0);
-  let yPosition = 35;
-  
-  // Case Number
-  selectBoldFont(doc, labels.caseNumber, hasArmenianFont);
-  doc.text(labels.caseNumber, margin, yPosition);
-  selectFont(doc, data.caseNumber, hasArmenianFont);
-  doc.text(data.caseNumber, margin + 45, yPosition);
-  yPosition += 8;
-  
-  // Case Title
-  selectBoldFont(doc, labels.caseTitle, hasArmenianFont);
-  doc.text(labels.caseTitle, margin, yPosition);
-  selectFont(doc, data.caseTitle, hasArmenianFont);
-  const titleLines = doc.splitTextToSize(data.caseTitle, maxWidth - 40);
-  doc.text(titleLines, margin + 35, yPosition);
-  yPosition += titleLines.length * 6 + 4;
-  
-  // Analysis Role
-  selectBoldFont(doc, labels.analysisRole, hasArmenianFont);
-  doc.text(labels.analysisRole, margin, yPosition);
+  // Role - centered under title
   const roleText = ROLE_LABELS[data.role]?.[lang] || data.role;
-  selectFont(doc, roleText, hasArmenianFont);
-  doc.text(roleText, margin + 40, yPosition);
-  yPosition += 8;
+  doc.setFontSize(12);
+  selectBoldFont(doc, roleText, hasArmenianFont);
+  doc.text(roleText, pageWidth / 2, 43, { align: "center" });
   
-  // Date
-  selectBoldFont(doc, labels.date, hasArmenianFont);
-  doc.text(labels.date, margin, yPosition);
-  selectFont(doc, "", hasArmenianFont);
-  doc.text(data.createdAt.toLocaleString(lang === 'hy' ? "hy-AM" : "en-US"), margin + 25, yPosition);
-  yPosition += 15;
+  let yPosition = 50;
   
   // Separator line
   doc.setDrawColor(200);
   doc.setLineWidth(0.5);
   doc.line(margin, yPosition, pageWidth - margin, yPosition);
-  yPosition += 10;
+  yPosition += 8;
   
   // Analysis content
-  doc.setFontSize(14);
-  doc.setTextColor(0, 0, 0);
-  selectBoldFont(doc, labels.analysis, hasArmenianFont);
-  doc.text(labels.analysis, margin, yPosition);
-  yPosition += 10;
-  
   doc.setFontSize(10);
   doc.setTextColor(0, 0, 0);
   selectFont(doc, data.analysisText, hasArmenianFont);
@@ -359,7 +326,7 @@ export async function exportMultipleAnalysesToPDF(
   const pageHeight = doc.internal.pageSize.getHeight();
   const margin = 20;
   const maxWidth = pageWidth - margin * 2;
-  const contentTopMargin = 18;
+  const contentTopMargin = 35;
   const contentBottomMargin = 35;
   
   // Try to load Armenian font
@@ -421,14 +388,14 @@ export async function exportMultipleAnalysesToPDF(
     // Header
     addHeader(doc, caseNumber, exportDate, language, hasArmenianFont, logoData);
     
-    // Analysis Title
-    doc.setFontSize(16);
+    // Role title centered under logo
+    doc.setFontSize(14);
     doc.setTextColor(0, 0, 0);
     const roleText = ROLE_LABELS[analysis.role]?.[language] || analysis.role;
     selectBoldFont(doc, roleText, hasArmenianFont);
-    doc.text(roleText, margin, 25);
+    doc.text(roleText, pageWidth / 2, 35, { align: "center" });
     
-    let yPosition = 35;
+    let yPosition = 45;
     
     // Analysis content
     doc.setFontSize(10);
@@ -509,7 +476,7 @@ export async function exportCaseDetailToPDF(data: CaseDetailExportData): Promise
   const pageHeight = doc.internal.pageSize.getHeight();
   const margin = 20;
   const maxWidth = pageWidth - margin * 2;
-  const contentTopMargin = 18;
+  const contentTopMargin = 35;
   const contentBottomMargin = 35;
   
   // Try to load Armenian font
@@ -527,7 +494,7 @@ export async function exportCaseDetailToPDF(data: CaseDetailExportData): Promise
   // Add header
   addHeader(doc, data.caseNumber, exportDate, lang, hasArmenianFont, logoData);
   
-  let yPosition = 20;
+  let yPosition = 35;
   
   // Check page overflow helper
   const checkPageOverflow = (requiredSpace: number) => {
