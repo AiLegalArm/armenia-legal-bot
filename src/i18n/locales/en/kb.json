@@ -165,5 +165,6 @@
   "lp_bi_importing": "Importing...",
   "lp_bi_import": "Import",
   "lp_bi_imported": "Imported: {{count}} files",
-  "lp_bi_recognize_error": "Recognition error"
+  "lp_bi_recognize_error": "Recognition error",
+  "judicial_practice": "Judicial Practice"
 }
