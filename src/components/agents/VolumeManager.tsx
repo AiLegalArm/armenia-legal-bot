@@ -9,8 +9,10 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, Dialog
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Plus, FileText, Trash2, Edit2, CheckCircle, Clock, Link2, FileArchive } from "lucide-react";
+import { Progress } from "@/components/ui/progress";
+import { Plus, FileText, Trash2, Edit2, CheckCircle, Clock, Link2, FileArchive, ScanText, Loader2 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
+import { toast } from "sonner";
 import type { CaseVolume } from "./types";
 
 interface CaseFile {
@@ -37,10 +39,12 @@ export function VolumeManager({
   onUpdateVolume,
   onDeleteVolume
 }: VolumeManagerProps) {
-  const { t } = useTranslation(["ai", "cases"]);
+  const { t, i18n } = useTranslation(["ai", "cases", "ocr", "common"]);
   const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
   const [editingVolume, setEditingVolume] = useState<CaseVolume | null>(null);
   const [caseFiles, setCaseFiles] = useState<CaseFile[]>([]);
+  const [ocrProcessing, setOcrProcessing] = useState<Record<string, boolean>>({});
+  const [ocrProgress, setOcrProgress] = useState<Record<string, number>>({});
   const [formData, setFormData] = useState({
     title: "",
     description: "",
@@ -122,6 +126,58 @@ export function VolumeManager({
     const kb = bytes / 1024;
     if (kb < 1024) return `${kb.toFixed(1)} KB`;
     return `${(kb / 1024).toFixed(1)} MB`;
+  };
+
+  const handleVolumeOcr = async (volume: CaseVolume) => {
+    if (!volume.file_id) return;
+    
+    const file = caseFiles.find(f => f.id === volume.file_id);
+    if (!file) return;
+
+    setOcrProcessing(prev => ({ ...prev, [volume.id]: true }));
+    setOcrProgress(prev => ({ ...prev, [volume.id]: 10 }));
+
+    try {
+      // Get signed URL
+      const { data: signedData, error: signError } = await supabase.storage
+        .from('case-files')
+        .createSignedUrl(file.storage_path, 300);
+
+      if (signError || !signedData?.signedUrl) throw signError || new Error('Failed to get signed URL');
+      setOcrProgress(prev => ({ ...prev, [volume.id]: 30 }));
+
+      const lang = i18n.language === 'hy' ? 'hye' : i18n.language === 'ru' ? 'rus' : 'eng';
+
+      const { data, error } = await supabase.functions.invoke('ocr-process', {
+        body: {
+          fileUrl: signedData.signedUrl,
+          fileName: file.original_filename,
+          language: lang,
+          fileId: file.id,
+        }
+      });
+
+      if (error) throw error;
+      setOcrProgress(prev => ({ ...prev, [volume.id]: 80 }));
+
+      if (data.success && data.extracted_text) {
+        // Update volume with OCR text
+        await onUpdateVolume(volume.id, {
+          ocr_text: data.extracted_text,
+          ocr_completed: true
+        });
+        setOcrProgress(prev => ({ ...prev, [volume.id]: 100 }));
+        toast.success(t('ocr:processing_complete'));
+      } else {
+        throw new Error(data.error || 'OCR failed');
+      }
+    } catch (err) {
+      console.error('Volume OCR error:', err);
+      toast.error(t('ocr:processing_failed'));
+    } finally {
+      setOcrProcessing(prev => ({ ...prev, [volume.id]: false }));
+      setOcrProgress(prev => ({ ...prev, [volume.id]: 0 }));
+    }
   };
 
   const availableFiles = getAvailableFiles();
@@ -364,6 +420,34 @@ export function VolumeManager({
                     )}
                   </Badge>
                 </div>
+                
+                {/* OCR Button */}
+                {volume.file_id && !volume.ocr_completed && (
+                  <div className="mt-3 space-y-2">
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="w-full h-8 text-xs"
+                      disabled={ocrProcessing[volume.id]}
+                      onClick={() => handleVolumeOcr(volume)}
+                    >
+                      {ocrProcessing[volume.id] ? (
+                        <>
+                          <Loader2 className="mr-1.5 h-3 w-3 animate-spin" />
+                          {t("ocr:processing")}...
+                        </>
+                      ) : (
+                        <>
+                          <ScanText className="mr-1.5 h-3 w-3" />
+                          {t("cases:process_ocr_extract")}
+                        </>
+                      )}
+                    </Button>
+                    {ocrProcessing[volume.id] && ocrProgress[volume.id] > 0 && (
+                      <Progress value={ocrProgress[volume.id]} className="h-1.5" />
+                    )}
+                  </div>
+                )}
               </CardContent>
             </Card>
           ))}
