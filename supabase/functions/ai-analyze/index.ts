@@ -105,6 +105,74 @@ interface AnalysisRequest {
   judgeResponse?: string;
 }
 
+// Helper to format legal practice results into RAG context
+function formatPracticeResults(
+  topPractice: Array<{
+    title: string;
+    practice_category?: string;
+    court_type: string;
+    outcome: string;
+    legal_reasoning_summary?: string | null;
+    content_text?: string;
+    content_snippet?: string;
+    key_violations?: string[] | null;
+  }>,
+  existingContext: string,
+  sourcesUsed: Array<{ title: string; category: string; source_name: string }>
+): string {
+  let ragContext = existingContext;
+
+  const outcomeLabels: Record<string, string> = {
+    granted: "\u0532\u0561\u057E\u0561\u0580\u0561\u0580\u057E\u0565\u056C",
+    rejected: "\u0544\u0565\u0580\u056A\u057E\u0565\u056C",
+    partial: "\u0544\u0561\u057D\u0576\u0561\u056F\u056B",
+    remanded: "\u054E\u0565\u0580\u0561\u0564\u0561\u0580\u0571\u057E\u0565\u056C",
+    discontinued: "\u053F\u0561\u0580\u0573\u057E\u0565\u056C",
+  };
+  const courtLabels: Record<string, string> = {
+    first_instance: "\u0531\u057C\u0561\u057B\u056B\u0576 \u0561\u057F\u0575\u0561\u0576",
+    appeal: "\u054E\u0565\u0580\u0561\u0584\u0576\u0576\u056B\u0579",
+    cassation: "\u054E\u0573\u057C\u0561\u0562\u0565\u056F",
+    constitutional: "\u054D\u0561\u0570\u0574\u0561\u0576\u0561\u0564\u0580\u0561\u056F\u0561\u0576",
+    echr: "\u0535\u054D\u054A\u053F",
+  };
+
+  ragContext += "\n\n## \u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\n";
+  ragContext += "## \u053B\u0550\u0531\u054E\u0531\u053F\u0531\u0546 \u054A\u0550\u0531\u053F\u054f\u053B\u053F\u0531\u0545\u053B \u0540\u0535\u0546\u0531\u053F\u0531\u0545\u053B\u0546 \u0546\u0545\u0548\u0552\u053F (KB REFERENCE ONLY)\n";
+  ragContext += "## \u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\n\n";
+  ragContext += "\u0540\u053B\u0547\u0535\u0551\u0546\u0535\u0554: \u054D\u057F\u0578\u0580\u0587 \u0576\u0565\u0580\u056F\u0561\u0575\u0561\u0581\u057E\u0561\u056E \u0576\u0575\u0578\u0582\u0569\u0565\u0580\u0568 \u0540\u0535\u0546\u0531\u053F\u0531\u0545\u053B\u0546 \u0546\u0545\u0548\u0552\u053F \u0565\u0576: \u054D\u0561 \u0579\u0567 \u0561\u057A\u0561\u0581\u0578\u0582\u0575\u0581, \u057D\u0561 \u0574\u056B\u0561\u0575\u0576 \u0561\u0576\u0561\u056C\u0578\u0563\u0576\u0565\u0580\u056B \u0570\u0561\u0574\u0561\u0580 \u0567:\n\n";
+
+  topPractice.forEach((doc, index: number) => {
+    ragContext += `### \u0531\u0576\u0561\u056C\u0578\u0563 ${index + 1}: ${doc.title}\n`;
+    ragContext += `- **\u0531\u057F\u0575\u0561\u0576:** ${courtLabels[doc.court_type] || doc.court_type}\n`;
+    ragContext += `- **\u0531\u0580\u0564\u0575\u0578\u0582\u0576\u0584:** ${outcomeLabels[doc.outcome] || doc.outcome}\n`;
+    if (doc.key_violations && doc.key_violations.length > 0) {
+      ragContext += `- **\u0540\u056B\u0574\u0576\u0561\u056F\u0561\u0576 \u056D\u0561\u056D\u057F\u0578\u0582\u0574\u0576\u0565\u0580:** ${doc.key_violations.join(", ")}\n`;
+    }
+    if (doc.legal_reasoning_summary) {
+      ragContext += `- **\u053B\u0580\u0561\u057E\u0561\u056F\u0561\u0576 \u0570\u056B\u0574\u0576\u0561\u057E\u0578\u0580\u0578\u0582\u0574:** ${doc.legal_reasoning_summary}\n`;
+    }
+    const fullText = doc.content_text || doc.content_snippet || '';
+    ragContext += `\n**\u054f\u0565\u0584\u057D\u057F:** ${fullText.substring(0, 6000)}\n\n`;
+
+    sourcesUsed.push({
+      title: `\u0531\u0576\u0561\u056C\u0578\u0563 \u0564\u0561\u057F\u0561\u056F\u0561\u0576 \u057A\u0580\u0561\u056F\u057F\u056B\u056F\u0561 (KB): ${doc.title}`,
+      category: doc.practice_category || "legal_practice",
+      source_name: "Legal Practice KB",
+    });
+  });
+
+  ragContext += "\n## \u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\n";
+  ragContext += "## KB \u0540\u0535\u0546\u0531\u053F\u0531\u0545\u053B\u0546 \u0532\u0531\u0536\u0531\u0545\u053b \u0531\u054E\u0531\u0550\u054F\n";
+  ragContext += "## \u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\n\n";
+
+  return ragContext;
+}
+
+// Unused but kept for interface compatibility
+function formatPracticeContext(..._args: unknown[]) { /* no-op */ }
+
+
 serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
@@ -165,108 +233,166 @@ serve(async (req) => {
     const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
-    // RAG: Search knowledge base for relevant context
+    // RAG: Search knowledge base for relevant context — COMPREHENSIVE search
     let ragContext = "";
     const sourcesUsed: Array<{ title: string; category: string; source_name: string }> = [];
 
+    // Helper: sanitize for PostgREST ILIKE
+    function sanitizeForPostgrest(input: string): string {
+      return input
+        .replace(/[%_]/g, "")
+        .replace(/[(),.*\\]/g, "")
+        .replace(/\s+/g, " ")
+        .trim()
+        .substring(0, 200);
+    }
+
     if (caseFacts || legalQuestion) {
       const searchQuery = `${caseFacts || ""} ${legalQuestion || ""}`.trim();
+      const keywords = searchQuery
+        .split(/\s+/)
+        .filter((w: string) => w.length > 2 && !/^[0-9]+$/.test(w))
+        .slice(0, 10);
+      const safeKeywords = keywords.map(sanitizeForPostgrest).filter((k: string) => k.length > 0);
 
-      // Search main Knowledge Base
-      const { data: kbResults, error: kbError } = await supabase.rpc("search_knowledge_base", {
-        search_query: searchQuery,
-        result_limit: 10,
-      });
+      // ====== 1. Search main Knowledge Base ======
+      let kbFound = false;
 
-      if (!kbError && kbResults && kbResults.length > 0) {
-        const topResults = kbResults.slice(0, 3);
+      // Phase 1: ILIKE server-side search (full coverage)
+      if (safeKeywords.length > 0) {
+        const orConditions = safeKeywords
+          .map((k: string) => `title.ilike.%${k}%,content_text.ilike.%${k}%`)
+          .join(',');
 
-        ragContext = "\n\n## Relevant Legal Sources from RA Knowledge Base:\n\n";
-        topResults.forEach(
-          (doc: { title: string; category: string; source_name: string; content_text: string }, index: number) => {
+        const { data: ilikeResults, error: ilikeErr } = await supabase
+          .from("knowledge_base")
+          .select("id, title, content_text, category, source_name")
+          .eq("is_active", true)
+          .or(orConditions)
+          .limit(50);
+
+        if (!ilikeErr && ilikeResults && ilikeResults.length > 0) {
+          // Score and rank
+          const scored = ilikeResults.map((r) => {
+            let score = 0;
+            const titleLower = (r.title || '').toLowerCase();
+            const contentLower = (r.content_text || '').toLowerCase();
+            for (const kw of keywords) {
+              const kwLower = kw.toLowerCase();
+              if (titleLower.includes(kwLower)) score += 3;
+              if (contentLower.includes(kwLower)) score += 1;
+            }
+            return { ...r, score };
+          });
+
+          const topResults = scored.sort((a, b) => b.score - a.score).slice(0, 8);
+
+          ragContext = "\n\n## Relevant Legal Sources from RA Knowledge Base:\n\n";
+          topResults.forEach((doc, index: number) => {
             ragContext += `### ${index + 1}. ${doc.title} (${doc.category})\n`;
             ragContext += `Source: ${doc.source_name || "RA Legal Database"}\n`;
-            ragContext += `${doc.content_text.substring(0, 2000)}\n\n`;
+            ragContext += `${doc.content_text.substring(0, 4000)}\n\n`;
             sourcesUsed.push({
               title: doc.title,
               category: doc.category,
               source_name: doc.source_name || "RA Legal Database",
             });
-          },
-        );
-      } else {
+          });
+          kbFound = true;
+          console.log(`KB ILIKE found ${ilikeResults.length}, using top ${topResults.length}`);
+        }
+      }
+
+      // Phase 2: FTS fallback
+      if (!kbFound) {
+        const { data: kbResults, error: kbError } = await supabase.rpc("search_knowledge_base", {
+          search_query: searchQuery,
+          result_limit: 20,
+        });
+
+        if (!kbError && kbResults && kbResults.length > 0) {
+          const topResults = kbResults.slice(0, 8);
+          ragContext = "\n\n## Relevant Legal Sources from RA Knowledge Base:\n\n";
+          topResults.forEach(
+            (doc: { title: string; category: string; source_name: string; content_text: string }, index: number) => {
+              ragContext += `### ${index + 1}. ${doc.title} (${doc.category})\n`;
+              ragContext += `Source: ${doc.source_name || "RA Legal Database"}\n`;
+              ragContext += `${doc.content_text.substring(0, 4000)}\n\n`;
+              sourcesUsed.push({
+                title: doc.title,
+                category: doc.category,
+                source_name: doc.source_name || "RA Legal Database",
+              });
+            },
+          );
+          kbFound = true;
+          console.log(`KB FTS fallback found ${topResults.length}`);
+        }
+      }
+
+      if (!kbFound) {
         ragContext =
           "\n\nNote: No specific legal sources found in knowledge base. Analysis based on general knowledge of RA legislation.\n";
       }
 
-      // Search Legal Practice KB for analogous court cases
-      const { data: practiceResults, error: practiceError } = await supabase.rpc("search_legal_practice", {
-        search_query: searchQuery,
-        result_limit: 5,
-      });
+      // ====== 2. Search Legal Practice KB ======
+      let practiceFound = false;
 
-      if (!practiceError && practiceResults && practiceResults.length > 0) {
-        const topPractice = practiceResults.slice(0, 3);
+      // Phase 1: ILIKE server-side search
+      if (safeKeywords.length > 0) {
+        const practiceOrConditions = safeKeywords
+          .map((k: string) => `title.ilike.%${k}%,legal_reasoning_summary.ilike.%${k}%`)
+          .join(',');
 
-        ragContext += "\n\n## \u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\n";
-        ragContext +=
-          "## \u053B\u0550\u0531\u054E\u0531\u053F\u0531\u0546 \u054A\u0550\u0531\u053F\u054F\u053B\u053F\u0531\u0545\u053B \u0540\u0535\u0546\u0531\u053F\u0531\u0545\u053B\u0546 \u0546\u0545\u0548\u0552\u053F (KB REFERENCE ONLY)\n";
-        ragContext += "## \u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\n\n";
-        ragContext +=
-          "\u0540\u053B\u0547\u0535\u0551\u0546\u0535\u0554: \u054D\u057F\u0578\u0580\u0587 \u0576\u0565\u0580\u056F\u0561\u0575\u0561\u0581\u057E\u0561\u056E \u0576\u0575\u0578\u0582\u0569\u0565\u0580\u0568 \u0540\u0535\u0546\u0531\u053F\u0531\u0545\u053B\u0546 \u0546\u0545\u0548\u0552\u053F \u0565\u0576: \u054D\u0561 \u0579\u0567 \u0561\u057A\u0561\u0581\u0578\u0582\u0575\u0581, \u057D\u0561 \u0574\u056B\u0561\u0575\u0576 \u0561\u0576\u0561\u056C\u0578\u0563\u0576\u0565\u0580\u056B \u0570\u0561\u0574\u0561\u0580 \u0567:\n\n";
+        const { data: ilikeResults, error: ilikeErr } = await supabase
+          .from("legal_practice_kb")
+          .select("id, title, content_text, practice_category, court_type, outcome, legal_reasoning_summary, applied_articles, key_violations")
+          .eq("is_active", true)
+          .or(practiceOrConditions)
+          .limit(30);
 
-        const outcomeLabels: Record<string, string> = {
-          granted: "\u0532\u0561\u057E\u0561\u0580\u0561\u0580\u057E\u0565\u056C",
-          rejected: "\u0544\u0565\u0580\u056A\u057E\u0565\u056C",
-          partial: "\u0544\u0561\u057D\u0576\u0561\u056F\u056B",
-          remanded: "\u054E\u0565\u0580\u0561\u0564\u0561\u0580\u0571\u057E\u0565\u056C",
-          discontinued: "\u053F\u0561\u0580\u0573\u057E\u0565\u056C",
-        };
-
-        const courtLabels: Record<string, string> = {
-          first_instance: "\u0531\u057C\u0561\u057B\u056B\u0576 \u0561\u057F\u0575\u0561\u0576",
-          appeal: "\u054E\u0565\u0580\u0561\u0584\u0576\u0576\u056B\u0579",
-          cassation: "\u054E\u0573\u057C\u0561\u0562\u0565\u056F",
-          constitutional: "\u054D\u0561\u0570\u0574\u0561\u0576\u0561\u0564\u0580\u0561\u056F\u0561\u0576",
-          echr: "\u0535\u054D\u054A\u053F",
-        };
-
-        topPractice.forEach(
-          (
-            doc: {
-              title: string;
-              practice_category: string;
-              court_type: string;
-              outcome: string;
-              legal_reasoning_summary: string;
-              content_snippet: string;
-              key_violations: string[];
-            },
-            index: number,
-          ) => {
-            ragContext += `### \u0531\u0576\u0561\u056C\u0578\u0563 ${index + 1}: ${doc.title}\n`;
-            ragContext += `- **\u0531\u057F\u0575\u0561\u0576:** ${courtLabels[doc.court_type] || doc.court_type}\n`;
-            ragContext += `- **\u0531\u0580\u0564\u0575\u0578\u0582\u0576\u0584:** ${outcomeLabels[doc.outcome] || doc.outcome}\n`;
-            if (doc.key_violations && doc.key_violations.length > 0) {
-              ragContext += `- **\u0540\u056B\u0574\u0576\u0561\u056F\u0561\u0576 \u056D\u0561\u056D\u057F\u0578\u0582\u0574\u0576\u0565\u0580:** ${doc.key_violations.join(", ")}\n`;
+        if (!ilikeErr && ilikeResults && ilikeResults.length > 0) {
+          const scored = ilikeResults.map((r) => {
+            let score = 0;
+            const titleLower = (r.title || '').toLowerCase();
+            const reasoningLower = (r.legal_reasoning_summary || '').toLowerCase();
+            const contentLower = (r.content_text || '').toLowerCase();
+            for (const kw of keywords) {
+              const kwLower = kw.toLowerCase();
+              if (titleLower.includes(kwLower)) score += 3;
+              if (reasoningLower.includes(kwLower)) score += 2;
+              if (contentLower.includes(kwLower)) score += 1;
             }
-            if (doc.legal_reasoning_summary) {
-              ragContext += `- **\u053B\u0580\u0561\u057E\u0561\u056F\u0561\u0576 \u0570\u056B\u0574\u0576\u0561\u057E\u0578\u0580\u0578\u0582\u0574:** ${doc.legal_reasoning_summary}\n`;
-            }
-            ragContext += `\n**\u054F\u0565\u0584\u057D\u057F:** ${doc.content_snippet}\n\n`;
+            return { ...r, score };
+          });
 
-            sourcesUsed.push({
-              title: `\u0531\u0576\u0561\u056C\u0578\u0563 \u0564\u0561\u057F\u0561\u056F\u0561\u0576 \u057A\u0580\u0561\u056F\u057F\u056B\u056F\u0561 (KB): ${doc.title}`,
-              category: doc.practice_category,
-              source_name: "Legal Practice KB",
-            });
-          },
-        );
+          const topPractice = scored.sort((a, b) => b.score - a.score).slice(0, 5);
+          practiceFound = true;
+          console.log(`Practice ILIKE found ${ilikeResults.length}, using top ${topPractice.length}`);
 
-        ragContext += "\n## \u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\n";
-        ragContext +=
-          "## KB \u0540\u0535\u0546\u0531\u053F\u0531\u0545\u053B\u0546 \u0532\u0531\u0536\u0531\u0545\u053B \u0531\u054E\u0531\u0550\u054F\n";
-        ragContext += "## \u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\n\n";
+          // Format practice results
+          formatPracticeContext(topPractice, ragContext, sourcesUsed);
+          ragContext = formatPracticeResults(topPractice, ragContext, sourcesUsed);
+        }
+      }
+
+      // Phase 2: RPC fallback
+      if (!practiceFound) {
+        const { data: practiceResults, error: practiceError } = await supabase.rpc("search_legal_practice", {
+          search_query: searchQuery,
+          result_limit: 10,
+        });
+
+        if (!practiceError && practiceResults && practiceResults.length > 0) {
+          const topPractice = practiceResults.slice(0, 5);
+          practiceFound = true;
+          console.log(`Practice RPC fallback found ${topPractice.length}`);
+          ragContext = formatPracticeResults(topPractice, ragContext, sourcesUsed);
+        }
+      }
+
+      if (!practiceFound) {
+        ragContext += "\n\n## \u0534\u0561\u057F\u0561\u056F\u0561\u0576 \u057A\u0580\u0561\u056F\u057F\u056B\u056F\u0561\u0575\u056B \u0570\u0561\u0574\u0561\u057A\u0561\u057F\u0561\u057D\u056D\u0561\u0576 \u0578\u0580\u0578\u0577\u0578\u0582\u0574\u0576\u0565\u0580 \u0579\u0565\u0576 \u0563\u057F\u0576\u057E\u0565\u056C\u0589\n";
       }
     }
 
