@@ -37,6 +37,57 @@ const OUTCOME_LABELS: Record<string, string> = {
   discontinued: "\u053F\u0561\u0580\u0573\u057E\u0565\u056C \u0567",
 };
 
+/**
+ * Safely render a value that might be a JSON object/array as readable text.
+ */
+function renderValue(val: unknown): string {
+  if (val == null) return "";
+  if (typeof val === "string") return val;
+  if (Array.isArray(val)) return val.map(renderValue).filter(Boolean).join(", ");
+  if (typeof val === "object") {
+    // Try to extract meaningful text from object
+    const obj = val as Record<string, unknown>;
+    // If it has a "text" or "title" or "name" key, use that
+    for (const key of ["text", "title", "name", "value", "description"]) {
+      if (typeof obj[key] === "string") return obj[key] as string;
+    }
+    // Otherwise join all string values
+    const parts = Object.entries(obj)
+      .filter(([, v]) => v != null && v !== "")
+      .map(([k, v]) => {
+        const rendered = renderValue(v);
+        return rendered ? `${k}: ${rendered}` : "";
+      })
+      .filter(Boolean);
+    return parts.join("; ");
+  }
+  return String(val);
+}
+
+/**
+ * Remove JSON artifacts from text that might contain raw JSON data.
+ */
+function cleanJsonArtifacts(text: string): string {
+  if (!text) return "";
+  let cleaned = text;
+  // Try to parse if the whole text looks like JSON
+  if ((cleaned.startsWith("{") || cleaned.startsWith("[")) && (cleaned.endsWith("}") || cleaned.endsWith("]"))) {
+    try {
+      const parsed = JSON.parse(cleaned);
+      return renderValue(parsed);
+    } catch {
+      // not valid JSON, continue
+    }
+  }
+  // Remove common JSON noise patterns
+  cleaned = cleaned
+    .replace(/^\s*[\[{]\s*"[^"]*"\s*:\s*/m, "")  // remove leading {"key":
+    .replace(/\\n/g, "\n")
+    .replace(/\\"/g, '"')
+    .replace(/\\t/g, "\t");
+  return cleaned;
+}
+
 interface KBSearchResult {
   id: string;
   title: string;
@@ -310,8 +361,9 @@ interface KBLawCardProps {
 
 function KBLawCard({ result, isExpanded, onToggle, onInsertReference }: KBLawCardProps) {
   const [isCollapsed, setIsCollapsed] = useState(false);
-  const canCollapse = result.content_text.length > 500;
-  const displayText = isCollapsed ? result.content_text.substring(0, 500) : result.content_text;
+  const cleanContent = cleanJsonArtifacts(result.content_text);
+  const canCollapse = cleanContent.length > 500;
+  const displayText = isCollapsed ? cleanContent.substring(0, 500) : cleanContent;
 
   return (
     <div className="border rounded-lg p-3 space-y-2 bg-card">
@@ -458,19 +510,19 @@ function KBDocumentCard({
                   {document.decision_map.legal_question && (
                     <div>
                       <span className="font-medium">{"\u053B\u0580\u0561\u057E\u0561\u056F\u0561\u0576 \u0570\u0561\u0580\u0581"}:</span>{" "}
-                      {document.decision_map.legal_question}
+                      {renderValue(document.decision_map.legal_question)}
                     </div>
                   )}
                   {document.decision_map.holding && (
                     <div>
                       <span className="font-medium">{"\u0534\u056B\u0580\u0584\u0578\u0580\u0578\u0577\u0578\u0582\u0574"}:</span>{" "}
-                      {document.decision_map.holding}
+                      {renderValue(document.decision_map.holding)}
                     </div>
                   )}
                   {document.decision_map.tests_or_criteria && (
                     <div>
                       <span className="font-medium">{"\u0539\u0565\u057D\u057F\u0565\u0580/\u0579\u0561\u0583\u0561\u0576\u056B\u0577\u0576\u0565\u0580"}:</span>{" "}
-                      {document.decision_map.tests_or_criteria}
+                      {renderValue(document.decision_map.tests_or_criteria)}
                     </div>
                   )}
                 </div>
@@ -553,8 +605,10 @@ interface ChunkDisplayProps {
 
 function ChunkDisplay({ docId, chunkIndex, totalChunks, text, onInsertReference }: ChunkDisplayProps) {
   const [isCollapsed, setIsCollapsed] = useState(false);
-  const displayText = isCollapsed ? text.substring(0, 300) : text;
-  const canCollapse = text.length > 300;
+  // Clean JSON artifacts from text if present
+  const cleanText = cleanJsonArtifacts(text);
+  const displayText = isCollapsed ? cleanText.substring(0, 300) : cleanText;
+  const canCollapse = cleanText.length > 300;
 
   return (
     <div className="border rounded-lg p-3 bg-secondary/20 space-y-2">
