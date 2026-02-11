@@ -10,7 +10,9 @@ import { KBPagination } from '@/components/kb/KBPagination';
 import { KBPdfUpload } from '@/components/kb/KBPdfUpload';
 import { KBBulkImport } from '@/components/kb/KBBulkImport';
 import { KBMultiFileUpload } from '@/components/kb/KBMultiFileUpload';
+import { KBSearchPanel } from '@/components/kb/KBSearchPanel';
 import { Button } from '@/components/ui/button';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { useKnowledgeBase, type KBFilters } from '@/hooks/useKnowledgeBase';
 import { useAuth } from '@/hooks/useAuth';
@@ -26,6 +28,7 @@ import {
   Folder,
   FolderOpen,
   ChevronRight,
+  Gavel,
 } from 'lucide-react';
 import {
   AlertDialog,
@@ -211,85 +214,107 @@ const KnowledgeBasePage = () => {
           )}
         </div>
 
-        {/* Search & Filters */}
-        <div className="mb-6">
-          <KBSearchFilters filters={filters} onFiltersChange={setFilters} />
-        </div>
+        {/* Tabs: Legislation + Judicial Practice */}
+        <Tabs defaultValue="legislation" className="w-full">
+          <TabsList className="mb-4">
+            <TabsTrigger value="legislation" className="gap-1.5">
+              <BookOpen className="h-4 w-4" />
+              {t('tab_legislation', '\u0555\u0580\u0565\u0576\u057D\u0564\u0580\u0578\u0582\u0569\u0575\u0578\u0582\u0576')}
+            </TabsTrigger>
+            <TabsTrigger value="practice" className="gap-1.5">
+              <Gavel className="h-4 w-4" />
+              {t('tab_practice', '\u0534\u0561\u057F\u0561\u056F\u0561\u0576 \u057A\u0580\u0561\u056F\u057F\u056B\u056F\u0561')}
+            </TabsTrigger>
+          </TabsList>
 
-        {/* Results info */}
-        {filters.search && filters.search.length >= 2 && documents.length > 0 && (
-          <p className="mb-4 text-sm text-muted-foreground">
-            {t('results_found', { count: documents.length })}
-          </p>
-        )}
-
-        {/* Documents Grid */}
-        {isLoading ? (
-          <div className="flex items-center justify-center py-16">
-            <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
-          </div>
-        ) : documents.length === 0 ? (
-          <div className="flex flex-col items-center justify-center rounded-lg border border-dashed py-16">
-            <BookOpen className="h-12 w-12 text-muted-foreground/50" />
-            <p className="mt-4 text-lg font-medium text-muted-foreground">
-              {t('no_results')}
-            </p>
-          </div>
-        ) : (
-          <>
-            <div className="space-y-3">
-              {groupedDocuments.map(([sourceName, docs]) => {
-                const isOpen = openFolders.has(sourceName);
-                return (
-                  <Collapsible key={sourceName} open={isOpen} onOpenChange={() => toggleFolder(sourceName)}>
-                    <CollapsibleTrigger asChild>
-                      <button className="flex w-full items-center gap-2 rounded-lg border bg-card px-4 py-3 text-left transition-colors hover:bg-muted/50">
-                        <ChevronRight className={`h-4 w-4 text-muted-foreground transition-transform ${isOpen ? 'rotate-90' : ''}`} />
-                        {isOpen ? (
-                          <FolderOpen className="h-5 w-5 text-primary" />
-                        ) : (
-                          <Folder className="h-5 w-5 text-primary" />
-                        )}
-                        <span className="flex-1 font-medium">{sourceName}</span>
-                        <span className="text-sm text-muted-foreground">{docs.length}</span>
-                      </button>
-                    </CollapsibleTrigger>
-                    <CollapsibleContent>
-                      <div className="mt-2 grid gap-4 pl-6 sm:grid-cols-2 lg:grid-cols-3">
-                        {docs.map((doc) => (
-                          <KBDocumentCard
-                            key={doc.id}
-                            document={doc}
-                            onView={(id) => navigate(`/kb/${id}`)}
-                            onEdit={isAdmin ? (id) => {
-                              const docToEdit = documents.find((d) => d.id === id);
-                              if (docToEdit && 'is_active' in docToEdit) setEditingDoc(docToEdit as KnowledgeBase);
-                            } : undefined}
-                            onDelete={isAdmin ? (id) => setDeletingDocId(id) : undefined}
-                            isAdmin={isAdmin}
-                            rank={'rank' in doc ? (doc.rank as number) : undefined}
-                          />
-                        ))}
-                      </div>
-                    </CollapsibleContent>
-                  </Collapsible>
-                );
-              })}
+          {/* Legislation Tab */}
+          <TabsContent value="legislation">
+            {/* Search & Filters */}
+            <div className="mb-6">
+              <KBSearchFilters filters={filters} onFiltersChange={setFilters} />
             </div>
 
-            {/* Pagination */}
-            {pagination && (
-              <div className="mt-6">
-                <KBPagination 
-                  page={pagination.page}
-                  totalPages={pagination.totalPages}
-                  total={pagination.total}
-                  onPageChange={handlePageChange}
-                />
-              </div>
+            {/* Results info */}
+            {filters.search && filters.search.length >= 2 && documents.length > 0 && (
+              <p className="mb-4 text-sm text-muted-foreground">
+                {t('results_found', { count: documents.length })}
+              </p>
             )}
-          </>
-        )}
+
+            {/* Documents Grid */}
+            {isLoading ? (
+              <div className="flex items-center justify-center py-16">
+                <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+              </div>
+            ) : documents.length === 0 ? (
+              <div className="flex flex-col items-center justify-center rounded-lg border border-dashed py-16">
+                <BookOpen className="h-12 w-12 text-muted-foreground/50" />
+                <p className="mt-4 text-lg font-medium text-muted-foreground">
+                  {t('no_results')}
+                </p>
+              </div>
+            ) : (
+              <>
+                <div className="space-y-3">
+                  {groupedDocuments.map(([sourceName, docs]) => {
+                    const isOpen = openFolders.has(sourceName);
+                    return (
+                      <Collapsible key={sourceName} open={isOpen} onOpenChange={() => toggleFolder(sourceName)}>
+                        <CollapsibleTrigger asChild>
+                          <button className="flex w-full items-center gap-2 rounded-lg border bg-card px-4 py-3 text-left transition-colors hover:bg-muted/50">
+                            <ChevronRight className={`h-4 w-4 text-muted-foreground transition-transform ${isOpen ? 'rotate-90' : ''}`} />
+                            {isOpen ? (
+                              <FolderOpen className="h-5 w-5 text-primary" />
+                            ) : (
+                              <Folder className="h-5 w-5 text-primary" />
+                            )}
+                            <span className="flex-1 font-medium">{sourceName}</span>
+                            <span className="text-sm text-muted-foreground">{docs.length}</span>
+                          </button>
+                        </CollapsibleTrigger>
+                        <CollapsibleContent>
+                          <div className="mt-2 grid gap-4 pl-6 sm:grid-cols-2 lg:grid-cols-3">
+                            {docs.map((doc) => (
+                              <KBDocumentCard
+                                key={doc.id}
+                                document={doc}
+                                onView={(id) => navigate(`/kb/${id}`)}
+                                onEdit={isAdmin ? (id) => {
+                                  const docToEdit = documents.find((d) => d.id === id);
+                                  if (docToEdit && 'is_active' in docToEdit) setEditingDoc(docToEdit as KnowledgeBase);
+                                } : undefined}
+                                onDelete={isAdmin ? (id) => setDeletingDocId(id) : undefined}
+                                isAdmin={isAdmin}
+                                rank={'rank' in doc ? (doc.rank as number) : undefined}
+                              />
+                            ))}
+                          </div>
+                        </CollapsibleContent>
+                      </Collapsible>
+                    );
+                  })}
+                </div>
+
+                {/* Pagination */}
+                {pagination && (
+                  <div className="mt-6">
+                    <KBPagination 
+                      page={pagination.page}
+                      totalPages={pagination.totalPages}
+                      total={pagination.total}
+                      onPageChange={handlePageChange}
+                    />
+                  </div>
+                )}
+              </>
+            )}
+          </TabsContent>
+
+          {/* Judicial Practice Tab */}
+          <TabsContent value="practice">
+            <KBSearchPanel />
+          </TabsContent>
+        </Tabs>
 
         {/* Legal Disclaimer */}
         <div className="mt-8 rounded-lg border border-amber-500/50 bg-amber-500/10 p-3 sm:p-4">
