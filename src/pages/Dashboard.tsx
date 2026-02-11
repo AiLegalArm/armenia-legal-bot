@@ -77,7 +77,7 @@ const Dashboard = () => {
   const [complaintWizardOpen, setComplaintWizardOpen] = useState(false);
   const [kbSearchOpen, setKbSearchOpen] = useState(false);
   const [legalChatOpen, setLegalChatOpen] = useState(false);
-  const [practiceSearchOpen, setPracticeSearchOpen] = useState(false);
+  
   const [kbFilters, setKbFilters] = useState<KBFiltersType>({ page: 1, pageSize: 10 });
 
   const { cases, isLoading, createCase, updateCase, deleteCase } = useCases(filters);
@@ -201,59 +201,59 @@ const Dashboard = () => {
                 <span className="text-xs sm:text-sm mt-1 sm:mt-0">{t('ai:ai_name', 'AI Legal')}</span>
               </Button>
             )}
-            {/* KB Search - Admin only */}
-            {isAdmin && (
-              <Sheet open={kbSearchOpen} onOpenChange={setKbSearchOpen}>
-                <SheetTrigger asChild>
-                  <Button variant="outline" size="sm" className="flex-col sm:flex-row h-auto py-2 sm:py-2 sm:h-9">
-                    <BookOpen className="h-4 w-4 sm:mr-2" />
-                    <span className="text-xs sm:text-sm mt-1 sm:mt-0">{t('common:search', 'Search')}</span>
-                  </Button>
-                </SheetTrigger>
-                <SheetContent className="w-full sm:max-w-2xl overflow-y-auto">
-                  <SheetHeader>
-                    <SheetTitle>{t('kb:knowledge_base')}</SheetTitle>
-                    <SheetDescription>
-                      {t('dashboard:search_kb')}
-                    </SheetDescription>
-                  </SheetHeader>
-                  <div className="mt-6 space-y-4">
-                    <KBSearchFilters filters={kbFilters} onFiltersChange={setKbFilters} />
-                    
-                    {kbLoading ? (
-                      <div className="flex items-center justify-center py-8">
-                        <Loader2 className="h-6 w-6 animate-spin" />
-                      </div>
-                    ) : kbDocuments.length === 0 ? (
-                      <p className="text-center text-muted-foreground py-8">
-                        {t('kb:no_results')}
-                      </p>
-                    ) : (
-                      <div className="space-y-3">
-                        {kbDocuments.map((doc) => (
-                          <KBDocumentCard
-                            key={doc.id}
-                            document={doc}
-                            isAdmin={false}
-                          />
-                        ))}
-                      </div>
-                    )}
-                  </div>
-                </SheetContent>
-              </Sheet>
-            )}
-            {/* Judicial Practice Search - Available for all users */}
-            <Sheet open={practiceSearchOpen} onOpenChange={setPracticeSearchOpen}>
+            {/* Unified Search: Legislation + Judicial Practice */}
+            <Sheet open={kbSearchOpen} onOpenChange={setKbSearchOpen}>
               <SheetTrigger asChild>
                 <Button variant="outline" size="sm" className="flex-col sm:flex-row h-auto py-2 sm:py-2 sm:h-9">
-                  <Gavel className="h-4 w-4 sm:mr-2" />
-                  <span className="text-xs sm:text-sm mt-1 sm:mt-0">{t('kb:judicial_practice', 'Practice')}</span>
+                  <BookOpen className="h-4 w-4 sm:mr-2" />
+                  <span className="text-xs sm:text-sm mt-1 sm:mt-0">{t('common:search', 'Search')}</span>
                 </Button>
               </SheetTrigger>
-              <SheetContent className="w-full sm:max-w-2xl overflow-y-auto p-0">
-                <div className="h-full">
-                  <KBSearchPanel />
+              <SheetContent className="w-full sm:max-w-2xl overflow-y-auto">
+                <SheetHeader>
+                  <SheetTitle>{t('common:search', 'Search')}</SheetTitle>
+                  <SheetDescription>
+                    {t('dashboard:search_kb')}
+                  </SheetDescription>
+                </SheetHeader>
+                <div className="mt-6">
+                  <Tabs defaultValue="legislation" className="w-full">
+                    <TabsList className="mb-4 w-full">
+                      <TabsTrigger value="legislation" className="gap-1.5 flex-1">
+                        <BookOpen className="h-4 w-4" />
+                        {t('kb:tab_legislation', 'Օրենdelays')}
+                      </TabsTrigger>
+                      <TabsTrigger value="practice" className="gap-1.5 flex-1">
+                        <Gavel className="h-4 w-4" />
+                        {t('kb:tab_practice', 'Practice')}
+                      </TabsTrigger>
+                    </TabsList>
+                    <TabsContent value="legislation" className="space-y-4">
+                      <KBSearchFilters filters={kbFilters} onFiltersChange={setKbFilters} />
+                      {kbLoading ? (
+                        <div className="flex items-center justify-center py-8">
+                          <Loader2 className="h-6 w-6 animate-spin" />
+                        </div>
+                      ) : kbDocuments.length === 0 ? (
+                        <p className="text-center text-muted-foreground py-8">
+                          {t('kb:no_results')}
+                        </p>
+                      ) : (
+                        <div className="space-y-3">
+                          {kbDocuments.map((doc) => (
+                            <KBDocumentCard
+                              key={doc.id}
+                              document={doc}
+                              isAdmin={false}
+                            />
+                          ))}
+                        </div>
+                      )}
+                    </TabsContent>
+                    <TabsContent value="practice">
+                      <KBSearchPanel />
+                    </TabsContent>
+                  </Tabs>
                 </div>
               </SheetContent>
             </Sheet>
