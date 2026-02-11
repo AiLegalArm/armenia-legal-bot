@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useCallback } from "react";
 import { useTranslation } from "react-i18next";
 import { Search, FileText, ChevronDown, ChevronRight, Loader2, Scale, AlertTriangle, BookOpen, Gavel } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -10,6 +10,7 @@ import { Alert, AlertDescription } from "@/components/ui/alert";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { useLegalPracticeKB, type KBDocument, type PracticeCategory } from "@/hooks/useLegalPracticeKB";
+import { supabase } from "@/integrations/supabase/client";
 
 const CATEGORY_LABELS: Record<PracticeCategory, string> = {
   criminal: "\u0554\u0580\u0565\u0561\u056F\u0561\u0576",
@@ -120,9 +121,61 @@ export function KBSearchPanel({ onInsertReference }: KBSearchPanelProps) {
     clearSearch: clearPractice,
   } = useLegalPracticeKB();
 
+  // KB legislation search state
+  const [kbResults, setKbResults] = useState<KBSearchResult[]>([]);
+  const [isSearchingKB, setIsSearchingKB] = useState(false);
+  const [expandedKBDocs, setExpandedKBDocs] = useState<Set<string>>(new Set());
+
+  const searchKBLegislation = useCallback(async (searchQuery: string) => {
+    setIsSearchingKB(true);
+    try {
+      const words = searchQuery.trim().split(/\s+/).filter(w => w.length >= 2).slice(0, 5);
+      if (words.length === 0) { setIsSearchingKB(false); return; }
+
+      const results = new Map<string, KBSearchResult>();
+
+      for (const word of words) {
+        if (results.size >= 10) break;
+        const sanitized = word.replace(/[%_(),.*\\]/g, "").substring(0, 200);
+        if (sanitized.length < 2) continue;
+
+        const { data } = await supabase
+          .from("knowledge_base")
+          .select("id, title, content_text, category, source_name, version_date")
+          .eq("is_active", true)
+          .or(`title.ilike.%${sanitized}%,content_text.ilike.%${sanitized}%`)
+          .limit(10);
+
+        for (const r of data || []) {
+          if (!results.has(r.id)) {
+            results.set(r.id, {
+              id: r.id,
+              title: r.title,
+              content_text: r.content_text,
+              category: r.category,
+              source_name: r.source_name,
+              version_date: r.version_date,
+              rank: 1,
+            });
+          }
+        }
+      }
+
+      setKbResults(Array.from(results.values()).slice(0, 10));
+    } catch (err) {
+      console.error("KB legislation search error:", err);
+      setKbResults([]);
+    } finally {
+      setIsSearchingKB(false);
+    }
+  }, []);
+
   const handleSearch = async () => {
     if (!query.trim()) return;
-    await searchPractice(query, category === "all" ? null : category);
+    await Promise.all([
+      searchPractice(query, category === "all" ? null : category),
+      searchKBLegislation(query),
+    ]);
   };
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
@@ -133,6 +186,14 @@ export function KBSearchPanel({ onInsertReference }: KBSearchPanelProps) {
 
   const toggleDocExpanded = (docId: string) => {
     setExpandedDocs((prev) => {
+      const next = new Set(prev);
+      next.has(docId) ? next.delete(docId) : next.add(docId);
+      return next;
+    });
+  };
+
+  const toggleKBDocExpanded = (docId: string) => {
+    setExpandedKBDocs((prev) => {
       const next = new Set(prev);
       next.has(docId) ? next.delete(docId) : next.add(docId);
       return next;
@@ -163,9 +224,10 @@ export function KBSearchPanel({ onInsertReference }: KBSearchPanelProps) {
 
   const clearAll = () => {
     clearPractice();
+    setKbResults([]);
   };
 
-  const hasAnyResults = documents.length > 0;
+  const hasAnyResults = documents.length > 0 || kbResults.length > 0;
 
   return (
     <Card className="h-full flex flex-col">
@@ -204,8 +266,8 @@ export function KBSearchPanel({ onInsertReference }: KBSearchPanelProps) {
               ))}
             </SelectContent>
           </Select>
-          <Button onClick={handleSearch} disabled={isSearching} size="sm" className="h-9">
-            {isSearching ? <Loader2 className="h-4 w-4 animate-spin" /> : "\u0548\u0580\u0578\u0576\u0565\u056C"}
+          <Button onClick={handleSearch} disabled={isSearching || isSearchingKB} size="sm" className="h-9">
+            {(isSearching || isSearchingKB) ? <Loader2 className="h-4 w-4 animate-spin" /> : "\u0548\u0580\u0578\u0576\u0565\u056C"}
           </Button>
         </div>
 
@@ -217,21 +279,50 @@ export function KBSearchPanel({ onInsertReference }: KBSearchPanelProps) {
           </Alert>
         )}
         <ScrollArea className="flex-1">
-          <div className="space-y-2">
-            {documents.map((doc) => (
-              <KBDocumentCard
-                key={doc.id}
-                document={doc}
-                isExpanded={expandedDocs.has(doc.id)}
-                onToggle={() => toggleDocExpanded(doc.id)}
-                loadedChunkIndexes={loadedChunkIndexes.get(doc.id) || []}
-                onLoadNextChunk={() => handleLoadNextChunk(doc)}
-                isLoadingChunk={isLoadingChunk}
-                getCachedChunk={getCachedChunk}
-                onInsertReference={handleInsertReference}
-              />
-            ))}
-            {documents.length === 0 && !isSearching && query && (
+          <div className="space-y-3">
+            {/* Legislation results */}
+            {kbResults.length > 0 && (
+              <div className="space-y-2">
+                <div className="text-xs font-semibold text-primary flex items-center gap-1.5">
+                  <BookOpen className="h-3.5 w-3.5" />
+                  {"\u0555\u0580\u0565\u0576\u057D\u0564\u0580\u0578\u0582\u0569\u0575\u0578\u0582\u0576"} ({kbResults.length})
+                </div>
+                {kbResults.map((result) => (
+                  <KBLawCard
+                    key={result.id}
+                    result={result}
+                    isExpanded={expandedKBDocs.has(result.id)}
+                    onToggle={() => toggleKBDocExpanded(result.id)}
+                    onInsertReference={onInsertReference ? handleInsertReference : undefined}
+                  />
+                ))}
+              </div>
+            )}
+
+            {/* Practice results */}
+            {documents.length > 0 && (
+              <div className="space-y-2">
+                <div className="text-xs font-semibold text-primary flex items-center gap-1.5">
+                  <Gavel className="h-3.5 w-3.5" />
+                  {"\u0534\u0561\u057F\u0561\u056F\u0561\u0576 \u057A\u0580\u0561\u056F\u057F\u056B\u056F\u0561"} ({documents.length})
+                </div>
+                {documents.map((doc) => (
+                  <KBDocumentCard
+                    key={doc.id}
+                    document={doc}
+                    isExpanded={expandedDocs.has(doc.id)}
+                    onToggle={() => toggleDocExpanded(doc.id)}
+                    loadedChunkIndexes={loadedChunkIndexes.get(doc.id) || []}
+                    onLoadNextChunk={() => handleLoadNextChunk(doc)}
+                    isLoadingChunk={isLoadingChunk}
+                    getCachedChunk={getCachedChunk}
+                    onInsertReference={handleInsertReference}
+                  />
+                ))}
+              </div>
+            )}
+
+            {documents.length === 0 && kbResults.length === 0 && !isSearching && !isSearchingKB && query && (
               <div className="text-center py-6 text-muted-foreground text-sm">
                 {"\u0531\u0580\u0564\u0575\u0578\u0582\u0576\u0584\u0576\u0565\u0580 \u0579\u0565\u0576 \u0563\u057F\u0576\u057E\u0565\u056C"}
               </div>
