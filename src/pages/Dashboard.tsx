@@ -201,7 +201,7 @@ const Dashboard = () => {
                 <span className="text-xs sm:text-sm mt-1 sm:mt-0">{t('ai:ai_name', 'AI Legal')}</span>
               </Button>
             )}
-            {/* Unified Search: Legislation + Judicial Practice */}
+            {/* Unified Search */}
             <Sheet open={kbSearchOpen} onOpenChange={setKbSearchOpen}>
               <SheetTrigger asChild>
                 <Button variant="outline" size="sm" className="flex-col sm:flex-row h-auto py-2 sm:py-2 sm:h-9">
@@ -216,44 +216,36 @@ const Dashboard = () => {
                     {t('dashboard:search_kb')}
                   </SheetDescription>
                 </SheetHeader>
-                <div className="mt-6">
-                  <Tabs defaultValue="legislation" className="w-full">
-                    <TabsList className="mb-4 w-full">
-                      <TabsTrigger value="legislation" className="gap-1.5 flex-1">
-                        <BookOpen className="h-4 w-4" />
-                        {t('kb:tab_legislation', '\u0555\u0580\u0565\u0576\u057D\u0564\u0580\u0578\u0582\u0569\u0575\u0578\u0582\u0576')}
-                      </TabsTrigger>
-                      <TabsTrigger value="practice" className="gap-1.5 flex-1">
-                        <Gavel className="h-4 w-4" />
-                        {t('kb:tab_practice', '\u0534\u0561\u057F\u0561\u056F\u0561\u0576 \u057A\u0580\u0561\u056F\u057F\u056B\u056F\u0561')}
-                      </TabsTrigger>
-                    </TabsList>
-                    <TabsContent value="legislation" className="space-y-4">
-                      <KBSearchFilters filters={kbFilters} onFiltersChange={setKbFilters} />
-                      {kbLoading ? (
-                        <div className="flex items-center justify-center py-8">
-                          <Loader2 className="h-6 w-6 animate-spin" />
-                        </div>
-                      ) : kbDocuments.length === 0 ? (
-                        <p className="text-center text-muted-foreground py-8">
-                          {t('kb:no_results')}
-                        </p>
-                      ) : (
-                        <div className="space-y-3">
-                          {kbDocuments.map((doc) => (
-                            <KBDocumentCard
-                              key={doc.id}
-                              document={doc}
-                              isAdmin={false}
-                            />
-                          ))}
-                        </div>
-                      )}
-                    </TabsContent>
-                    <TabsContent value="practice">
-                      <KBSearchPanel />
-                    </TabsContent>
-                  </Tabs>
+                <div className="mt-6 space-y-6">
+                  {/* Legislation search */}
+                  <KBSearchFilters filters={kbFilters} onFiltersChange={setKbFilters} />
+                  {kbLoading ? (
+                    <div className="flex items-center justify-center py-8">
+                      <Loader2 className="h-6 w-6 animate-spin" />
+                    </div>
+                  ) : kbDocuments.length === 0 ? (
+                    <p className="text-center text-muted-foreground py-4">
+                      {t('kb:no_results')}
+                    </p>
+                  ) : (
+                    <div className="space-y-3">
+                      {kbDocuments.map((doc) => (
+                        <KBDocumentCard
+                          key={doc.id}
+                          document={doc}
+                          isAdmin={false}
+                        />
+                      ))}
+                    </div>
+                  )}
+                  {/* Judicial Practice search */}
+                  <div className="border-t pt-4">
+                    <h3 className="text-sm font-semibold mb-3 flex items-center gap-2">
+                      <Gavel className="h-4 w-4 text-primary" />
+                      {t('kb:tab_practice', '\u0534\u0561\u057F\u0561\u056F\u0561\u0576 \u057A\u0580\u0561\u056F\u057F\u056B\u056F\u0561')}
+                    </h3>
+                    <KBSearchPanel />
+                  </div>
                 </div>
               </SheetContent>
             </Sheet>
