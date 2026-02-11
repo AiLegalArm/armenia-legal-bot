@@ -7,7 +7,7 @@ import { z } from 'zod';
 import { supabase } from '@/integrations/supabase/client';
 import { getSupabaseStorageKey } from '@/lib/supabase-storage-key';
 import { LanguageSwitcher } from '@/components/LanguageSwitcher';
-import { TurnstileCaptcha } from '@/components/TurnstileCaptcha';
+
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Checkbox } from '@/components/ui/checkbox';
@@ -36,7 +36,7 @@ const Login = () => {
   const navigate = useNavigate();
   const { toast } = useToast();
   const [isLoading, setIsLoading] = useState(false);
-  const [captchaToken, setCaptchaToken] = useState<string | null>(null);
+  
   const [rememberMe, setRememberMe] = useState(true);
 
   const loginForm = useForm<LoginValues>({
@@ -50,15 +50,6 @@ const Login = () => {
   );
 
   const handleLogin = async (values: LoginValues) => {
-    if (!captchaToken) {
-      toast({
-        title: t('captcha_required', 'Verification required'),
-        description: t('complete_captcha', 'Please complete the security check'),
-        variant: 'destructive',
-      });
-      return;
-    }
-
     setIsLoading(true);
     try {
       // Canonicalize username (fixes issues with casing and accidental leading "@")
@@ -106,14 +97,6 @@ const Login = () => {
     } finally {
       setIsLoading(false);
     }
-  };
-
-  const handleCaptchaVerify = (token: string) => {
-    setCaptchaToken(token);
-  };
-
-  const handleCaptchaExpire = () => {
-    setCaptchaToken(null);
   };
 
   return (
@@ -211,19 +194,10 @@ const Login = () => {
                   </label>
                 </div>
                 
-                {/* Turnstile CAPTCHA */}
-                <div className="flex justify-center">
-                  <TurnstileCaptcha
-                    onVerify={handleCaptchaVerify}
-                    onExpire={handleCaptchaExpire}
-                    theme="auto"
-                  />
-                </div>
-
                 <Button 
                   type="submit" 
                   className="w-full" 
-                  disabled={isLoading || !captchaToken}
+                  disabled={isLoading}
                   aria-busy={isLoading}
                 >
                   {isLoading && <Loader2 className="mr-2 h-4 w-4 animate-spin" aria-hidden="true" />}
