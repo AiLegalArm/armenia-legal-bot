@@ -1561,6 +1561,36 @@ export type Database = {
           },
         ]
       }
+      user_notes: {
+        Row: {
+          content_html: string
+          content_text: string
+          created_at: string
+          id: string
+          title: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          content_html?: string
+          content_text?: string
+          created_at?: string
+          id?: string
+          title?: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          content_html?: string
+          content_text?: string
+          created_at?: string
+          id?: string
+          title?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       user_roles: {
         Row: {
           created_at: string
