@@ -6,97 +6,18 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
-// Generate embedding for a query using the same method as generate-embeddings
-async function generateQueryEmbedding(text: string, apiKey: string): Promise<number[] | null> {
-  // Try embeddings endpoint first
-  try {
-    const response = await fetch("https://ai.gateway.lovable.dev/v1/embeddings", {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${apiKey}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        model: "google/gemini-2.5-flash-lite",
-        input: text,
-      }),
-    });
-
-    if (response.ok) {
-      const data = await response.json();
-      const embedding = data?.data?.[0]?.embedding;
-      if (embedding && Array.isArray(embedding)) return embedding;
-    }
-  } catch (_e) { /* fallback below */ }
-
-  // Fallback: chat completion with tool calling
-  try {
-    const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${apiKey}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        model: "google/gemini-2.5-flash-lite",
-        messages: [
-          {
-            role: "system",
-            content: `You are a text embedding system. Given input text, call store_embedding with a 768-dimensional normalized vector representing semantic meaning. Values between -1 and 1, L2 norm ≈ 1. Focus on legal concepts.`
-          },
-          { role: "user", content: text.substring(0, 2000) }
-        ],
-        tools: [{
-          type: "function",
-          function: {
-            name: "store_embedding",
-            description: "Store the semantic embedding vector",
-            parameters: {
-              type: "object",
-              properties: {
-                embedding: {
-                  type: "array",
-                  items: { type: "number" },
-                  description: "768-dimensional normalized embedding vector"
-                }
-              },
-              required: ["embedding"],
-              additionalProperties: false
-            }
-          }
-        }],
-        tool_choice: { type: "function", function: { name: "store_embedding" } },
-        temperature: 0,
-        max_tokens: 16000,
-      }),
-    });
-
-    if (!response.ok) return null;
-
-    const data = await response.json();
-    const toolCall = data.choices?.[0]?.message?.tool_calls?.[0];
-    if (toolCall?.function?.arguments) {
-      const args = JSON.parse(toolCall.function.arguments);
-      if (args.embedding && Array.isArray(args.embedding)) {
-        const vec = args.embedding as number[];
-        if (vec.length === 768) return vec;
-        if (vec.length < 768) return [...vec, ...new Array(768 - vec.length).fill(0)];
-        return vec.slice(0, 768);
-      }
-    }
-    return null;
-  } catch (_e) {
-    return null;
-  }
-}
-
+/**
+ * Hybrid search: keyword (ILIKE + RPC) → AI reranking via Gemini Flash.
+ * Drop-in replacement for the old embedding-based vector-search.
+ * Returns the same { kb: [...], practice: [...] } shape.
+ */
 serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
   }
 
   try {
-    const { query, tables = "both", category, limit = 10, threshold = 0.3 } = await req.json();
+    const { query, tables = "both", category, limit = 10, threshold: _threshold } = await req.json();
 
     if (!query || typeof query !== "string") {
       return new Response(
@@ -112,51 +33,29 @@ serve(async (req) => {
     const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
-    // Generate query embedding
-    const queryEmbedding = await generateQueryEmbedding(query, LOVABLE_API_KEY);
-    
-    if (!queryEmbedding) {
-      return new Response(
-        JSON.stringify({ error: "Failed to generate query embedding", kb: [], practice: [] }),
-        { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-      );
-    }
+    const safeLimit = Math.min(Math.max(Number(limit) || 10, 1), 30);
+    // Fetch more candidates for reranking (3x the desired limit)
+    const candidateLimit = Math.min(safeLimit * 3, 50);
 
-    const vectorStr = `[${queryEmbedding.join(",")}]`;
     const results: { kb: unknown[]; practice: unknown[] } = { kb: [], practice: [] };
 
-    // Search Knowledge Base
+    // --- Knowledge Base search ---
     if (tables === "kb" || tables === "both") {
-      const { data: kbResults, error: kbError } = await supabase.rpc("match_knowledge_base", {
-        query_embedding: vectorStr,
-        match_count: limit,
-        match_threshold: threshold,
-      });
-
-      if (kbError) {
-        console.error("KB vector search error:", kbError);
-      } else {
-        results.kb = kbResults || [];
+      const candidates = await keywordSearchKB(supabase, query, candidateLimit);
+      if (candidates.length > 0) {
+        results.kb = await rerankWithAI(query, candidates, safeLimit, LOVABLE_API_KEY);
       }
     }
 
-    // Search Legal Practice
+    // --- Legal Practice search ---
     if (tables === "practice" || tables === "both") {
-      const { data: practiceResults, error: practiceError } = await supabase.rpc("match_legal_practice", {
-        query_embedding: vectorStr,
-        match_count: limit,
-        match_threshold: threshold,
-        category_filter: category || null,
-      });
-
-      if (practiceError) {
-        console.error("Practice vector search error:", practiceError);
-      } else {
-        results.practice = practiceResults || [];
+      const candidates = await keywordSearchPractice(supabase, query, candidateLimit, category || null);
+      if (candidates.length > 0) {
+        results.practice = await rerankWithAI(query, candidates, safeLimit, LOVABLE_API_KEY);
       }
     }
 
-    console.log(`Vector search: query="${query.substring(0, 50)}...", kb=${results.kb.length}, practice=${results.practice.length}`);
+    console.log(`AI-rerank search: query="${query.substring(0, 50)}…", kb=${results.kb.length}, practice=${results.practice.length}`);
 
     return new Response(
       JSON.stringify(results),
@@ -170,3 +69,241 @@ serve(async (req) => {
     );
   }
 });
+
+// ─── Keyword search helpers ──────────────────────────────────────────────────
+
+async function keywordSearchKB(
+  supabase: ReturnType<typeof createClient>,
+  query: string,
+  limit: number
+): Promise<Array<{ id: string; title: string; content_text: string; similarity?: number }>> {
+  const results = new Map<string, { id: string; title: string; content_text: string; similarity: number }>();
+
+  // 1. Try RPC with full query
+  const { data: rpcData } = await supabase.rpc("search_knowledge_base", {
+    search_query: query,
+    result_limit: limit,
+  });
+  for (const r of rpcData || []) {
+    results.set(r.id, {
+      id: r.id, title: r.title,
+      content_text: (r.content_text || "").substring(0, 2000),
+      similarity: r.rank || 0,
+    });
+  }
+
+  // 2. Also try individual words (handles cross-language queries)
+  const words = query.split(/\s+/).filter(w => w.length >= 2);
+  for (const word of words.slice(0, 5)) {
+    if (results.size >= limit) break;
+    const { data: wordData } = await supabase.rpc("search_knowledge_base", {
+      search_query: word,
+      result_limit: Math.min(10, limit),
+    });
+    for (const r of wordData || []) {
+      if (!results.has(r.id)) {
+        results.set(r.id, {
+          id: r.id, title: r.title,
+          content_text: (r.content_text || "").substring(0, 2000),
+          similarity: (r.rank || 0) * 0.8, // slightly lower weight for single-word matches
+        });
+      }
+    }
+  }
+
+  // 3. Fallback: ILIKE on title with individual words
+  if (results.size === 0) {
+    for (const word of words.slice(0, 3)) {
+      const searchTerm = sanitize(word);
+      if (searchTerm.length < 2) continue;
+      const { data } = await supabase
+        .from("knowledge_base")
+        .select("id, title, content_text")
+        .eq("is_active", true)
+        .ilike("title", `%${searchTerm}%`)
+        .limit(Math.min(10, limit));
+
+      for (const r of data || []) {
+        if (!results.has(r.id)) {
+          results.set(r.id, {
+            id: r.id, title: r.title,
+            content_text: (r.content_text || "").substring(0, 2000),
+            similarity: 0.3,
+          });
+        }
+      }
+    }
+  }
+
+  return Array.from(results.values())
+    .sort((a, b) => b.similarity - a.similarity)
+    .slice(0, limit);
+}
+
+async function keywordSearchPractice(
+  supabase: ReturnType<typeof createClient>,
+  query: string,
+  limit: number,
+  category: string | null
+): Promise<Array<{ id: string; title: string; content_text: string; similarity?: number }>> {
+  const results = new Map<string, { id: string; title: string; content_text: string; similarity: number }>();
+
+  // 1. Try RPC with full query
+  const rpcParams: any = { search_query: query, result_limit: limit };
+  if (category) rpcParams.category_filter = category;
+  const { data: rpcData } = await supabase.rpc("search_legal_practice", rpcParams);
+  for (const r of rpcData || []) {
+    results.set(r.id, {
+      id: r.id, title: r.title,
+      content_text: (r.content_text || "").substring(0, 2000),
+      similarity: r.rank || 0,
+    });
+  }
+
+  // 2. Individual word search
+  const words = query.split(/\s+/).filter(w => w.length >= 2);
+  for (const word of words.slice(0, 5)) {
+    if (results.size >= limit) break;
+    const wParams: any = { search_query: word, result_limit: Math.min(10, limit) };
+    if (category) wParams.category_filter = category;
+    const { data: wordData } = await supabase.rpc("search_legal_practice", wParams);
+    for (const r of wordData || []) {
+      if (!results.has(r.id)) {
+        results.set(r.id, {
+          id: r.id, title: r.title,
+          content_text: (r.content_text || "").substring(0, 2000),
+          similarity: (r.rank || 0) * 0.8,
+        });
+      }
+    }
+  }
+
+  // 3. Fallback ILIKE
+  if (results.size === 0) {
+    for (const word of words.slice(0, 3)) {
+      const searchTerm = sanitize(word);
+      if (searchTerm.length < 2) continue;
+      let q = supabase
+        .from("legal_practice_kb")
+        .select("id, title, content_text")
+        .eq("is_active", true)
+        .or(`title.ilike.%${searchTerm}%,legal_reasoning_summary.ilike.%${searchTerm}%`)
+        .limit(Math.min(10, limit));
+      if (category) q = q.eq("practice_category", category);
+      const { data } = await q;
+      for (const r of data || []) {
+        if (!results.has(r.id)) {
+          results.set(r.id, {
+            id: r.id, title: r.title,
+            content_text: (r.content_text || "").substring(0, 2000),
+            similarity: 0.3,
+          });
+        }
+      }
+    }
+  }
+
+  return Array.from(results.values())
+    .sort((a, b) => b.similarity - a.similarity)
+    .slice(0, limit);
+}
+
+// ─── AI Reranking ────────────────────────────────────────────────────────────
+
+async function rerankWithAI(
+  query: string,
+  candidates: Array<{ id: string; title: string; content_text: string }>,
+  topK: number,
+  apiKey: string
+): Promise<unknown[]> {
+  // If few candidates, skip AI and return as-is
+  if (candidates.length <= topK) return candidates;
+
+  // Build a compact list for the model (id + title + snippet)
+  const items = candidates.map((c, i) => ({
+    idx: i,
+    title: c.title,
+    snippet: c.content_text.substring(0, 500),
+  }));
+
+  try {
+    const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${apiKey}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        model: "google/gemini-2.5-flash-lite",
+        messages: [
+          {
+            role: "system",
+            content: `You are a legal document relevance ranker. Given a user query and a list of candidate documents, call the rank_results function with the indices of the most relevant documents in order of decreasing relevance. Return at most ${topK} indices. Consider legal terminology, article references, and semantic meaning.`,
+          },
+          {
+            role: "user",
+            content: `Query: "${query}"\n\nCandidates:\n${items.map(it => `[${it.idx}] ${it.title}: ${it.snippet}`).join("\n\n")}`,
+          },
+        ],
+        tools: [
+          {
+            type: "function",
+            function: {
+              name: "rank_results",
+              description: "Return ranked indices of the most relevant documents",
+              parameters: {
+                type: "object",
+                properties: {
+                  ranked_indices: {
+                    type: "array",
+                    items: { type: "number" },
+                    description: `Array of candidate indices (0-based) in order of relevance, max ${topK}`,
+                  },
+                },
+                required: ["ranked_indices"],
+                additionalProperties: false,
+              },
+            },
+          },
+        ],
+        tool_choice: { type: "function", function: { name: "rank_results" } },
+        temperature: 0,
+        max_tokens: 500,
+      }),
+    });
+
+    if (!response.ok) {
+      console.error("AI rerank failed:", response.status);
+      return candidates.slice(0, topK); // fallback: return first N
+    }
+
+    const data = await response.json();
+    const toolCall = data.choices?.[0]?.message?.tool_calls?.[0];
+    if (toolCall?.function?.arguments) {
+      const args = JSON.parse(toolCall.function.arguments);
+      const indices = args.ranked_indices as number[];
+      if (Array.isArray(indices)) {
+        const valid = indices
+          .filter((i) => typeof i === "number" && i >= 0 && i < candidates.length)
+          .slice(0, topK);
+        if (valid.length > 0) {
+          return valid.map((i) => candidates[i]);
+        }
+      }
+    }
+
+    return candidates.slice(0, topK);
+  } catch (e) {
+    console.error("AI rerank error:", e);
+    return candidates.slice(0, topK);
+  }
+}
+
+function sanitize(input: string): string {
+  return input
+    .replace(/[%_]/g, "")
+    .replace(/[(),.*\\]/g, "")
+    .replace(/\s+/g, " ")
+    .trim()
+    .substring(0, 200);
+}
