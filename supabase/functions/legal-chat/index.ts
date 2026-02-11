@@ -246,7 +246,7 @@ serve(async (req) => {
 
     console.log(`Legal chat request from user: ${userId}, message length: ${message.length}`);
 
-    // Search knowledge base for relevant context (RAG) — server-side, full coverage
+    // Search knowledge base for relevant context (RAG) — HYBRID: vector + keyword
     let kbContext = "";
     try {
       let topResults: KBSearchResult[] = [];
@@ -259,58 +259,74 @@ serve(async (req) => {
       const safeKeywords = keywords.map(sanitizeForPostgrest).filter((k: string) => k.length > 0);
       console.log(`Searching KB with ${safeKeywords.length} keywords: ${safeKeywords.join(', ')}`);
       
-      if (safeKeywords.length > 0) {
-        // Server-side ILIKE on title and content_text — no arbitrary cap
+      // Parallel: vector search + keyword ILIKE search
+      const vectorSearchPromise = fetch(`${supabaseUrl}/functions/v1/vector-search`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${supabaseServiceKey}`,
+        },
+        body: JSON.stringify({ query: message, tables: "kb", limit: 10, threshold: 0.3 }),
+      }).then(r => r.ok ? r.json() : { kb: [] }).catch(() => ({ kb: [] }));
+
+      const keywordSearchPromise = (async () => {
+        if (safeKeywords.length === 0) return [];
         const orConditions = safeKeywords
           .map((k: string) => `title.ilike.%${k}%,content_text.ilike.%${k}%`)
           .join(',');
         
-        const { data: keywordResults, error: kwError } = await supabase
+        const { data, error } = await supabase
           .from("knowledge_base")
           .select("id, title, content_text, category, source_name")
           .eq("is_active", true)
           .or(orConditions)
           .limit(50);
+        return (!error && data) ? data : [];
+      })();
 
-        if (!kwError && keywordResults && keywordResults.length > 0) {
-          const scoredResults = keywordResults.map((r) => {
-            let score = 0;
-            const titleLower = (r.title || '').toLowerCase();
-            const contentLower = (r.content_text || '').toLowerCase();
-            
-            for (const kw of keywords) {
-              const kwLower = kw.toLowerCase();
-              if (titleLower.includes(kwLower)) score += 3;
-              if (contentLower.includes(kwLower)) score += 1;
-            }
-            return { ...r, rank: score };
-          });
-          
-          topResults = scoredResults
-            .sort((a, b) => b.rank - a.rank)
-            .slice(0, 8);
-          
-          console.log(`KB ILIKE found ${keywordResults.length} results, using top ${topResults.length}`);
+      const [vectorResults, keywordResults] = await Promise.all([vectorSearchPromise, keywordSearchPromise]);
+
+      // Merge: vector results first (semantic), then keyword results
+      const seen = new Set<string>();
+      const merged: KBSearchResult[] = [];
+
+      for (const r of (vectorResults.kb || [])) {
+        if (!seen.has(r.id)) { seen.add(r.id); merged.push({ ...r, rank: (r.similarity || 0) * 10 }); }
+      }
+
+      if (keywordResults.length > 0) {
+        const scored = keywordResults.map((r: any) => {
+          let score = 0;
+          const titleLower = (r.title || '').toLowerCase();
+          const contentLower = (r.content_text || '').toLowerCase();
+          for (const kw of keywords) {
+            const kwLower = kw.toLowerCase();
+            if (titleLower.includes(kwLower)) score += 3;
+            if (contentLower.includes(kwLower)) score += 1;
+          }
+          return { ...r, rank: score };
+        });
+        for (const r of scored) {
+          if (!seen.has(r.id)) { seen.add(r.id); merged.push(r); }
         }
       }
+
+      topResults = merged.sort((a, b) => b.rank - a.rank).slice(0, 8);
       
-      // Fallback: full-text search if ILIKE found nothing
+      // Fallback: full-text search if nothing found
       if (topResults.length === 0) {
         const { data: searchResults, error: searchError } = await supabase.rpc(
           "search_knowledge_base",
           { search_query: message, result_limit: 20 }
         );
-        
         if (!searchError && searchResults && searchResults.length > 0) {
-          topResults = searchResults
-            .filter((r: KBSearchResult) => r.rank > 0.001)
-            .slice(0, 8);
+          topResults = searchResults.filter((r: KBSearchResult) => r.rank > 0.001).slice(0, 8);
           console.log(`Fallback FTS found ${topResults.length} results`);
         }
       }
 
       if (topResults.length > 0) {
-        console.log(`Final KB context: ${topResults.length} documents`);
+        console.log(`Final KB context: ${topResults.length} documents (hybrid search)`);
         kbContext = topResults.map((r: KBSearchResult, i: number) => 
           `[${i + 1}] ${r.title} (${r.category}, ${r.source_name || "N/A"}):\n${r.content_text.substring(0, 4000)}`
         ).join("\n\n---\n\n");
@@ -321,7 +337,7 @@ serve(async (req) => {
       console.error("Knowledge base search error:", searchErr);
     }
 
-    // Search legal practice database for relevant court decisions (server-side, NO limit cap)
+    // Search legal practice database — HYBRID: vector + keyword
     let practiceContext = "";
     try {
       const practiceKeywords = message
@@ -330,53 +346,49 @@ serve(async (req) => {
         .slice(0, 8);
 
       const safePracticeKw = practiceKeywords.map(sanitizeForPostgrest).filter((k: string) => k.length > 0);
+      console.log(`Searching legal practice with ${safePracticeKw.length} keywords (hybrid)`);
 
-      console.log(`Searching legal practice with ${safePracticeKw.length} keywords: ${safePracticeKw.join(', ')}`);
+      // Parallel: vector + keyword search
+      const vectorPracticePromise = fetch(`${supabaseUrl}/functions/v1/vector-search`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${supabaseServiceKey}`,
+        },
+        body: JSON.stringify({ query: message, tables: "practice", limit: 10, threshold: 0.3 }),
+      }).then(r => r.ok ? r.json() : { practice: [] }).catch(() => ({ practice: [] }));
 
-      let practiceResults: LegalPracticeResult[] = [];
-
-      if (safePracticeKw.length > 0) {
-        // Server-side ILIKE search across title, legal_reasoning_summary, and key_violations
+      const keywordPracticePromise = (async () => {
+        if (safePracticeKw.length === 0) return [];
         const orConditions = safePracticeKw
           .map((k: string) => `title.ilike.%${k}%,legal_reasoning_summary.ilike.%${k}%`)
           .join(',');
 
-        const { data: ilikeResults, error: ilikeErr } = await supabase
+        const { data, error } = await supabase
           .from("legal_practice_kb")
           .select("id, title, content_text, practice_category, court_type, outcome, legal_reasoning_summary, applied_articles, key_violations")
           .eq("is_active", true)
           .or(orConditions)
           .limit(30);
+        return (!error && data) ? data : [];
+      })();
 
-        if (!ilikeErr && ilikeResults && ilikeResults.length > 0) {
-          practiceResults = ilikeResults;
-          console.log(`ILIKE search found ${practiceResults.length} practice items`);
-        }
+      const [vectorPractice, keywordPractice] = await Promise.all([vectorPracticePromise, keywordPracticePromise]);
 
-        // If ILIKE found nothing, try content_text search (heavier but catches more)
-        if (practiceResults.length === 0) {
-          const contentOrConditions = safePracticeKw
-            .slice(0, 4) // limit to 4 keywords for content search
-            .map((k: string) => `content_text.ilike.%${k}%`)
-            .join(',');
+      const seen = new Set<string>();
+      const merged: LegalPracticeResult[] = [];
 
-          const { data: contentResults, error: contentErr } = await supabase
-            .from("legal_practice_kb")
-            .select("id, title, content_text, practice_category, court_type, outcome, legal_reasoning_summary, applied_articles, key_violations")
-            .eq("is_active", true)
-            .or(contentOrConditions)
-            .limit(20);
-
-          if (!contentErr && contentResults && contentResults.length > 0) {
-            practiceResults = contentResults;
-            console.log(`Content search found ${practiceResults.length} practice items`);
-          }
-        }
+      for (const r of (vectorPractice.practice || [])) {
+        if (!seen.has(r.id)) { seen.add(r.id); merged.push({ ...r, content_text: r.content_snippet || '' }); }
       }
 
-      // Score results by keyword relevance
-      if (practiceResults.length > 0) {
-        const scored = practiceResults.map((r: LegalPracticeResult) => {
+      for (const r of keywordPractice) {
+        if (!seen.has(r.id)) { seen.add(r.id); merged.push(r); }
+      }
+
+      // Score by keyword relevance
+      if (merged.length > 0) {
+        const scored = merged.map((r: LegalPracticeResult) => {
           let score = 0;
           const titleLower = (r.title || '').toLowerCase();
           const reasoningLower = (r.legal_reasoning_summary || '').toLowerCase();
@@ -391,11 +403,8 @@ serve(async (req) => {
           return { ...r, score };
         });
 
-        const topPractice = scored
-          .sort((a, b) => b.score - a.score)
-          .slice(0, 5); // top 5 most relevant
-
-        console.log(`Using ${topPractice.length} legal practice results (scores: ${topPractice.map(s => s.score).join(', ')})`);
+        const topPractice = scored.sort((a, b) => b.score - a.score).slice(0, 5);
+        console.log(`Using ${topPractice.length} practice results (hybrid, scores: ${topPractice.map(s => s.score).join(', ')})`);
 
         practiceContext = topPractice.map((r, i) => {
           const articles = r.applied_articles ? JSON.stringify(r.applied_articles) : "\u0546/\u0531";
@@ -411,6 +420,15 @@ serve(async (req) => {
 ${fullText}`;
         }).join("\n\n---\n\n");
       } else {
+        // Fallback RPC
+        const { data: practiceResults, error: practiceError } = await supabase.rpc("search_legal_practice", {
+          search_query: message, result_limit: 5
+        });
+        if (!practiceError && practiceResults && practiceResults.length > 0) {
+          practiceContext = practiceResults.slice(0, 5).map((r: any, i: number) => {
+            return `[\u054A\u0580\u0561\u056F\u057F\u056B\u056F\u0561 ${i + 1}] ${r.title}\n${r.court_type} | ${r.outcome}\n${r.legal_reasoning_summary || ''}\n${r.content_snippet || ''}`;
+          }).join("\n\n---\n\n");
+        }
         console.log("No legal practice results found");
       }
     } catch (practiceErr) {

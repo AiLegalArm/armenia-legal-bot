@@ -1,6 +1,33 @@
 // =============================================================================
-// RAG SEARCH FOR LEGAL CONTEXT
+// RAG SEARCH FOR LEGAL CONTEXT (HYBRID: VECTOR + KEYWORD)
 // =============================================================================
+
+// Helper: call vector-search edge function
+async function vectorSearch(
+  query: string,
+  tables: string,
+  supabaseUrl: string,
+  supabaseKey: string,
+  category?: string,
+  limit = 5
+): Promise<{ kb: any[]; practice: any[] }> {
+  try {
+    const response = await fetch(`${supabaseUrl}/functions/v1/vector-search`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${supabaseKey}`,
+      },
+      body: JSON.stringify({ query, tables, category, limit, threshold: 0.3 }),
+    });
+
+    if (!response.ok) return { kb: [], practice: [] };
+    return await response.json();
+  } catch (e) {
+    console.error("Vector search error:", e);
+    return { kb: [], practice: [] };
+  }
+}
 
 export async function searchKnowledgeBase(
   query: string, 
@@ -8,42 +35,44 @@ export async function searchKnowledgeBase(
   supabaseKey: string
 ): Promise<string> {
   try {
-    const response = await fetch(`${supabaseUrl}/rest/v1/rpc/search_knowledge_base`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'apikey': supabaseKey,
-        'Authorization': `Bearer ${supabaseKey}`,
-      },
-      body: JSON.stringify({
-        search_query: query,
-        result_limit: 5
+    // Parallel: vector + keyword search
+    const [vectorResults, keywordResponse] = await Promise.all([
+      vectorSearch(query, "kb", supabaseUrl, supabaseKey),
+      fetch(`${supabaseUrl}/rest/v1/rpc/search_knowledge_base`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'apikey': supabaseKey,
+          'Authorization': `Bearer ${supabaseKey}`,
+        },
+        body: JSON.stringify({ search_query: query, result_limit: 5 })
       })
-    });
+    ]);
 
-    if (!response.ok) {
-      console.error('KB search failed:', response.status);
-      return '';
+    const seen = new Set<string>();
+    const merged: any[] = [];
+
+    for (const r of (vectorResults.kb || [])) {
+      if (!seen.has(r.id)) { seen.add(r.id); merged.push(r); }
     }
 
-    const results = await response.json();
-    
-    if (!results || results.length === 0) {
-      return '';
+    if (keywordResponse.ok) {
+      const kwResults = await keywordResponse.json();
+      for (const r of (kwResults || [])) {
+        if (!seen.has(r.id)) { seen.add(r.id); merged.push(r); }
+      }
     }
 
-    return results.map((r: any) => 
-      `[${r.category}] ${r.title}\n${r.content_text.substring(0, 1500)}`
+    if (merged.length === 0) return '';
+
+    return merged.slice(0, 8).map((r: any) => 
+      `[${r.category}] ${r.title}\n${(r.content_text || '').substring(0, 1500)}`
     ).join('\n\n---\n\n');
   } catch (error) {
     console.error('KB search error:', error);
     return '';
   }
 }
-
-// =============================================================================
-// LEGAL PRACTICE SEARCH
-// =============================================================================
 
 export async function searchLegalPractice(
   query: string, 
@@ -52,36 +81,44 @@ export async function searchLegalPractice(
   category?: string
 ): Promise<string> {
   try {
-    const response = await fetch(`${supabaseUrl}/rest/v1/rpc/search_legal_practice`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'apikey': supabaseKey,
-        'Authorization': `Bearer ${supabaseKey}`,
-      },
-      body: JSON.stringify({
-        search_query: query,
-        result_limit: 5,
-        category: category || null
+    const [vectorResults, keywordResponse] = await Promise.all([
+      vectorSearch(query, "practice", supabaseUrl, supabaseKey, category),
+      fetch(`${supabaseUrl}/rest/v1/rpc/search_legal_practice`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'apikey': supabaseKey,
+          'Authorization': `Bearer ${supabaseKey}`,
+        },
+        body: JSON.stringify({
+          search_query: query,
+          result_limit: 5,
+          category: category || null
+        })
       })
-    });
+    ]);
 
-    if (!response.ok) {
-      console.error('Legal practice search failed:', response.status);
-      return '';
+    const seen = new Set<string>();
+    const merged: any[] = [];
+
+    for (const r of (vectorResults.practice || [])) {
+      if (!seen.has(r.id)) { seen.add(r.id); merged.push(r); }
     }
 
-    const results = await response.json();
-    
-    if (!results || results.length === 0) {
-      return '';
+    if (keywordResponse.ok) {
+      const kwResults = await keywordResponse.json();
+      for (const r of (kwResults || [])) {
+        if (!seen.has(r.id)) { seen.add(r.id); merged.push(r); }
+      }
     }
 
-    return results.map((r: any) => 
+    if (merged.length === 0) return '';
+
+    return merged.slice(0, 5).map((r: any) => 
       `[\u0531\u0576\u0561\u056C\u0578\u0563 \u0564\u0561\u057F\u0561\u056F\u0561\u0576 \u057A\u0580\u0561\u056F\u057F\u056B\u056F\u0561 (KB)] ${r.title}
 \u054D\u0578\u0582\u0564: ${r.court_type} | \u0531\u0580\u0564\u0575\u0578\u0582\u0576\u0584: ${r.outcome}
 \u053B\u0580\u0561\u057E\u0561\u056F\u0561\u0576 \u0570\u056B\u0574\u0576\u0561\u057E\u0578\u0580\u0578\u0582\u0574: ${r.legal_reasoning_summary || ''}
-\u053F\u056B\u0580\u0561\u057C\u057E\u0561\u056E \u0570\u0578\u0564\u057E\u0561\u056E\u0576\u0565\u0580: ${(r.applied_articles || []).join(', ')}
+\u053F\u056B\u0580\u0561\u057C\u057E\u0561\u056E \u0570\u0578\u0564\u057E\u0561\u056E\u0576\u0565\u0580: ${(r.applied_articles || []).join?.(', ') || ''}
 ${r.content_snippet || ''}`
     ).join('\n\n---\n\n');
   } catch (error) {
@@ -116,7 +153,6 @@ export function buildSearchQuery(
   return searchTerms;
 }
 
-// Map court type to practice category for filtering
 export function mapCourtTypeToPracticeCategory(courtType: string): string | undefined {
   const mapping: Record<string, string> = {
     'appellate': 'appeals',

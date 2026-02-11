@@ -1036,6 +1036,7 @@ export type Database = {
           content_text: string
           created_at: string
           current_version: number | null
+          embedding: string | null
           id: string
           is_active: boolean
           source_name: string | null
@@ -1051,6 +1052,7 @@ export type Database = {
           content_text: string
           created_at?: string
           current_version?: number | null
+          embedding?: string | null
           id?: string
           is_active?: boolean
           source_name?: string | null
@@ -1066,6 +1068,7 @@ export type Database = {
           content_text?: string
           created_at?: string
           current_version?: number | null
+          embedding?: string | null
           id?: string
           is_active?: boolean
           source_name?: string | null
@@ -1090,6 +1093,7 @@ export type Database = {
           decision_date: string | null
           decision_map: Json | null
           description: string | null
+          embedding: string | null
           id: string
           is_active: boolean
           is_anonymized: boolean
@@ -1117,6 +1121,7 @@ export type Database = {
           decision_date?: string | null
           decision_map?: Json | null
           description?: string | null
+          embedding?: string | null
           id?: string
           is_active?: boolean
           is_anonymized?: boolean
@@ -1144,6 +1149,7 @@ export type Database = {
           decision_date?: string | null
           decision_map?: Json | null
           description?: string | null
+          embedding?: string | null
           id?: string
           is_active?: boolean
           is_anonymized?: boolean
@@ -1648,6 +1654,7 @@ export type Database = {
           decision_date: string | null
           decision_map: Json | null
           description: string | null
+          embedding: string | null
           id: string
           is_active: boolean
           is_anonymized: boolean
@@ -1698,6 +1705,42 @@ export type Database = {
           _file_id?: string
         }
         Returns: string
+      }
+      match_knowledge_base: {
+        Args: {
+          match_count?: number
+          match_threshold?: number
+          query_embedding: string
+        }
+        Returns: {
+          category: Database["public"]["Enums"]["kb_category"]
+          content_text: string
+          id: string
+          similarity: number
+          source_name: string
+          title: string
+          version_date: string
+        }[]
+      }
+      match_legal_practice: {
+        Args: {
+          category_filter?: string
+          match_count?: number
+          match_threshold?: number
+          query_embedding: string
+        }
+        Returns: {
+          applied_articles: Json
+          content_snippet: string
+          court_type: Database["public"]["Enums"]["court_type"]
+          id: string
+          key_violations: string[]
+          legal_reasoning_summary: string
+          outcome: Database["public"]["Enums"]["case_outcome"]
+          practice_category: Database["public"]["Enums"]["practice_category"]
+          similarity: number
+          title: string
+        }[]
       }
       retrieve_decrypted_pii: {
         Args: { p_field_name: string; p_user_id: string }
