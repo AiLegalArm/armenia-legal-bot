@@ -233,7 +233,7 @@ serve(async (req) => {
     const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
-    // RAG: Search knowledge base for relevant context — COMPREHENSIVE search
+    // RAG: Search knowledge base for relevant context — HYBRID: vector + keyword
     let ragContext = "";
     const sourcesUsed: Array<{ title: string; category: string; source_name: string }> = [];
 
@@ -255,61 +255,79 @@ serve(async (req) => {
         .slice(0, 10);
       const safeKeywords = keywords.map(sanitizeForPostgrest).filter((k: string) => k.length > 0);
 
-      // ====== 1. Search main Knowledge Base ======
+      // ====== 1. Search main Knowledge Base (HYBRID) ======
       let kbFound = false;
 
-      // Phase 1: ILIKE server-side search (full coverage)
-      if (safeKeywords.length > 0) {
+      // Parallel: vector + keyword search
+      const vectorKbPromise = fetch(`${supabaseUrl}/functions/v1/vector-search`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${supabaseServiceKey}`,
+        },
+        body: JSON.stringify({ query: searchQuery, tables: "kb", limit: 10, threshold: 0.3 }),
+      }).then(r => r.ok ? r.json() : { kb: [] }).catch(() => ({ kb: [] }));
+
+      const keywordKbPromise = (async () => {
+        if (safeKeywords.length === 0) return [];
         const orConditions = safeKeywords
           .map((k: string) => `title.ilike.%${k}%,content_text.ilike.%${k}%`)
           .join(',');
-
-        const { data: ilikeResults, error: ilikeErr } = await supabase
+        const { data, error } = await supabase
           .from("knowledge_base")
           .select("id, title, content_text, category, source_name")
           .eq("is_active", true)
           .or(orConditions)
           .limit(50);
+        return (!error && data) ? data : [];
+      })();
 
-        if (!ilikeErr && ilikeResults && ilikeResults.length > 0) {
-          // Score and rank
-          const scored = ilikeResults.map((r) => {
-            let score = 0;
-            const titleLower = (r.title || '').toLowerCase();
-            const contentLower = (r.content_text || '').toLowerCase();
-            for (const kw of keywords) {
-              const kwLower = kw.toLowerCase();
-              if (titleLower.includes(kwLower)) score += 3;
-              if (contentLower.includes(kwLower)) score += 1;
-            }
-            return { ...r, score };
-          });
+      const [vectorKb, keywordKb] = await Promise.all([vectorKbPromise, keywordKbPromise]);
 
-          const topResults = scored.sort((a, b) => b.score - a.score).slice(0, 8);
+      const seenKb = new Set<string>();
+      const mergedKb: any[] = [];
 
-          ragContext = "\n\n## Relevant Legal Sources from RA Knowledge Base:\n\n";
-          topResults.forEach((doc, index: number) => {
-            ragContext += `### ${index + 1}. ${doc.title} (${doc.category})\n`;
-            ragContext += `Source: ${doc.source_name || "RA Legal Database"}\n`;
-            ragContext += `${doc.content_text.substring(0, 4000)}\n\n`;
-            sourcesUsed.push({
-              title: doc.title,
-              category: doc.category,
-              source_name: doc.source_name || "RA Legal Database",
-            });
-          });
-          kbFound = true;
-          console.log(`KB ILIKE found ${ilikeResults.length}, using top ${topResults.length}`);
+      for (const r of (vectorKb.kb || [])) {
+        if (!seenKb.has(r.id)) { seenKb.add(r.id); mergedKb.push(r); }
+      }
+      for (const r of keywordKb) {
+        if (!seenKb.has(r.id)) {
+          let score = 0;
+          const titleLower = (r.title || '').toLowerCase();
+          const contentLower = (r.content_text || '').toLowerCase();
+          for (const kw of keywords) {
+            const kwLower = kw.toLowerCase();
+            if (titleLower.includes(kwLower)) score += 3;
+            if (contentLower.includes(kwLower)) score += 1;
+          }
+          seenKb.add(r.id);
+          mergedKb.push({ ...r, score });
         }
       }
 
-      // Phase 2: FTS fallback
+      if (mergedKb.length > 0) {
+        const topResults = mergedKb.slice(0, 8);
+        ragContext = "\n\n## Relevant Legal Sources from RA Knowledge Base:\n\n";
+        topResults.forEach((doc: any, index: number) => {
+          ragContext += `### ${index + 1}. ${doc.title} (${doc.category})\n`;
+          ragContext += `Source: ${doc.source_name || "RA Legal Database"}\n`;
+          ragContext += `${(doc.content_text || '').substring(0, 4000)}\n\n`;
+          sourcesUsed.push({
+            title: doc.title,
+            category: doc.category,
+            source_name: doc.source_name || "RA Legal Database",
+          });
+        });
+        kbFound = true;
+        console.log(`KB hybrid search found ${mergedKb.length}, using top ${topResults.length}`);
+      }
+
+      // Fallback FTS
       if (!kbFound) {
         const { data: kbResults, error: kbError } = await supabase.rpc("search_knowledge_base", {
           search_query: searchQuery,
           result_limit: 20,
         });
-
         if (!kbError && kbResults && kbResults.length > 0) {
           const topResults = kbResults.slice(0, 8);
           ragContext = "\n\n## Relevant Legal Sources from RA Knowledge Base:\n\n";
@@ -331,58 +349,74 @@ serve(async (req) => {
       }
 
       if (!kbFound) {
-        ragContext =
-          "\n\nNote: No specific legal sources found in knowledge base. Analysis based on general knowledge of RA legislation.\n";
+        ragContext = "\n\nNote: No specific legal sources found in knowledge base. Analysis based on general knowledge of RA legislation.\n";
       }
 
-      // ====== 2. Search Legal Practice KB ======
+      // ====== 2. Search Legal Practice KB (HYBRID) ======
       let practiceFound = false;
 
-      // Phase 1: ILIKE server-side search
-      if (safeKeywords.length > 0) {
+      const vectorPracticePromise = fetch(`${supabaseUrl}/functions/v1/vector-search`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${supabaseServiceKey}`,
+        },
+        body: JSON.stringify({ query: searchQuery, tables: "practice", limit: 10, threshold: 0.3 }),
+      }).then(r => r.ok ? r.json() : { practice: [] }).catch(() => ({ practice: [] }));
+
+      const keywordPracticePromise = (async () => {
+        if (safeKeywords.length === 0) return [];
         const practiceOrConditions = safeKeywords
           .map((k: string) => `title.ilike.%${k}%,legal_reasoning_summary.ilike.%${k}%`)
           .join(',');
-
-        const { data: ilikeResults, error: ilikeErr } = await supabase
+        const { data, error } = await supabase
           .from("legal_practice_kb")
           .select("id, title, content_text, practice_category, court_type, outcome, legal_reasoning_summary, applied_articles, key_violations")
           .eq("is_active", true)
           .or(practiceOrConditions)
           .limit(30);
+        return (!error && data) ? data : [];
+      })();
 
-        if (!ilikeErr && ilikeResults && ilikeResults.length > 0) {
-          const scored = ilikeResults.map((r) => {
-            let score = 0;
-            const titleLower = (r.title || '').toLowerCase();
-            const reasoningLower = (r.legal_reasoning_summary || '').toLowerCase();
-            const contentLower = (r.content_text || '').toLowerCase();
-            for (const kw of keywords) {
-              const kwLower = kw.toLowerCase();
-              if (titleLower.includes(kwLower)) score += 3;
-              if (reasoningLower.includes(kwLower)) score += 2;
-              if (contentLower.includes(kwLower)) score += 1;
-            }
-            return { ...r, score };
-          });
+      const [vectorPractice, keywordPractice] = await Promise.all([vectorPracticePromise, keywordPracticePromise]);
 
-          const topPractice = scored.sort((a, b) => b.score - a.score).slice(0, 5);
-          practiceFound = true;
-          console.log(`Practice ILIKE found ${ilikeResults.length}, using top ${topPractice.length}`);
+      const seenPractice = new Set<string>();
+      const mergedPractice: any[] = [];
 
-          // Format practice results
-          formatPracticeContext(topPractice, ragContext, sourcesUsed);
-          ragContext = formatPracticeResults(topPractice, ragContext, sourcesUsed);
+      for (const r of (vectorPractice.practice || [])) {
+        if (!seenPractice.has(r.id)) { seenPractice.add(r.id); mergedPractice.push({ ...r, content_text: r.content_snippet || '' }); }
+      }
+      for (const r of keywordPractice) {
+        if (!seenPractice.has(r.id)) {
+          let score = 0;
+          const titleLower = (r.title || '').toLowerCase();
+          const reasoningLower = (r.legal_reasoning_summary || '').toLowerCase();
+          const contentLower = (r.content_text || '').toLowerCase();
+          for (const kw of keywords) {
+            const kwLower = kw.toLowerCase();
+            if (titleLower.includes(kwLower)) score += 3;
+            if (reasoningLower.includes(kwLower)) score += 2;
+            if (contentLower.includes(kwLower)) score += 1;
+          }
+          seenPractice.add(r.id);
+          mergedPractice.push({ ...r, score });
         }
       }
 
-      // Phase 2: RPC fallback
+      if (mergedPractice.length > 0) {
+        const topPractice = mergedPractice.slice(0, 5);
+        practiceFound = true;
+        console.log(`Practice hybrid found ${mergedPractice.length}, using top ${topPractice.length}`);
+        formatPracticeContext(topPractice, ragContext, sourcesUsed);
+        ragContext = formatPracticeResults(topPractice, ragContext, sourcesUsed);
+      }
+
+      // Fallback RPC
       if (!practiceFound) {
         const { data: practiceResults, error: practiceError } = await supabase.rpc("search_legal_practice", {
           search_query: searchQuery,
           result_limit: 10,
         });
-
         if (!practiceError && practiceResults && practiceResults.length > 0) {
           const topPractice = practiceResults.slice(0, 5);
           practiceFound = true;
