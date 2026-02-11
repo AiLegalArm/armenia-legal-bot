@@ -309,9 +309,9 @@ interface KBLawCardProps {
 }
 
 function KBLawCard({ result, isExpanded, onToggle, onInsertReference }: KBLawCardProps) {
-  const previewLength = 400;
-  const needsExpand = result.content_text.length > previewLength;
-  const displayText = isExpanded ? result.content_text : result.content_text.substring(0, previewLength);
+  const [isCollapsed, setIsCollapsed] = useState(false);
+  const canCollapse = result.content_text.length > 500;
+  const displayText = isCollapsed ? result.content_text.substring(0, 500) : result.content_text;
 
   return (
     <div className="border rounded-lg p-3 space-y-2 bg-card">
@@ -326,7 +326,7 @@ function KBLawCard({ result, isExpanded, onToggle, onInsertReference }: KBLawCar
             <div className="flex-1 min-w-0">
               <div className="flex items-center gap-2 flex-wrap">
                 <BookOpen className="h-3.5 w-3.5 text-primary" />
-                <span className="font-medium text-sm truncate">{result.title}</span>
+                <span className="font-medium text-sm">{result.title}</span>
               </div>
               <div className="flex items-center gap-1.5 mt-1 flex-wrap">
                 <Badge variant="outline" className="text-xs py-0">
@@ -343,38 +343,39 @@ function KBLawCard({ result, isExpanded, onToggle, onInsertReference }: KBLawCar
         </CollapsibleTrigger>
 
         <CollapsibleContent className="mt-3 space-y-2">
-          <div className="border rounded p-2 bg-secondary/30 space-y-1.5">
+          <div className="border rounded-lg p-3 bg-secondary/20 space-y-2">
             <div className="flex items-center justify-between text-xs">
-              <span className="font-medium text-primary">
-                {"\u053B\u0580\u0561\u057E\u0561\u056F\u0561\u0576 \u0576\u0578\u0580\u0574 (KB)"}
+              <span className="font-semibold text-primary flex items-center gap-1.5">
+                <BookOpen className="h-3 w-3" />
+                {"\u053b\u0580\u0561\u057e\u0561\u056f\u0561\u0576 \u0576\u0578\u0580\u0574 (KB)"}
               </span>
             </div>
-            <div className="text-xs text-foreground/80 whitespace-pre-wrap">
+            <div className="text-sm text-foreground/90 whitespace-pre-wrap leading-relaxed">
               {displayText}
-              {needsExpand && !isExpanded && "..."}
+              {isCollapsed && canCollapse && "..."}
             </div>
-            <div className="flex items-center gap-2">
-              {needsExpand && (
+            <div className="flex items-center gap-2 pt-1 border-t border-border/50">
+              {canCollapse && (
                 <Button
                   variant="ghost"
                   size="sm"
-                  className="h-6 text-xs px-2"
-                  onClick={(e) => { e.stopPropagation(); onToggle(); }}
+                  className="h-7 text-xs px-3"
+                  onClick={(e) => { e.stopPropagation(); setIsCollapsed(!isCollapsed); }}
                 >
-                  {isExpanded ? "\u053F\u0580\u0573\u0565\u056C" : "\u0538\u0576\u0564\u056C\u0561\u0575\u0576\u0565\u056C"}
+                  {isCollapsed ? "\u0538\u0576\u0564\u056c\u0561\u0575\u0576\u0565\u056c" : "\u053f\u0580\u0573\u0565\u056c"}
                 </Button>
               )}
               {onInsertReference && (
                 <Button
                   variant="ghost"
                   size="sm"
-                  className="h-6 text-xs px-2 text-primary"
+                  className="h-7 text-xs px-3 text-primary"
                   onClick={(e) => {
                     e.stopPropagation();
                     onInsertReference(result.id, 0, result.content_text.substring(0, 2000));
                   }}
                 >
-                  {"\u054F\u0565\u0572\u0561\u0564\u0580\u0565\u056C \u0578\u0580\u057A\u0565\u057D KB \u0570\u0572\u0578\u0582\u0574"}
+                  {"\u054f\u0565\u0572\u0561\u0564\u0580\u0565\u056c \u0578\u0580\u057a\u0565\u057d KB \u0570\u0572\u0578\u0582\u0574"}
                 </Button>
               )}
             </div>
@@ -541,40 +542,40 @@ interface ChunkDisplayProps {
 }
 
 function ChunkDisplay({ docId, chunkIndex, totalChunks, text, onInsertReference }: ChunkDisplayProps) {
-  const [isExpanded, setIsExpanded] = useState(false);
-  const previewLength = 300;
-  const needsExpand = text.length > previewLength;
-  const displayText = isExpanded ? text : text.substring(0, previewLength);
+  const [isCollapsed, setIsCollapsed] = useState(false);
+  const displayText = isCollapsed ? text.substring(0, 300) : text;
+  const canCollapse = text.length > 300;
 
   return (
-    <div className="border rounded p-2 bg-secondary/30 space-y-1.5">
+    <div className="border rounded-lg p-3 bg-secondary/20 space-y-2">
       <div className="flex items-center justify-between text-xs">
-        <span className="font-medium text-primary">
+        <span className="font-semibold text-primary flex items-center gap-1.5">
+          <Gavel className="h-3 w-3" />
           {"\u0531\u0576\u0561\u056C\u0578\u0563 \u0564\u0561\u057F\u0561\u056F\u0561\u0576 \u057A\u0580\u0561\u056F\u057F\u056B\u056F\u0561 (KB)"}
         </span>
-        <span className="text-muted-foreground">
-          Chunk: {chunkIndex + 1}/{totalChunks}
-        </span>
+        <Badge variant="outline" className="text-[10px] py-0 px-1.5">
+          {chunkIndex + 1}/{totalChunks}
+        </Badge>
       </div>
-      <div className="text-xs text-foreground/80 whitespace-pre-wrap">
+      <div className="text-sm text-foreground/90 whitespace-pre-wrap leading-relaxed font-normal">
         {displayText}
-        {needsExpand && !isExpanded && "..."}
+        {isCollapsed && canCollapse && "..."}
       </div>
-      <div className="flex items-center gap-2">
-        {needsExpand && (
+      <div className="flex items-center gap-2 pt-1 border-t border-border/50">
+        {canCollapse && (
           <Button
             variant="ghost"
             size="sm"
-            className="h-6 text-xs px-2"
-            onClick={() => setIsExpanded(!isExpanded)}
+            className="h-7 text-xs px-3"
+            onClick={() => setIsCollapsed(!isCollapsed)}
           >
-            {isExpanded ? "\u053F\u0580\u0573\u0565\u056C" : "\u0538\u0576\u0564\u056C\u0561\u0575\u0576\u0565\u056C"}
+            {isCollapsed ? "\u0538\u0576\u0564\u056C\u0561\u0575\u0576\u0565\u056C" : "\u053F\u0580\u0573\u0565\u056C"}
           </Button>
         )}
         <Button
           variant="ghost"
           size="sm"
-          className="h-6 text-xs px-2 text-primary"
+          className="h-7 text-xs px-3 text-primary"
           onClick={() => onInsertReference(docId, chunkIndex, text)}
         >
           {"\u054F\u0565\u0572\u0561\u0564\u0580\u0565\u056C \u0578\u0580\u057A\u0565\u057D KB \u0570\u0572\u0578\u0582\u0574"}
