@@ -135,7 +135,7 @@ export async function exportDocumentToPDF(data: DocumentExportData): Promise<voi
   const pageHeight = doc.internal.pageSize.getHeight();
   const margin = 20;
   const maxWidth = pageWidth - margin * 2;
-  const contentTopMargin = 20;
+  const contentTopMargin = 35;
   const contentBottomMargin = 35;
   
   let hasArmenianFont = false;
@@ -210,7 +210,7 @@ export async function exportDocumentToPDF(data: DocumentExportData): Promise<voi
       doc.addPage();
       addWatermark(doc);
       addHeader(doc, data.title, exportDate, lang, hasArmenianFont, logoData);
-      yPosition = 25;
+      yPosition = 35;
       doc.setFontSize(11);
       doc.setTextColor(0, 0, 0);
       if (hasArmenianFont) {
