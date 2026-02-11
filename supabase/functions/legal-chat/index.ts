@@ -435,7 +435,7 @@ ${fullText}`;
         model: "google/gemini-2.5-pro",
         messages,
         temperature: 0.2,
-        max_tokens: 4000,
+        max_tokens: 16000,
         stream: true,
       }),
     });
