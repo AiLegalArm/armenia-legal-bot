@@ -160,10 +160,11 @@ export function VolumeManager({
       if (error) throw error;
       setOcrProgress(prev => ({ ...prev, [volume.id]: 80 }));
 
-      if (data.success && data.extracted_text) {
+      const extractedText = data.extracted_text || data.text;
+      if (data.success && extractedText) {
         // Update volume with OCR text
         await onUpdateVolume(volume.id, {
-          ocr_text: data.extracted_text,
+          ocr_text: extractedText,
           ocr_completed: true
         });
         setOcrProgress(prev => ({ ...prev, [volume.id]: 100 }));
