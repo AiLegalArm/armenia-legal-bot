@@ -121,11 +121,10 @@ serve(async (req) => {
       dbQuery = dbQuery.eq("practice_category", category);
     }
 
-    // Search using ilike across multiple fields (searchTerm is sanitized)
+    // Search using ilike on indexed/small fields only (content_text is too large for ilike)
     dbQuery = dbQuery.or(
       `title.ilike.%${searchTerm}%,` +
-      `legal_reasoning_summary.ilike.%${searchTerm}%,` +
-      `content_text.ilike.%${searchTerm}%`
+      `legal_reasoning_summary.ilike.%${searchTerm}%`
     );
 
     const { data: documents, error } = await dbQuery;
