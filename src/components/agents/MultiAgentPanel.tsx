@@ -6,6 +6,7 @@ import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Progress } from "@/components/ui/progress";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Loader2, Play, FileStack, ClipboardList, FileText, CheckCircle2, XCircle, AlertCircle } from "lucide-react";
 import { useMultiAgentAnalysis } from "@/hooks/useMultiAgentAnalysis";
 import { AGENT_CONFIGS, type AgentType, type AgentRunStatus } from "./types";
@@ -15,14 +16,44 @@ import { AgentRunCard } from "./AgentRunCard";
 import { AggregatedReportView } from "./AggregatedReportView";
 import { GenerateComplaintButton } from "./GenerateComplaintButton";
 
+// Party role options by case type
+const CIVIL_ROLES = [
+  { value: 'claimant', labelKey: 'party_role_claimant' },
+  { value: 'defendant', labelKey: 'party_role_defendant' },
+  { value: 'third_party', labelKey: 'party_role_third_party' },
+];
+const ADMINISTRATIVE_ROLES = [
+  { value: 'applicant', labelKey: 'party_role_applicant' },
+  { value: 'administrative_body', labelKey: 'party_role_administrative_body' },
+  { value: 'interested_party', labelKey: 'party_role_interested_party' },
+];
+const CRIMINAL_ROLES = [
+  { value: 'defendant', labelKey: 'party_role_criminal_defendant' },
+  { value: 'defense', labelKey: 'party_role_defense' },
+  { value: 'prosecutor', labelKey: 'party_role_prosecutor' },
+  { value: 'victim', labelKey: 'party_role_victim' },
+];
+
+function getPartyRolesForType(caseType?: string) {
+  switch (caseType) {
+    case 'civil': return CIVIL_ROLES;
+    case 'administrative': return ADMINISTRATIVE_ROLES;
+    case 'criminal': return CRIMINAL_ROLES;
+    default: return [...CRIMINAL_ROLES, ...CIVIL_ROLES, ...ADMINISTRATIVE_ROLES];
+  }
+}
+
 interface MultiAgentPanelProps {
   caseId: string;
   caseFacts?: string;
+  caseType?: string;
+  partyRole?: string;
 }
 
-export function MultiAgentPanel({ caseId, caseFacts }: MultiAgentPanelProps) {
+export function MultiAgentPanel({ caseId, caseFacts, caseType, partyRole }: MultiAgentPanelProps) {
   const { t } = useTranslation(["ai", "cases"]);
   const [activeTab, setActiveTab] = useState("volumes");
+  const [selectedRole, setSelectedRole] = useState(partyRole || "");
   
   const {
     isLoading,
@@ -89,6 +120,22 @@ export function MultiAgentPanel({ caseId, caseFacts }: MultiAgentPanelProps) {
               {t("ai:multi_agent_description")}
             </CardDescription>
             
+            {/* Party Role Selector */}
+            <div className="pt-1">
+              <Select value={selectedRole} onValueChange={setSelectedRole}>
+                <SelectTrigger className="h-9 text-xs">
+                  <SelectValue placeholder={t("cases:select_party_role")} />
+                </SelectTrigger>
+                <SelectContent>
+                  {getPartyRolesForType(caseType).map((role) => (
+                    <SelectItem key={role.value} value={role.value}>
+                      {t(`cases:${role.labelKey}`)}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
             {/* Action Buttons - Stack vertically on mobile */}
             <div className="flex flex-col sm:flex-row gap-2 w-full pt-1">
               <Button

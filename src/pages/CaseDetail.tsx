@@ -396,7 +396,12 @@ const CaseDetail = () => {
               </TabsContent>
 
               <TabsContent value="agents" className="mt-4">
-                <MultiAgentPanel caseId={caseData.id} caseFacts={caseData.facts || undefined} />
+                <MultiAgentPanel 
+                  caseId={caseData.id} 
+                  caseFacts={caseData.facts || undefined}
+                  caseType={caseData.case_type || undefined}
+                  partyRole={caseData.party_role || undefined}
+                />
               </TabsContent>
 
               <TabsContent value="kb-search" className="mt-4">
