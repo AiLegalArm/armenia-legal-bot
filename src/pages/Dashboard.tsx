@@ -34,11 +34,13 @@ import {
   FileWarning,
   ExternalLink,
   FolderArchive,
-  Send
+  Send,
+  Gavel,
 } from 'lucide-react';
 import { DocumentGeneratorDialog } from '@/components/documents/DocumentGeneratorDialog';
 import { ComplaintWizard } from '@/components/complaints/ComplaintWizard';
 import { KBSearchFilters } from '@/components/kb/KBSearchFilters';
+import { KBSearchPanel } from '@/components/kb/KBSearchPanel';
 import { KBDocumentCard } from '@/components/kb/KBDocumentCard';
 import {
   AlertDialog,
@@ -75,6 +77,7 @@ const Dashboard = () => {
   const [complaintWizardOpen, setComplaintWizardOpen] = useState(false);
   const [kbSearchOpen, setKbSearchOpen] = useState(false);
   const [legalChatOpen, setLegalChatOpen] = useState(false);
+  const [practiceSearchOpen, setPracticeSearchOpen] = useState(false);
   const [kbFilters, setKbFilters] = useState<KBFiltersType>({ page: 1, pageSize: 10 });
 
   const { cases, isLoading, createCase, updateCase, deleteCase } = useCases(filters);
@@ -240,6 +243,20 @@ const Dashboard = () => {
                 </SheetContent>
               </Sheet>
             )}
+            {/* Judicial Practice Search - Available for all users */}
+            <Sheet open={practiceSearchOpen} onOpenChange={setPracticeSearchOpen}>
+              <SheetTrigger asChild>
+                <Button variant="outline" size="sm" className="flex-col sm:flex-row h-auto py-2 sm:py-2 sm:h-9">
+                  <Gavel className="h-4 w-4 sm:mr-2" />
+                  <span className="text-xs sm:text-sm mt-1 sm:mt-0">{t('kb:judicial_practice', 'Practice')}</span>
+                </Button>
+              </SheetTrigger>
+              <SheetContent className="w-full sm:max-w-2xl overflow-y-auto p-0">
+                <div className="h-full">
+                  <KBSearchPanel />
+                </div>
+              </SheetContent>
+            </Sheet>
             <Button variant="outline" size="sm" onClick={() => navigate('/calendar')} className="flex-col sm:flex-row h-auto py-2 sm:py-2 sm:h-9">
               <CalendarIcon className="h-4 w-4 sm:mr-2" />
               <span className="text-xs sm:text-sm mt-1 sm:mt-0">{t('calendar:calendar', 'Calendar')}</span>
