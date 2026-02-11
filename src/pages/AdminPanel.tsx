@@ -21,6 +21,7 @@ import { TeamManagement } from "@/components/admin/TeamManagement";
 import { UserFeedback } from "@/components/admin/UserFeedback";
 import { PromptManager } from "@/components/admin/PromptManager";
 import { UsageMonitor } from "@/components/UsageMonitor";
+import { EmbeddingManager } from "@/components/admin/EmbeddingManager";
 
 const AdminPanel = () => {
   const navigate = useNavigate();
@@ -94,6 +95,7 @@ const AdminPanel = () => {
           {/* Knowledge Base Tab */}
           <TabsContent value="kb" className="space-y-6">
             <AdminKnowledgeBaseTab />
+            <EmbeddingManager />
           </TabsContent>
 
           {/* Legal Practice KB Tab */}
