@@ -38,15 +38,36 @@ function isPdfUrl(url: string): boolean {
          lower.match(/\/\d+\.pdf/) !== null;
 }
 
+async function fetchWithRetry(url: string, maxRetries = 3): Promise<Response> {
+  for (let attempt = 1; attempt <= maxRetries; attempt++) {
+    try {
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 30000);
+      const resp = await fetch(url, {
+        signal: controller.signal,
+        headers: {
+          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+          'Accept': 'application/pdf,*/*',
+        },
+      });
+      clearTimeout(timeout);
+      if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+      return resp;
+    } catch (err) {
+      console.warn(`Fetch attempt ${attempt}/${maxRetries} failed for ${url}: ${err}`);
+      if (attempt === maxRetries) throw new Error(`PDF download failed after ${maxRetries} attempts: ${err}`);
+      await new Promise(r => setTimeout(r, 2000 * attempt));
+    }
+  }
+  throw new Error("unreachable");
+}
+
 async function scrapeWithGeminiOcr(
   url: string,
   lovableApiKey: string,
 ): Promise<{ content: string; title: string }> {
-  // Download PDF
-  const pdfResponse = await fetch(url);
-  if (!pdfResponse.ok) {
-    throw new Error(`PDF download failed: ${pdfResponse.status}`);
-  }
+  const pdfResponse = await fetchWithRetry(url);
+
 
   const pdfBuffer = await pdfResponse.arrayBuffer();
   const bytes = new Uint8Array(pdfBuffer);
