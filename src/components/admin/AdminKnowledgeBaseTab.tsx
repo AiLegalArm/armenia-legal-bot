@@ -64,6 +64,9 @@ export function AdminKnowledgeBaseTab() {
   const [scrapeRunning, setScrapeRunning] = useState(false);
   const [scrapePaused, setScrapePaused] = useState(false);
   const [scrapeStats, setScrapeStats] = useState({ done: 0, errors: 0, total: 0, remaining: 0 });
+  const [retryScheduled, setRetryScheduled] = useState(false);
+  const [retryCountdown, setRetryCountdown] = useState(0);
+  const [failedIds, setFailedIds] = useState<string[]>([]);
 
   const { 
     documents, 
@@ -118,12 +121,100 @@ export function AdminKnowledgeBaseTab() {
     setFilters({ ...filters });
   };
 
+  // Process a list of IDs in batches
+  const processBatch = useCallback(async (allIds: string[], isRetry = false) => {
+    setScrapeRunning(true);
+    setScrapePaused(false);
+    setRetryScheduled(false);
+
+    setScrapeStats({ done: 0, errors: 0, total: allIds.length, remaining: allIds.length });
+    toast.info(isRetry 
+      ? `Retrying ${allIds.length} failed documents...` 
+      : `Starting scrape of ${allIds.length} documents...`
+    );
+
+    const BATCH = 5;
+    let doneCount = 0;
+    let errorCount = 0;
+    const newFailedIds: string[] = [];
+
+    for (let i = 0; i < allIds.length; i += BATCH) {
+      if (scrapePaused) break;
+
+      const chunk = allIds.slice(i, i + BATCH);
+      try {
+        const { data, error: fnError } = await supabase.functions.invoke("kb-fetch-pdf-content", {
+          body: { kbIds: chunk, batchSize: 2, delayMs: 2000 }
+        });
+
+        if (fnError) {
+          errorCount += chunk.length;
+          newFailedIds.push(...chunk);
+        } else if (data) {
+          doneCount += data.processed || 0;
+          errorCount += data.errors || 0;
+          // Track individual failed IDs from response
+          if (data.results) {
+            for (const r of data.results) {
+              if (!r.success) newFailedIds.push(r.id);
+            }
+          }
+        }
+      } catch {
+        errorCount += chunk.length;
+        newFailedIds.push(...chunk);
+      }
+
+      setScrapeStats({
+        done: doneCount,
+        errors: errorCount,
+        total: allIds.length,
+        remaining: Math.max(0, allIds.length - (i + BATCH)),
+      });
+
+      if (i + BATCH < allIds.length) {
+        await new Promise(r => setTimeout(r, 1000));
+      }
+    }
+
+    setScrapeRunning(false);
+    setFailedIds(newFailedIds);
+
+    if (newFailedIds.length > 0 && !isRetry) {
+      toast.success(`Done: ${doneCount} processed, ${errorCount} errors. Auto-retry in 5 min.`);
+      scheduleRetry(newFailedIds);
+    } else if (newFailedIds.length > 0 && isRetry) {
+      toast.warning(`Retry done: ${doneCount} processed, ${newFailedIds.length} still failing.`);
+    } else {
+      toast.success(`Scraping complete: ${doneCount} processed!`);
+    }
+    refreshList();
+  }, [scrapePaused]);
+
+  // Schedule auto-retry after 5 minutes
+  const scheduleRetry = useCallback((ids: string[]) => {
+    setRetryScheduled(true);
+    setRetryCountdown(300);
+
+    const interval = setInterval(() => {
+      setRetryCountdown(prev => {
+        if (prev <= 1) {
+          clearInterval(interval);
+          setRetryScheduled(false);
+          processBatch(ids, true);
+          return 0;
+        }
+        return prev - 1;
+      });
+    }, 1000);
+  }, [processBatch]);
+
   // Bulk scrape: fetch all KB IDs without content, process in batches
   const startBulkScrape = useCallback(async () => {
     setScrapeRunning(true);
     setScrapePaused(false);
+    setFailedIds([]);
     
-    // Get all records needing scraping
     const { data: pending, error } = await supabase
       .from("knowledge_base")
       .select("id")
@@ -137,7 +228,6 @@ export function AdminKnowledgeBaseTab() {
       return;
     }
 
-    // Also count short content_text records directly
     const { data: shortContent } = await supabase
       .from("knowledge_base")
       .select("id, content_text")
@@ -157,54 +247,8 @@ export function AdminKnowledgeBaseTab() {
       return;
     }
 
-    setScrapeStats({ done: 0, errors: 0, total: allIds.length, remaining: allIds.length });
-    toast.info(`Starting scrape of ${allIds.length} documents...`);
-
-    const BATCH = 5;
-    let doneCount = 0;
-    let errorCount = 0;
-    let pausedRef = false;
-
-    for (let i = 0; i < allIds.length; i += BATCH) {
-      // Check pause
-      if (pausedRef || scrapePaused) {
-        pausedRef = true;
-        break;
-      }
-
-      const chunk = allIds.slice(i, i + BATCH);
-      try {
-        const { data, error: fnError } = await supabase.functions.invoke("kb-fetch-pdf-content", {
-          body: { kbIds: chunk, batchSize: 2, delayMs: 2000 }
-        });
-
-        if (fnError) {
-          errorCount += chunk.length;
-        } else if (data) {
-          doneCount += data.processed || 0;
-          errorCount += data.errors || 0;
-        }
-      } catch {
-        errorCount += chunk.length;
-      }
-
-      setScrapeStats({
-        done: doneCount,
-        errors: errorCount,
-        total: allIds.length,
-        remaining: allIds.length - (i + BATCH),
-      });
-
-      // Small delay between batches
-      if (i + BATCH < allIds.length) {
-        await new Promise(r => setTimeout(r, 1000));
-      }
-    }
-
-    setScrapeRunning(false);
-    toast.success(`Scraping done: ${doneCount} processed, ${errorCount} errors`);
-    refreshList();
-  }, [scrapePaused]);
+    await processBatch(allIds);
+  }, [scrapePaused, processBatch]);
 
   return (
     <>
@@ -261,7 +305,7 @@ export function AdminKnowledgeBaseTab() {
         </Card>
 
         {/* Bulk Scrape Progress */}
-        {(scrapeRunning || scrapeStats.total > 0) && (
+        {(scrapeRunning || scrapeStats.total > 0 || retryScheduled) && (
           <Card>
             <CardContent className="pt-4 space-y-3">
               <div className="flex items-center justify-between">
@@ -279,11 +323,23 @@ export function AdminKnowledgeBaseTab() {
                 </Badge>
               </div>
               <Progress value={scrapeStats.total > 0 ? (scrapeStats.done / scrapeStats.total) * 100 : 0} className="h-2" />
-              {scrapeRunning && (
-                <Button variant="outline" size="sm" onClick={() => { setScrapePaused(true); setScrapeRunning(false); }}>
-                  <Pause className="mr-1.5 h-3.5 w-3.5" /> Pause
-                </Button>
-              )}
+              <div className="flex items-center gap-2">
+                {scrapeRunning && (
+                  <Button variant="outline" size="sm" onClick={() => { setScrapePaused(true); setScrapeRunning(false); }}>
+                    <Pause className="mr-1.5 h-3.5 w-3.5" /> Pause
+                  </Button>
+                )}
+                {retryScheduled && (
+                  <>
+                    <Badge variant="outline" className="text-xs">
+                      Auto-retry {failedIds.length} docs in {Math.floor(retryCountdown / 60)}:{String(retryCountdown % 60).padStart(2, '0')}
+                    </Badge>
+                    <Button variant="outline" size="sm" onClick={() => { setRetryScheduled(false); setRetryCountdown(0); processBatch(failedIds, true); }}>
+                      <Play className="mr-1.5 h-3.5 w-3.5" /> Retry now
+                    </Button>
+                  </>
+                )}
+              </div>
             </CardContent>
           </Card>
         )}
