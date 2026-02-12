@@ -53,7 +53,7 @@ export function KBWebScraper({ open, onOpenChange, onSuccess }: KBWebScraperProp
   const [manualUrls, setManualUrls] = useState('');
   const [sourceName, setSourceName] = useState('');
   const [category, setCategory] = useState<KbCategory>('other');
-  const [limit, setLimit] = useState(20);
+  const [limit, setLimit] = useState(0);
   const [result, setResult] = useState<ScrapeResult | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [mode, setMode] = useState<ScrapeMode>('search');
@@ -123,8 +123,11 @@ export function KBWebScraper({ open, onOpenChange, onSuccess }: KBWebScraperProp
       const body: any = {
         category,
         sourceName,
-        limit,
       };
+
+      if (limit > 0) {
+        body.limit = limit;
+      }
 
       if (mode === 'search') {
         body.searchQuery = searchQuery;
@@ -171,7 +174,7 @@ export function KBWebScraper({ open, onOpenChange, onSuccess }: KBWebScraperProp
     setManualUrls('');
     setSourceName('');
     setCategory('other');
-    setLimit(20);
+    setLimit(0);
     setStatus('idle');
     setProgress(0);
     setResult(null);
@@ -301,22 +304,6 @@ export function KBWebScraper({ open, onOpenChange, onSuccess }: KBWebScraperProp
             </Select>
           </div>
 
-          {/* Limit */}
-          <div className="space-y-2">
-            <Label>Лимит документов</Label>
-            <Select value={String(limit)} onValueChange={(v) => setLimit(Number(v))}>
-              <SelectTrigger>
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="5">5 (тест)</SelectItem>
-                <SelectItem value="10">10</SelectItem>
-                <SelectItem value="20">20</SelectItem>
-                <SelectItem value="50">50</SelectItem>
-                <SelectItem value="100">100</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
 
           {/* Start Button */}
           {status === 'idle' && (
