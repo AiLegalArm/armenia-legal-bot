@@ -88,6 +88,7 @@ export function KBJsonlImport({ open, onOpenChange, onSuccess }: KBJsonlImportPr
   const [pdfFetchProgress, setPdfFetchProgress] = useState({ done: 0, total: 0, errors: 0 });
   const [importedIds, setImportedIds] = useState<string[]>([]);
   const [pdfFetchIndex, setPdfFetchIndex] = useState(0);
+  const [batchErrors, setBatchErrors] = useState<string[]>([]);
 
   const parseDate = (dateStr: string | undefined | null): string | null => {
     if (!dateStr) return null;
@@ -169,6 +170,7 @@ export function KBJsonlImport({ open, onOpenChange, onSuccess }: KBJsonlImportPr
     setStatus('importing');
     setProgress(0);
     setError(null);
+    setBatchErrors([]);
 
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) {
@@ -234,6 +236,7 @@ export function KBJsonlImport({ open, onOpenChange, onSuccess }: KBJsonlImportPr
         if (insertError) {
           console.error('Batch insert error:', insertError);
           errors += batch.length;
+          setBatchErrors(prev => [...prev, `Batch ${Math.floor(i / batchSize) + 1}: ${insertError.message || insertError.code || 'Unknown error'}`]);
         } else {
           imported += data?.length || batch.length;
           if (data) {
@@ -340,6 +343,7 @@ export function KBJsonlImport({ open, onOpenChange, onSuccess }: KBJsonlImportPr
     setProgress(0);
     setResult(null);
     setError(null);
+    setBatchErrors([]);
     setIsArlisFormat(false);
     setImportedIds([]);
     setPdfFetchProgress({ done: 0, total: 0, errors: 0 });
@@ -478,6 +482,15 @@ export function KBJsonlImport({ open, onOpenChange, onSuccess }: KBJsonlImportPr
                 <span className="text-sm">Importing metadata... {progress}%</span>
               </div>
               <Progress value={progress} />
+              {batchErrors.length > 0 && (
+                <ScrollArea className="h-24 rounded-lg border border-destructive/30 bg-destructive/5">
+                  <div className="p-2 space-y-1">
+                    {batchErrors.map((err, i) => (
+                      <p key={i} className="text-xs text-destructive font-mono">{err}</p>
+                    ))}
+                  </div>
+                </ScrollArea>
+              )}
             </div>
           )}
 
@@ -563,6 +576,16 @@ export function KBJsonlImport({ open, onOpenChange, onSuccess }: KBJsonlImportPr
                 <p className="text-sm text-destructive">
                   Errors: {result.errors + pdfFetchProgress.errors}
                 </p>
+              )}
+
+              {batchErrors.length > 0 && (
+                <ScrollArea className="h-32 rounded-lg border border-destructive/30 bg-destructive/5">
+                  <div className="p-2 space-y-1">
+                    {batchErrors.map((err, i) => (
+                      <p key={i} className="text-xs text-destructive font-mono">{err}</p>
+                    ))}
+                  </div>
+                </ScrollArea>
               )}
 
               {result.samples.length > 0 && (
