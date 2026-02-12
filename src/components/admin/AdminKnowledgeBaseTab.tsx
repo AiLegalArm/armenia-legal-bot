@@ -1,6 +1,7 @@
-import { useState } from "react";
+import { useState, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 import { useTranslation } from "react-i18next";
+import { supabase } from "@/integrations/supabase/client";
 import { useKnowledgeBase, type KBFilters } from "@/hooks/useKnowledgeBase";
 import { KBSearchFilters } from "@/components/kb/KBSearchFilters";
 import { KBDocumentCard } from "@/components/kb/KBDocumentCard";
@@ -14,6 +15,9 @@ import { KBMultiFileUpload } from "@/components/kb/KBMultiFileUpload";
 import { KBExport } from "@/components/kb/KBExport";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Progress } from "@/components/ui/progress";
+import { Badge } from "@/components/ui/badge";
+import { toast } from "sonner";
 import { 
   Plus, 
   Loader2,
@@ -23,6 +27,9 @@ import {
   Globe,
   FileJson,
   Download,
+  Zap,
+  Pause,
+  Play,
 } from "lucide-react";
 import {
   AlertDialog,
@@ -52,6 +59,11 @@ export function AdminKnowledgeBaseTab() {
   const [exportOpen, setExportOpen] = useState(false);
   const [editingDoc, setEditingDoc] = useState<KnowledgeBase | null>(null);
   const [deletingDocId, setDeletingDocId] = useState<string | null>(null);
+  
+  // Bulk scrape state
+  const [scrapeRunning, setScrapeRunning] = useState(false);
+  const [scrapePaused, setScrapePaused] = useState(false);
+  const [scrapeStats, setScrapeStats] = useState({ done: 0, errors: 0, total: 0, remaining: 0 });
 
   const { 
     documents, 
@@ -106,6 +118,94 @@ export function AdminKnowledgeBaseTab() {
     setFilters({ ...filters });
   };
 
+  // Bulk scrape: fetch all KB IDs without content, process in batches
+  const startBulkScrape = useCallback(async () => {
+    setScrapeRunning(true);
+    setScrapePaused(false);
+    
+    // Get all records needing scraping
+    const { data: pending, error } = await supabase
+      .from("knowledge_base")
+      .select("id")
+      .eq("is_active", true)
+      .not("source_url", "is", null)
+      .or("content_text.is.null,content_text.lt.500");
+    
+    if (error || !pending) {
+      toast.error("Failed to query pending records");
+      setScrapeRunning(false);
+      return;
+    }
+
+    // Also count short content_text records directly
+    const { data: shortContent } = await supabase
+      .from("knowledge_base")
+      .select("id, content_text")
+      .eq("is_active", true)
+      .not("source_url", "is", null)
+      .not("content_text", "is", null);
+    
+    const shortIds = (shortContent || [])
+      .filter(r => !r.content_text || r.content_text.length < 500)
+      .map(r => r.id);
+    
+    const allIds = [...new Set([...pending.map(r => r.id), ...shortIds])];
+    
+    if (allIds.length === 0) {
+      toast.success("All documents already have content!");
+      setScrapeRunning(false);
+      return;
+    }
+
+    setScrapeStats({ done: 0, errors: 0, total: allIds.length, remaining: allIds.length });
+    toast.info(`Starting scrape of ${allIds.length} documents...`);
+
+    const BATCH = 5;
+    let doneCount = 0;
+    let errorCount = 0;
+    let pausedRef = false;
+
+    for (let i = 0; i < allIds.length; i += BATCH) {
+      // Check pause
+      if (pausedRef || scrapePaused) {
+        pausedRef = true;
+        break;
+      }
+
+      const chunk = allIds.slice(i, i + BATCH);
+      try {
+        const { data, error: fnError } = await supabase.functions.invoke("kb-fetch-pdf-content", {
+          body: { kbIds: chunk, batchSize: 2, delayMs: 2000 }
+        });
+
+        if (fnError) {
+          errorCount += chunk.length;
+        } else if (data) {
+          doneCount += data.processed || 0;
+          errorCount += data.errors || 0;
+        }
+      } catch {
+        errorCount += chunk.length;
+      }
+
+      setScrapeStats({
+        done: doneCount,
+        errors: errorCount,
+        total: allIds.length,
+        remaining: allIds.length - (i + BATCH),
+      });
+
+      // Small delay between batches
+      if (i + BATCH < allIds.length) {
+        await new Promise(r => setTimeout(r, 1000));
+      }
+    }
+
+    setScrapeRunning(false);
+    toast.success(`Scraping done: ${doneCount} processed, ${errorCount} errors`);
+    refreshList();
+  }, [scrapePaused]);
+
   return (
     <>
       <div className="space-y-6">
@@ -147,9 +247,46 @@ export function AdminKnowledgeBaseTab() {
                 <Download className="mr-1.5 h-4 w-4" />
                 <span className="text-xs sm:text-sm">{"\u042d\u043a\u0441\u043f\u043e\u0440\u0442"}</span>
               </Button>
+              <Button 
+                variant="default" 
+                onClick={startBulkScrape} 
+                disabled={scrapeRunning}
+                className="w-full sm:w-auto"
+              >
+                {scrapeRunning ? <Loader2 className="mr-1.5 h-4 w-4 animate-spin" /> : <Zap className="mr-1.5 h-4 w-4" />}
+                <span className="text-xs sm:text-sm">Scrape PDFs</span>
+              </Button>
             </div>
           </CardContent>
         </Card>
+
+        {/* Bulk Scrape Progress */}
+        {(scrapeRunning || scrapeStats.total > 0) && (
+          <Card>
+            <CardContent className="pt-4 space-y-3">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <Zap className="h-4 w-4 text-primary" />
+                  <span className="text-sm font-medium">
+                    PDF Scraping: {scrapeStats.done}/{scrapeStats.total}
+                  </span>
+                  {scrapeStats.errors > 0 && (
+                    <Badge variant="destructive" className="text-xs">{scrapeStats.errors} errors</Badge>
+                  )}
+                </div>
+                <Badge variant={scrapeRunning ? "default" : "secondary"}>
+                  {scrapeStats.total > 0 ? Math.round((scrapeStats.done / scrapeStats.total) * 100) : 0}%
+                </Badge>
+              </div>
+              <Progress value={scrapeStats.total > 0 ? (scrapeStats.done / scrapeStats.total) * 100 : 0} className="h-2" />
+              {scrapeRunning && (
+                <Button variant="outline" size="sm" onClick={() => { setScrapePaused(true); setScrapeRunning(false); }}>
+                  <Pause className="mr-1.5 h-3.5 w-3.5" /> Pause
+                </Button>
+              )}
+            </CardContent>
+          </Card>
+        )}
 
         {/* Search & Filters */}
         <div>
