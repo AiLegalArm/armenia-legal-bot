@@ -45,7 +45,7 @@ export function KBSearchFilters({ filters, onFiltersChange }: KBSearchFiltersPro
         <SelectTrigger className="w-full sm:w-[220px]">
           <SelectValue placeholder={t('categories')} />
         </SelectTrigger>
-        <SelectContent>
+        <SelectContent className="max-h-[300px] overflow-y-auto">
           {categories.map((cat) => (
             <SelectItem key={cat.value} value={cat.value}>
               {t(cat.labelKey)}
