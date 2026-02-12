@@ -1944,6 +1944,8 @@ export type Database = {
         | "government_decisions"
         | "central_electoral_commission_decisions"
         | "prime_minister_decisions"
+        | "arlis_am"
+        | "datalex_am"
       practice_category:
         | "criminal"
         | "civil"
@@ -2182,6 +2184,8 @@ export const Constants = {
         "government_decisions",
         "central_electoral_commission_decisions",
         "prime_minister_decisions",
+        "arlis_am",
+        "datalex_am",
       ],
       practice_category: [
         "criminal",
