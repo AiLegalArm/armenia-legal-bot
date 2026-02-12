@@ -146,7 +146,7 @@ Deno.serve(async (req) => {
       );
     }
 
-    const batchLimit = Math.min(body.limit || 50, 100);
+    const batchLimit = body.limit ? Math.min(body.limit, 5000) : urlsToProcess.length;
     const batchUrls = urlsToProcess.slice(0, batchLimit);
     
     const results: { url: string; status: string; title?: string; error?: string }[] = [];
