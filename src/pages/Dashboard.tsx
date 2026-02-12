@@ -277,7 +277,7 @@ const Dashboard = () => {
               <SheetTrigger asChild>
                 <Button variant="outline" size="sm" className="flex-col sm:flex-row h-auto py-2 sm:py-2 sm:h-9">
                   <StickyNote className="h-4 w-4 sm:mr-2" />
-                  <span className="text-xs sm:text-sm mt-1 sm:mt-0">{t('common:notes', '\u0546\u0577\u0578\u0582\u0574\u0576\u0565\u0580')}</span>
+                  <span className="text-xs sm:text-sm mt-1 sm:mt-0">{t('common:my_notes', '\u053b\u0574 \u0563\u0580\u0561\u057c\u0578\u0582\u0574\u0576\u0565\u0580\u0568')}</span>
                 </Button>
               </SheetTrigger>
               <SheetContent className="w-full sm:max-w-2xl p-0 flex flex-col" side="right">

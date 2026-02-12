@@ -42,6 +42,7 @@
   "address": "Address",
   "description": "Description",
   "notes": "Notes",
+  "my_notes": "My Notes",
   "files": "Files",
   "upload": "Upload",
   "download": "Download",
