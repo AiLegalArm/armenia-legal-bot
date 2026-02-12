@@ -80,7 +80,9 @@ const KnowledgeBasePage = () => {
     const groups = new Map<string, Array<(typeof documents)[number]>>();
     for (const doc of documents) {
       let raw = ('source_name' in doc && doc.source_name) ? doc.source_name : t('common:other', 'Other');
-      // Truncate folder name at "գործ" (case) if present
+      // Normalize unicode and trim whitespace for consistent grouping
+      raw = raw.normalize('NFC').trim().replace(/\s+/g, ' ');
+      // Truncate folder name at "\u0563\u0578\u0580\u056e" (case) if present
       const idx = raw.toLowerCase().indexOf('\u0563\u0578\u0580\u056e');
       if (idx !== -1) {
         raw = raw.substring(0, idx + 4).trim();
