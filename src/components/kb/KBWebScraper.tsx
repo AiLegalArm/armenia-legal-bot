@@ -137,51 +137,90 @@ export function KBWebScraper({ open, onOpenChange, onSuccess }: KBWebScraperProp
     setResult(null);
 
     try {
-      const body: any = {
-        category,
-        sourceName,
-      };
-
-      if (limit > 0) {
-        body.limit = limit;
-      }
+      let urlsToSend: string[] = [];
 
       if (mode === 'search') {
-        body.searchQuery = searchQuery;
+        // Search mode - single call, no batching needed
+        const { data, error: fnError } = await supabase.functions.invoke('kb-scrape-batch', {
+          body: { category, sourceName, searchQuery, ...(limit > 0 ? { limit } : {}) },
+        });
+        if (fnError) throw fnError;
+        if (data.error) throw new Error(data.error);
+        setResult(data);
+        setProgress(100);
+        setStatus('success');
+        toast.success(`\u041E\u0431\u0440\u0430\u0431\u043E\u0442\u0430\u043D\u043E ${data.successCount} \u0434\u043E\u043A\u0443\u043C\u0435\u043D\u0442\u043E\u0432`);
+        onSuccess();
+        return;
       } else if (mode === 'sitemap') {
-        body.sitemapUrl = siteUrl;
+        const { data, error: fnError } = await supabase.functions.invoke('kb-scrape-batch', {
+          body: { category, sourceName, sitemapUrl: siteUrl, ...(limit > 0 ? { limit } : {}) },
+        });
+        if (fnError) throw fnError;
+        if (data.error) throw new Error(data.error);
+        setResult(data);
+        setProgress(100);
+        setStatus('success');
+        toast.success(`\u041E\u0431\u0440\u0430\u0431\u043E\u0442\u0430\u043D\u043E ${data.successCount} \u0434\u043E\u043A\u0443\u043C\u0435\u043D\u0442\u043E\u0432`);
+        onSuccess();
+        return;
       } else if (mode === 'jsonl') {
-        body.urls = parsedJsonlUrls;
+        urlsToSend = parsedJsonlUrls;
       } else {
-        body.urls = manualUrls
-          .split('\n')
-          .map(url => url.trim())
-          .filter(url => url.length > 0);
+        urlsToSend = manualUrls.split('\n').map(u => u.trim()).filter(u => u.length > 0);
       }
 
       setStatus('scraping');
-      setProgress(30);
+      setProgress(10);
 
-      const { data, error: fnError } = await supabase.functions.invoke('kb-scrape-batch', {
-        body,
+      // Batch URLs: 50 per request to avoid payload/timeout issues
+      const FRONTEND_BATCH = 50;
+      let totalSuccess = 0;
+      let totalErrors = 0;
+      const allResults: Array<{ url: string; status: string; title?: string; error?: string }> = [];
+
+      for (let i = 0; i < urlsToSend.length; i += FRONTEND_BATCH) {
+        const batch = urlsToSend.slice(i, i + FRONTEND_BATCH);
+        const pct = Math.round(10 + (80 * i / urlsToSend.length));
+        setProgress(pct);
+        toast.info(`\u0411\u0430\u0442\u0447 ${Math.floor(i / FRONTEND_BATCH) + 1}/${Math.ceil(urlsToSend.length / FRONTEND_BATCH)}: ${batch.length} URL`);
+
+        try {
+          const { data, error: fnError } = await supabase.functions.invoke('kb-scrape-batch', {
+            body: { category, sourceName, urls: batch, ...(limit > 0 ? { limit } : {}) },
+          });
+
+          if (fnError) throw fnError;
+          if (data.error) throw new Error(data.error);
+
+          totalSuccess += data.successCount || 0;
+          totalErrors += data.errorCount || 0;
+          if (data.results) allResults.push(...data.results);
+        } catch (batchErr) {
+          console.error(`Batch error at offset ${i}:`, batchErr);
+          totalErrors += batch.length;
+          batch.forEach(url => allResults.push({ url, status: 'error', error: 'Batch failed' }));
+        }
+      }
+
+      setResult({
+        totalUrls: urlsToSend.length,
+        processed: urlsToSend.length,
+        successCount: totalSuccess,
+        errorCount: totalErrors,
+        remainingUrls: 0,
+        results: allResults,
       });
-
-      setProgress(90);
-
-      if (fnError) throw fnError;
-      if (data.error) throw new Error(data.error);
-
-      setResult(data);
       setProgress(100);
       setStatus('success');
-      toast.success(`Обработано ${data.successCount} документов`);
+      toast.success(`\u041E\u0431\u0440\u0430\u0431\u043E\u0442\u0430\u043D\u043E ${totalSuccess} \u0434\u043E\u043A\u0443\u043C\u0435\u043D\u0442\u043E\u0432, ${totalErrors} \u043E\u0448\u0438\u0431\u043E\u043A`);
       onSuccess();
 
     } catch (err) {
       console.error('Scrape error:', err);
       setStatus('error');
-      setError(err instanceof Error ? err.message : 'Ошибка скрейпинга');
-      toast.error('Ошибка скрейпинга');
+      setError(err instanceof Error ? err.message : '\u041E\u0448\u0438\u0431\u043A\u0430 \u0441\u043A\u0440\u0435\u0439\u043F\u0438\u043D\u0433\u0430');
+      toast.error('\u041E\u0448\u0438\u0431\u043A\u0430 \u0441\u043A\u0440\u0435\u0439\u043F\u0438\u043D\u0433\u0430');
     }
   };
 
