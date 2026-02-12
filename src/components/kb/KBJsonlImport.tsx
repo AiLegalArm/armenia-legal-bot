@@ -1,4 +1,4 @@
-import { useState, useRef } from 'react';
+import { useState, useRef, useEffect, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
 import { supabase } from '@/integrations/supabase/client';
 import { Button } from '@/components/ui/button';
@@ -19,11 +19,12 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { Checkbox } from '@/components/ui/checkbox';
 import { toast } from 'sonner';
-import { FileJson, Loader2, CheckCircle, AlertTriangle, Upload, FileText } from 'lucide-react';
+import { FileJson, Loader2, CheckCircle, AlertTriangle, Upload, FileText, Play, Pause, RotateCcw } from 'lucide-react';
 import { kbCategoryOptions, type KbCategory } from '@/components/kb/kbCategories';
 import { ScrollArea } from '@/components/ui/scroll-area';
+import { Badge } from '@/components/ui/badge';
+import { Card } from '@/components/ui/card';
 
 interface KBJsonlImportProps {
   open: boolean;
@@ -31,9 +32,8 @@ interface KBJsonlImportProps {
   onSuccess: () => void;
 }
 
-type ImportStatus = 'idle' | 'parsing' | 'importing' | 'fetching_pdfs' | 'success' | 'error';
+type ImportStatus = 'idle' | 'parsing' | 'importing' | 'fetching_pdfs' | 'paused' | 'success' | 'error';
 
-// ARLIS.am format
 interface ArlisDocument {
   uniqid?: string;
   pdf_link?: string;
@@ -53,7 +53,6 @@ interface ArlisDocument {
   InterruptDate?: string | null;
   title?: string;
   language?: string;
-  // Generic format
   content_text?: string;
   content?: string;
   text?: string;
@@ -74,6 +73,7 @@ interface ImportResult {
 export function KBJsonlImport({ open, onOpenChange, onSuccess }: KBJsonlImportProps) {
   const { t } = useTranslation(['kb', 'common']);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const abortRef = useRef(false);
   
   const [status, setStatus] = useState<ImportStatus>('idle');
   const [progress, setProgress] = useState(0);
@@ -85,17 +85,14 @@ export function KBJsonlImport({ open, onOpenChange, onSuccess }: KBJsonlImportPr
   const [error, setError] = useState<string | null>(null);
   const [documents, setDocuments] = useState<ArlisDocument[]>([]);
   const [isArlisFormat, setIsArlisFormat] = useState(false);
-  const [fetchPdfContent, setFetchPdfContent] = useState(false);
-  const [pdfFetchProgress, setPdfFetchProgress] = useState(0);
+  const [pdfFetchProgress, setPdfFetchProgress] = useState({ done: 0, total: 0, errors: 0 });
   const [importedIds, setImportedIds] = useState<string[]>([]);
+  const [pdfFetchIndex, setPdfFetchIndex] = useState(0);
 
   const parseDate = (dateStr: string | undefined | null): string | null => {
     if (!dateStr) return null;
-    // Parse DD.MM.YYYY format
     const match = dateStr.match(/(\d{2})\.(\d{2})\.(\d{4})/);
-    if (match) {
-      return `${match[3]}-${match[2]}-${match[1]}`;
-    }
+    if (match) return `${match[3]}-${match[2]}-${match[1]}`;
     return null;
   };
 
@@ -126,7 +123,6 @@ export function KBJsonlImport({ open, onOpenChange, onSuccess }: KBJsonlImportPr
       const lines = text.split('\n').filter(line => line.trim());
       
       if (lines.length > 1 && !text.trim().startsWith('[')) {
-        // JSONL format
         for (const line of lines) {
           try {
             const doc = JSON.parse(line);
@@ -138,7 +134,6 @@ export function KBJsonlImport({ open, onOpenChange, onSuccess }: KBJsonlImportPr
           }
         }
       } else {
-        // JSON array
         try {
           const parsed = JSON.parse(text);
           if (Array.isArray(parsed)) {
@@ -149,30 +144,23 @@ export function KBJsonlImport({ open, onOpenChange, onSuccess }: KBJsonlImportPr
         }
       }
 
-      if (docs.length === 0) {
-        throw new Error('No documents found');
-      }
+      if (docs.length === 0) throw new Error('No documents found');
 
-      // Detect ARLIS format
       const hasArlisFields = docs.some(d => d.pdf_link || d.ActNumber || d.EnactmentOrgan);
       setIsArlisFormat(hasArlisFields);
-
       setDocuments(docs);
       setTotalLines(docs.length);
       setProgress(100);
       setStatus('idle');
       
       toast.success(`Found ${docs.length.toLocaleString()} documents${hasArlisFields ? ' (ARLIS format)' : ''}`);
-      
     } catch (err) {
       setStatus('error');
       setError(err instanceof Error ? err.message : 'Parse error');
       toast.error('File read error');
     }
 
-    if (fileInputRef.current) {
-      fileInputRef.current.value = '';
-    }
+    if (fileInputRef.current) fileInputRef.current.value = '';
   };
 
   const handleImport = async () => {
@@ -192,49 +180,37 @@ export function KBJsonlImport({ open, onOpenChange, onSuccess }: KBJsonlImportPr
     let imported = 0;
     let errors = 0;
     const samples: string[] = [];
+    const allImportedIds: string[] = [];
 
     try {
       for (let i = 0; i < documents.length; i += batchSize) {
         const batch = documents.slice(i, i + batchSize);
         
         const records = batch.map(doc => {
-          // Build content from ARLIS metadata if no content_text
           let contentText = doc.content_text || doc.content || doc.text || '';
           
           if (!contentText && isArlisFormat) {
-            // Create structured content from ARLIS metadata
-            // Armenian labels provided by user
             const parts: string[] = [];
             if (doc.title) parts.push(`# ${doc.title}\n`);
-            // Փաստաթղթի համար - Document number
             if (doc.ActNumber) parts.push(`**\u0553\u0561\u057D\u057F\u0561\u0569\u0572\u0569\u056B \u0570\u0561\u0574\u0561\u0580:** ${doc.ActNumber}`);
-            // Փաստաթղթի տեսակ - Document type
             if (doc.ActType) parts.push(`**\u0553\u0561\u057D\u057F\u0561\u0569\u0572\u0569\u056B \u057F\u0565\u057D\u0561\u056F:** ${doc.ActType}`);
-            // Ընդունող մարմին - Adopting body
             if (doc.EnactmentOrgan) parts.push(`**\u0538\u0576\u0564\u0578\u0582\u0576\u0578\u0572 \u0574\u0561\u0580\u0574\u056B\u0576:** ${doc.EnactmentOrgan}`);
-            // Ընդունման ամսաթիվ - Adoption date
             if (doc.EnactmentDate) parts.push(`**\u0538\u0576\u0564\u0578\u0582\u0576\u0574\u0561\u0576 \u0561\u0574\u057D\u0561\u0569\u056B\u057E:** ${doc.EnactmentDate}`);
-            // Ուժի մեջ մտնելու ամսաթիվ - Effective date
             if (doc.EffectiveDate) parts.push(`**\u0548\u0582\u056A\u056B \u0574\u0565\u057B \u0574\u057F\u0576\u0565\u056C\u0578\u0582 \u0561\u0574\u057D\u0561\u0569\u056B\u057E:** ${doc.EffectiveDate}`);
-            // Կարգավիճակ - Status
             if (doc.ActStatus) parts.push(`**\u053F\u0561\u0580\u0563\u0561\u057E\u056B\u0573\u0561\u056F:** ${doc.ActStatus}`);
-            // Աղբյուր - Source
             if (doc.Source) parts.push(`**\u0531\u0572\u0562\u0575\u0578\u0582\u0580:** ${doc.Source}`);
             if (doc.pdf_link) parts.push(`\n**PDF:** ${doc.pdf_link}`);
             contentText = parts.join('\n');
           }
           
-          // Sanitize null bytes
           const sanitizedContent = contentText.replace(/\u0000/g, '');
           const sanitizedTitle = (doc.title || 'Untitled').replace(/\u0000/g, '');
           
-          // Validate category
           const validCategories = kbCategoryOptions.map(c => c.value);
           const category = validCategories.includes(doc.category as KbCategory) 
             ? doc.category as KbCategory 
             : defaultCategory;
 
-          // Parse version date from ARLIS EffectiveDate or generic version_date
           const versionDate = parseDate(doc.EffectiveDate) || doc.version_date || null;
 
           return {
@@ -260,9 +236,8 @@ export function KBJsonlImport({ open, onOpenChange, onSuccess }: KBJsonlImportPr
           errors += batch.length;
         } else {
           imported += data?.length || batch.length;
-          // Collect IDs for PDF fetching
           if (data) {
-            setImportedIds(prev => [...prev, ...data.map(d => d.id)]);
+            allImportedIds.push(...data.map(d => d.id));
           }
           if (samples.length < 5 && data) {
             samples.push(...data.slice(0, 5 - samples.length).map(d => d.title));
@@ -272,10 +247,22 @@ export function KBJsonlImport({ open, onOpenChange, onSuccess }: KBJsonlImportPr
         setProgress(Math.round(((i + batch.length) / documents.length) * 100));
       }
 
+      setImportedIds(allImportedIds);
       setResult({ total: documents.length, imported, errors, samples });
-      setStatus('success');
-      toast.success(`Imported ${imported.toLocaleString()} documents`);
-      onSuccess();
+      
+      // Auto-start PDF fetching if ARLIS format with pdf_links
+      if (isArlisFormat && allImportedIds.length > 0) {
+        toast.success(`Imported ${imported.toLocaleString()} docs. Starting PDF scraping...`);
+        onSuccess();
+        // Auto-start PDF fetching
+        setPdfFetchIndex(0);
+        setPdfFetchProgress({ done: 0, total: allImportedIds.length, errors: 0 });
+        setStatus('fetching_pdfs');
+      } else {
+        setStatus('success');
+        toast.success(`Imported ${imported.toLocaleString()} documents`);
+        onSuccess();
+      }
 
     } catch (err) {
       setStatus('error');
@@ -284,53 +271,67 @@ export function KBJsonlImport({ open, onOpenChange, onSuccess }: KBJsonlImportPr
     }
   };
 
-  // Fetch PDF content for imported records
-  const handleFetchPdfContent = async () => {
-    if (importedIds.length === 0) {
-      toast.error('No records to process');
+  // Auto-running PDF fetch loop
+  const fetchNextPdfBatch = useCallback(async () => {
+    if (importedIds.length === 0 || pdfFetchIndex >= importedIds.length) {
+      setStatus('success');
+      toast.success(`PDF scraping complete: ${pdfFetchProgress.done} done, ${pdfFetchProgress.errors} errors`);
+      onSuccess();
       return;
     }
 
-    setStatus('fetching_pdfs');
-    setPdfFetchProgress(0);
+    const chunkSize = 20;
+    const chunk = importedIds.slice(pdfFetchIndex, pdfFetchIndex + chunkSize);
 
     try {
-      // Process in chunks of 20
-      const chunkSize = 20;
-      let totalProcessed = 0;
-      let totalErrors = 0;
+      const { data, error } = await supabase.functions.invoke('kb-fetch-pdf-content', {
+        body: { kbIds: chunk, batchSize: 3, delayMs: 3000 }
+      });
 
-      for (let i = 0; i < importedIds.length; i += chunkSize) {
-        const chunk = importedIds.slice(i, i + chunkSize);
-        
-        const { data, error } = await supabase.functions.invoke('kb-fetch-pdf-content', {
-          body: { kbIds: chunk, batchSize: 3, delayMs: 3000 }
-        });
-
-        if (error) {
-          console.error('PDF fetch error:', error);
-          totalErrors += chunk.length;
-        } else if (data) {
-          totalProcessed += data.processed || 0;
-          totalErrors += data.errors || 0;
-        }
-
-        setPdfFetchProgress(Math.round(((i + chunk.length) / importedIds.length) * 100));
+      if (error) {
+        console.error('PDF fetch error:', error);
+        setPdfFetchProgress(prev => ({ ...prev, errors: prev.errors + chunk.length }));
+      } else if (data) {
+        setPdfFetchProgress(prev => ({
+          done: prev.done + (data.processed || 0),
+          total: prev.total,
+          errors: prev.errors + (data.errors || 0),
+        }));
       }
 
-      toast.success(`PDF контент извлечён: ${totalProcessed} успешно, ${totalErrors} ошибок`);
-      setStatus('success');
-      onSuccess();
-
+      setPdfFetchIndex(prev => prev + chunkSize);
     } catch (err) {
-      console.error('PDF fetch failed:', err);
-      toast.error('Ошибка извлечения PDF');
-      setStatus('error');
-      setError(err instanceof Error ? err.message : 'PDF fetch error');
+      console.error('PDF fetch batch failed:', err);
+      setPdfFetchProgress(prev => ({ ...prev, errors: prev.errors + chunk.length }));
+      setPdfFetchIndex(prev => prev + chunkSize);
     }
+  }, [importedIds, pdfFetchIndex, pdfFetchProgress, onSuccess]);
+
+  // Effect to drive the auto-fetch loop
+  useEffect(() => {
+    if (status !== 'fetching_pdfs' || abortRef.current) return;
+    
+    const timer = setTimeout(() => {
+      fetchNextPdfBatch();
+    }, 500);
+
+    return () => clearTimeout(timer);
+  }, [status, pdfFetchIndex, fetchNextPdfBatch]);
+
+  const handlePause = () => {
+    abortRef.current = true;
+    setStatus('paused');
+    toast.info(`Paused at ${pdfFetchProgress.done}/${pdfFetchProgress.total}`);
+  };
+
+  const handleResume = () => {
+    abortRef.current = false;
+    setStatus('fetching_pdfs');
+    toast.info('Resuming PDF scraping...');
   };
 
   const handleClose = () => {
+    abortRef.current = true;
     setDocuments([]);
     setFileName('');
     setTotalLines(0);
@@ -340,11 +341,15 @@ export function KBJsonlImport({ open, onOpenChange, onSuccess }: KBJsonlImportPr
     setResult(null);
     setError(null);
     setIsArlisFormat(false);
-    setFetchPdfContent(false);
     setImportedIds([]);
-    setPdfFetchProgress(0);
+    setPdfFetchProgress({ done: 0, total: 0, errors: 0 });
+    setPdfFetchIndex(0);
     onOpenChange(false);
   };
+
+  const pdfPercent = pdfFetchProgress.total > 0 
+    ? Math.round((pdfFetchIndex / pdfFetchProgress.total) * 100) 
+    : 0;
 
   return (
     <Dialog open={open} onOpenChange={handleClose}>
@@ -359,7 +364,7 @@ export function KBJsonlImport({ open, onOpenChange, onSuccess }: KBJsonlImportPr
           </DialogDescription>
         </DialogHeader>
 
-        <div className="space-y-4 py-4">
+        <div className="space-y-4 py-2">
           {/* File Selection */}
           <div className="space-y-2">
             <Label>File (.jsonl or .json)</Label>
@@ -368,109 +373,170 @@ export function KBJsonlImport({ open, onOpenChange, onSuccess }: KBJsonlImportPr
               type="file"
               accept=".jsonl,.json"
               onChange={handleFileSelect}
-              disabled={status === 'importing'}
+              disabled={status === 'importing' || status === 'fetching_pdfs'}
             />
             {fileName && (
               <p className="text-sm text-muted-foreground">
                 {fileName} — {totalLines.toLocaleString()} documents
-                {isArlisFormat && <span className="ml-2 text-primary">(ARLIS format detected)</span>}
+                {isArlisFormat && <Badge variant="secondary" className="ml-2">ARLIS format</Badge>}
               </p>
             )}
           </div>
 
-          {/* ARLIS format example */}
-          <div className="rounded-lg border bg-muted/50 p-3 text-xs space-y-2">
-            <p className="font-medium">ARLIS.am format:</p>
-            <pre className="overflow-x-auto bg-background p-2 rounded text-[10px]">
-{`{"uniqid": "6611", "pdf_link": "https://pdf.arlis.am/6611", "ActNumber": "N 218", "ActType": "Որոշում", "ActStatus": "Գործում է", "EnactmentOrgan": "ՀՀ Կառավարություն", "EnactmentDate": "02.04.1998", "title": "ՀՀ կառավարության որոշում"}`}
-            </pre>
-            <p className="text-muted-foreground">
-              Fields: title, pdf_link, ActNumber, ActType, EnactmentOrgan, EnactmentDate, EffectiveDate, Source
-            </p>
-          </div>
-
           {/* Settings */}
-          {documents.length > 0 && status !== 'importing' && status !== 'success' && (
+          {documents.length > 0 && (status === 'idle' || status === 'parsing') && (
             <>
-              <div className="space-y-2">
-                <Label>Default Category</Label>
-                <Select value={defaultCategory} onValueChange={(v) => setDefaultCategory(v as KbCategory)}>
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {kbCategoryOptions.map((cat) => (
-                      <SelectItem key={cat.value} value={cat.value}>
-                        {t(cat.labelKey)}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-1.5">
+                  <Label className="text-xs">Category</Label>
+                  <Select value={defaultCategory} onValueChange={(v) => setDefaultCategory(v as KbCategory)}>
+                    <SelectTrigger className="h-9">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {kbCategoryOptions.map((cat) => (
+                        <SelectItem key={cat.value} value={cat.value}>
+                          {t(cat.labelKey)}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
 
-              <div className="space-y-2">
-                <Label>Batch size</Label>
-                <Select value={String(batchSize)} onValueChange={(v) => setBatchSize(Number(v))}>
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="50">50</SelectItem>
-                    <SelectItem value="100">100 (recommended)</SelectItem>
-                    <SelectItem value="200">200</SelectItem>
-                    <SelectItem value="500">500 (fast)</SelectItem>
-                    <SelectItem value="1000">1000 (fastest)</SelectItem>
-                  </SelectContent>
-                </Select>
+                <div className="space-y-1.5">
+                  <Label className="text-xs">Batch size</Label>
+                  <Select value={String(batchSize)} onValueChange={(v) => setBatchSize(Number(v))}>
+                    <SelectTrigger className="h-9">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="50">50</SelectItem>
+                      <SelectItem value="100">100</SelectItem>
+                      <SelectItem value="200">200</SelectItem>
+                      <SelectItem value="500">500</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
               </div>
 
               {/* Preview */}
               <div className="space-y-2">
-                <Label>Preview (first 3):</Label>
-                <ScrollArea className="h-40 rounded border p-2">
-                  {documents.slice(0, 3).map((doc, i) => (
-                    <div key={i} className="mb-2 pb-2 border-b last:border-0 text-xs">
-                      <p className="font-medium truncate">{doc.title || 'No title'}</p>
-                      <div className="text-muted-foreground space-y-0.5">
-                        {doc.ActNumber && <p>Act: {doc.ActNumber}</p>}
-                        {doc.EnactmentOrgan && <p>Organ: {doc.EnactmentOrgan}</p>}
-                        {doc.pdf_link && <p className="truncate">PDF: {doc.pdf_link}</p>}
-                        {doc.content_text && <p className="truncate">Content: {doc.content_text.substring(0, 80)}...</p>}
-                      </div>
-                    </div>
-                  ))}
+                <Label className="text-xs">Preview (first 3):</Label>
+                <ScrollArea className="h-48 rounded-lg border">
+                  <div className="p-2 space-y-2">
+                    {documents.slice(0, 3).map((doc, i) => (
+                      <Card key={i} className="p-3 space-y-1.5">
+                        <p className="font-medium text-sm leading-tight">{doc.title || 'No title'}</p>
+                        <div className="flex flex-wrap gap-1.5">
+                          {doc.ActNumber && (
+                            <Badge variant="outline" className="text-[10px] px-1.5 py-0">
+                              {doc.ActNumber}
+                            </Badge>
+                          )}
+                          {doc.ActType && (
+                            <Badge variant="outline" className="text-[10px] px-1.5 py-0">
+                              {doc.ActType}
+                            </Badge>
+                          )}
+                          {doc.ActStatus && (
+                            <Badge variant="secondary" className="text-[10px] px-1.5 py-0">
+                              {doc.ActStatus}
+                            </Badge>
+                          )}
+                          {doc.EnactmentDate && (
+                            <Badge variant="outline" className="text-[10px] px-1.5 py-0">
+                              {doc.EnactmentDate}
+                            </Badge>
+                          )}
+                        </div>
+                        <div className="text-[11px] text-muted-foreground space-y-0.5">
+                          {doc.EnactmentOrgan && <p>{doc.EnactmentOrgan}</p>}
+                          {doc.Source && <p className="truncate">{doc.Source}</p>}
+                          {doc.pdf_link && (
+                            <p className="truncate font-mono text-[10px] opacity-70">{doc.pdf_link}</p>
+                          )}
+                        </div>
+                      </Card>
+                    ))}
+                  </div>
                 </ScrollArea>
               </div>
 
               <Button onClick={handleImport} className="w-full">
                 <Upload className="mr-2 h-4 w-4" />
                 Import {documents.length.toLocaleString()} documents
+                {isArlisFormat && ' + auto-scrape PDFs'}
               </Button>
             </>
           )}
 
-          {/* Progress */}
+          {/* Import Progress */}
           {status === 'importing' && (
             <div className="space-y-2">
               <div className="flex items-center gap-2">
                 <Loader2 className="h-4 w-4 animate-spin" />
-                <span className="text-sm">Importing... {progress}%</span>
+                <span className="text-sm">Importing metadata... {progress}%</span>
               </div>
               <Progress value={progress} />
             </div>
           )}
 
           {/* PDF Fetching Progress */}
-          {status === 'fetching_pdfs' && (
-            <div className="space-y-2">
-              <div className="flex items-center gap-2">
-                <Loader2 className="h-4 w-4 animate-spin" />
-                <span className="text-sm">Извлечение PDF контента... {pdfFetchProgress}%</span>
-              </div>
-              <Progress value={pdfFetchProgress} />
-              <p className="text-xs text-muted-foreground">
-                Обработка {importedIds.length} документов (3-5 сек на документ)
-              </p>
+          {(status === 'fetching_pdfs' || status === 'paused') && (
+            <div className="space-y-3">
+              {result && (
+                <div className="flex items-center gap-2 text-primary">
+                  <CheckCircle className="h-4 w-4" />
+                  <span className="text-sm">
+                    Metadata imported: {result.imported.toLocaleString()}
+                  </span>
+                </div>
+              )}
+              
+              <Card className="p-4 space-y-3">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    {status === 'fetching_pdfs' ? (
+                      <Loader2 className="h-4 w-4 animate-spin text-primary" />
+                    ) : (
+                      <Pause className="h-4 w-4 text-muted-foreground" />
+                    )}
+                    <span className="text-sm font-medium">
+                      PDF Scraping: {pdfFetchProgress.done}/{pdfFetchProgress.total}
+                    </span>
+                  </div>
+                  <Badge variant={status === 'fetching_pdfs' ? 'default' : 'secondary'}>
+                    {pdfPercent}%
+                  </Badge>
+                </div>
+                
+                <Progress value={pdfPercent} className="h-2" />
+                
+                <div className="flex items-center justify-between text-xs text-muted-foreground">
+                  <span>
+                    {pdfFetchProgress.done} done
+                    {pdfFetchProgress.errors > 0 && `, ${pdfFetchProgress.errors} errors`}
+                  </span>
+                  <span>{pdfFetchProgress.total - pdfFetchIndex} remaining</span>
+                </div>
+
+                <div className="flex gap-2">
+                  {status === 'fetching_pdfs' ? (
+                    <Button variant="outline" size="sm" onClick={handlePause} className="flex-1">
+                      <Pause className="mr-1.5 h-3.5 w-3.5" />
+                      Pause
+                    </Button>
+                  ) : (
+                    <Button variant="default" size="sm" onClick={handleResume} className="flex-1">
+                      <Play className="mr-1.5 h-3.5 w-3.5" />
+                      Resume
+                    </Button>
+                  )}
+                  <Button variant="outline" size="sm" onClick={handleClose}>
+                    Close
+                  </Button>
+                </div>
+              </Card>
             </div>
           )}
 
@@ -484,42 +550,29 @@ export function KBJsonlImport({ open, onOpenChange, onSuccess }: KBJsonlImportPr
 
           {/* Success */}
           {status === 'success' && result && (
-            <div className="space-y-4">
-              <div className="flex items-center gap-2 text-green-600">
+            <div className="space-y-3">
+              <div className="flex items-center gap-2 text-primary">
                 <CheckCircle className="h-5 w-5" />
                 <span className="font-medium">
-                  Imported: {result.imported.toLocaleString()} / {result.total.toLocaleString()}
+                  Done: {result.imported.toLocaleString()} imported
+                  {pdfFetchProgress.done > 0 && `, ${pdfFetchProgress.done} PDFs scraped`}
                 </span>
               </div>
 
-              {result.errors > 0 && (
+              {(result.errors > 0 || pdfFetchProgress.errors > 0) && (
                 <p className="text-sm text-destructive">
-                  Errors: {result.errors.toLocaleString()}
+                  Errors: {result.errors + pdfFetchProgress.errors}
                 </p>
               )}
 
               {result.samples.length > 0 && (
                 <div className="space-y-1">
-                  <Label>Samples:</Label>
-                  <ul className="text-sm text-muted-foreground">
+                  <Label className="text-xs">Samples:</Label>
+                  <ul className="text-xs text-muted-foreground space-y-0.5">
                     {result.samples.map((s, i) => (
                       <li key={i} className="truncate">• {s}</li>
                     ))}
                   </ul>
-                </div>
-              )}
-
-              {/* PDF Content Fetch Button */}
-              {importedIds.length > 0 && isArlisFormat && (
-                <div className="border-t pt-4 space-y-2">
-                  <Label className="text-sm font-medium">Шаг 2: Извлечь контент из PDF</Label>
-                  <p className="text-xs text-muted-foreground">
-                    Импортированы только метаданные. Нажмите чтобы скачать полный текст из {importedIds.length} PDF файлов.
-                  </p>
-                  <Button onClick={handleFetchPdfContent} variant="secondary" className="w-full">
-                    <FileText className="mr-2 h-4 w-4" />
-                    Извлечь PDF контент ({importedIds.length} файлов)
-                  </Button>
                 </div>
               )}
 
