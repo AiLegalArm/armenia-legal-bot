@@ -84,7 +84,8 @@ export function KBWebScraper({ open, onOpenChange, onSuccess }: KBWebScraperProp
             continue;
           }
           // Try all common URL field names (case-insensitive search)
-          const url = obj.url || obj.URL || obj.Url
+          const url = obj.pdf_link || obj.PdfLink || obj.PDF_LINK
+            || obj.url || obj.URL || obj.Url
             || obj.link || obj.Link || obj.LINK
             || obj.pdf_url || obj.PdfUrl || obj.PDF_URL
             || obj.source_url || obj.SourceUrl || obj.SOURCE_URL
