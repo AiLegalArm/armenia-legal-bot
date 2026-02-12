@@ -5,6 +5,21 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
+const OCR_PROMPT = `You are an expert OCR specialist for Armenian legal documents (Republic of Armenia). Extract ALL visible text from this PDF with maximum fidelity.
+
+HARD RULES:
+1) Extract ALL visible text. Do NOT summarize, paraphrase, or reorder.
+2) Do NOT invent missing words, numbers, dates, or details.
+3) Do NOT correct spelling or grammar\u2014preserve exactly as visible.
+4) Preserve document structure (headings, paragraphs, lists, tables).
+5) If illegible, mark as [ILLEGIBLE] or [UNCERTAIN: ...].
+6) Output raw text only. No JSON, no markdown code blocks, no commentary.
+
+TABLES: Use " | " between columns. Preserve row/column order exactly.
+DATES/NUMBERS: Preserve all exactly as written.
+STAMPS: [STAMP/SEAL: ...] or [STAMP/SEAL PRESENT: ILLEGIBLE]
+SIGNATURES: [SIGNATURE PRESENT]`;
+
 interface ScrapeRequest {
   urls?: string[];
   sitemapUrl?: string;
@@ -12,6 +27,125 @@ interface ScrapeRequest {
   sourceName: string;
   limit?: number;
   searchQuery?: string;
+}
+
+function isPdfUrl(url: string): boolean {
+  const lower = url.toLowerCase();
+  return lower.endsWith('.pdf') || 
+         lower.includes('/pdf/') || 
+         lower.includes('pdf.arlis.am') ||
+         lower.includes('/pdf?') ||
+         lower.match(/\/\d+\.pdf/) !== null;
+}
+
+async function scrapeWithGeminiOcr(
+  url: string,
+  lovableApiKey: string,
+): Promise<{ content: string; title: string }> {
+  // Download PDF
+  const pdfResponse = await fetch(url);
+  if (!pdfResponse.ok) {
+    throw new Error(`PDF download failed: ${pdfResponse.status}`);
+  }
+
+  const pdfBuffer = await pdfResponse.arrayBuffer();
+  const bytes = new Uint8Array(pdfBuffer);
+
+  // Limit to 10MB
+  if (bytes.length > 10 * 1024 * 1024) {
+    throw new Error("PDF too large (>10MB)");
+  }
+
+  // Convert to base64
+  let binary = '';
+  const chunkSize = 8192;
+  for (let j = 0; j < bytes.length; j += chunkSize) {
+    const chunk = bytes.subarray(j, Math.min(j + chunkSize, bytes.length));
+    binary += String.fromCharCode.apply(null, chunk as unknown as number[]);
+  }
+  const base64 = btoa(binary);
+  const dataUrl = `data:application/pdf;base64,${base64}`;
+
+  console.log(`PDF downloaded: ${Math.round(base64.length / 1024)}KB, sending to Gemini OCR`);
+
+  const aiResponse = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${lovableApiKey}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      model: "google/gemini-2.5-flash",
+      messages: [
+        { role: "system", content: OCR_PROMPT },
+        {
+          role: "user",
+          content: [
+            { type: "text", text: "Extract ALL text from this Armenian legal PDF document." },
+            { type: "image_url", image_url: { url: dataUrl } },
+          ],
+        },
+      ],
+      temperature: 0.1,
+      max_tokens: 16000,
+    }),
+  });
+
+  if (!aiResponse.ok) {
+    const errorText = await aiResponse.text();
+    throw new Error(`Gemini OCR failed: ${aiResponse.status} - ${errorText.substring(0, 200)}`);
+  }
+
+  const aiResult = await aiResponse.json();
+  const extractedText = aiResult.choices?.[0]?.message?.content || "";
+
+  if (!extractedText || extractedText.length < 50) {
+    throw new Error("Insufficient text extracted from PDF");
+  }
+
+  // Extract title from first meaningful line
+  const lines = extractedText.split('\n').filter((l: string) => l.trim().length > 5);
+  const title = (lines[0] || 'Untitled').replace(/^#+\s*/, '').trim().substring(0, 500);
+
+  return { content: extractedText, title };
+}
+
+async function scrapeWithFirecrawl(
+  url: string,
+  firecrawlKey: string,
+): Promise<{ content: string; title: string }> {
+  const scrapeResponse = await fetch('https://api.firecrawl.dev/v1/scrape', {
+    method: 'POST',
+    headers: {
+      'Authorization': `Bearer ${firecrawlKey}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      url,
+      formats: ['markdown'],
+      onlyMainContent: true,
+      waitFor: 2000,
+    }),
+  });
+
+  const scrapeData = await scrapeResponse.json();
+
+  if (!scrapeResponse.ok || !scrapeData.success) {
+    throw new Error(scrapeData.error || 'Scrape failed');
+  }
+
+  const content = scrapeData.data?.markdown || '';
+  const metadata = scrapeData.data?.metadata || {};
+
+  if (!content || content.length < 50) {
+    throw new Error('Content too short');
+  }
+
+  const title = metadata.title ||
+    decodeURIComponent(url.split('/').pop() || '').replace(/[_-]/g, ' ') ||
+    'Untitled';
+
+  return { content, title };
 }
 
 Deno.serve(async (req) => {
@@ -46,28 +180,28 @@ Deno.serve(async (req) => {
     const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
     const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
     const firecrawlKey = Deno.env.get('FIRECRAWL_API_KEY');
+    const lovableApiKey = Deno.env.get('LOVABLE_API_KEY');
 
-    if (!firecrawlKey) {
+    if (!firecrawlKey && !lovableApiKey) {
       return new Response(
-        JSON.stringify({ error: 'Firecrawl not configured' }),
+        JSON.stringify({ error: 'No scraping backend configured (need Firecrawl or Lovable API key)' }),
         { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
 
     const supabase = createClient(supabaseUrl, supabaseKey);
     const body: ScrapeRequest = await req.json();
-    
+
     let urlsToProcess: string[] = [];
-    
+
     // Option 1: Use provided URLs directly
     if (body.urls && body.urls.length > 0) {
       urlsToProcess = body.urls;
       console.log(`Using ${urlsToProcess.length} provided URLs`);
     }
-    // Option 2: Search for documents using Firecrawl search
-    else if (body.searchQuery) {
+    // Option 2: Search
+    else if (body.searchQuery && firecrawlKey) {
       console.log('Searching for:', body.searchQuery);
-      
       const searchResponse = await fetch('https://api.firecrawl.dev/v1/search', {
         method: 'POST',
         headers: {
@@ -79,19 +213,15 @@ Deno.serve(async (req) => {
           limit: body.limit || 20,
         }),
       });
-
       const searchData = await searchResponse.json();
-      console.log('Search response:', JSON.stringify(searchData).slice(0, 500));
-      
       if (searchResponse.ok && searchData.data) {
         urlsToProcess = searchData.data.map((r: any) => r.url).filter(Boolean);
         console.log(`Found ${urlsToProcess.length} URLs from search`);
       }
     }
-    // Option 3: Map a website
-    else if (body.sitemapUrl) {
+    // Option 3: Map website
+    else if (body.sitemapUrl && firecrawlKey) {
       console.log('Mapping website:', body.sitemapUrl);
-      
       const mapResponse = await fetch('https://api.firecrawl.dev/v1/map', {
         method: 'POST',
         headers: {
@@ -104,124 +234,128 @@ Deno.serve(async (req) => {
           includeSubdomains: true,
         }),
       });
-
       const mapData = await mapResponse.json();
-      console.log('Map response links count:', mapData.links?.length || 0);
-      
       if (!mapResponse.ok) {
         throw new Error(`Map failed: ${mapData.error || 'Unknown error'}`);
       }
-      
       const allLinks = mapData.links || [];
-      
-      // Filter for document-like URLs
       urlsToProcess = allLinks.filter((url: string) => {
         const lower = url.toLowerCase();
-        return lower.endsWith('.pdf') || 
-               lower.includes('/pdf/') ||
-               lower.includes('/document') ||
-               lower.includes('/act/') ||
-               lower.includes('/law/') ||
-               lower.includes('/decision/') ||
-               lower.includes('docid=') ||
-               lower.includes('id=');
+        return lower.endsWith('.pdf') || lower.includes('/pdf/') ||
+               lower.includes('/document') || lower.includes('/act/') ||
+               lower.includes('/law/') || lower.includes('/decision/') ||
+               lower.includes('docid=') || lower.includes('id=');
       });
-      
-      // If no specific URLs found, use first N pages
       if (urlsToProcess.length === 0 && allLinks.length > 0) {
-        console.log('No document URLs found, using first pages');
         urlsToProcess = allLinks.slice(0, Math.min(body.limit || 50, allLinks.length));
       }
-      
       console.log(`Found ${urlsToProcess.length} URLs from ${allLinks.length} total`);
     }
 
     if (urlsToProcess.length === 0) {
       return new Response(
-        JSON.stringify({ 
-          error: 'No URLs to process. Try search query or provide URLs directly.',
-          hint: 'Use search like: "Armenian law site:arlis.am"'
-        }),
+        JSON.stringify({ error: 'No URLs to process.' }),
         { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
 
     const batchLimit = body.limit ? Math.min(body.limit, 5000) : urlsToProcess.length;
     const batchUrls = urlsToProcess.slice(0, batchLimit);
-    
-    const results: { url: string; status: string; title?: string; error?: string }[] = [];
+
+    const results: { url: string; status: string; title?: string; error?: string; method?: string }[] = [];
     let successCount = 0;
     let errorCount = 0;
 
-    const BATCH_SIZE = 3;
-    for (let i = 0; i < batchUrls.length; i += BATCH_SIZE) {
-      const batch = batchUrls.slice(i, i + BATCH_SIZE);
-      
-      const batchPromises = batch.map(async (url) => {
-        try {
-          console.log(`Scraping: ${url}`);
-          
-          const scrapeResponse = await fetch('https://api.firecrawl.dev/v1/scrape', {
-            method: 'POST',
-            headers: {
-              'Authorization': `Bearer ${firecrawlKey}`,
-              'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({
-              url,
-              formats: ['markdown'],
-              onlyMainContent: true,
-              waitFor: 2000,
-            }),
-          });
+    // Process sequentially (1 at a time for PDFs, 2 for HTML) to avoid timeouts
+    const PDF_CONCURRENCY = 1;
+    const HTML_CONCURRENCY = 3;
+    
+    // Separate PDF and HTML URLs
+    const pdfUrls = batchUrls.filter(u => isPdfUrl(u));
+    const htmlUrls = batchUrls.filter(u => !isPdfUrl(u));
+    
+    console.log(`Processing: ${pdfUrls.length} PDFs (Gemini OCR), ${htmlUrls.length} HTML (Firecrawl)`);
 
-          const scrapeData = await scrapeResponse.json();
-          
-          if (!scrapeResponse.ok || !scrapeData.success) {
-            throw new Error(scrapeData.error || 'Scrape failed');
+    // Process PDFs with Gemini OCR (1 at a time to avoid memory/timeout issues)
+    if (lovableApiKey) {
+      for (let i = 0; i < pdfUrls.length; i += PDF_CONCURRENCY) {
+        const batch = pdfUrls.slice(i, i + PDF_CONCURRENCY);
+        const batchResults = await Promise.all(batch.map(async (url) => {
+          try {
+            console.log(`[Gemini OCR] ${url}`);
+            const { content, title } = await scrapeWithGeminiOcr(url, lovableApiKey);
+
+            const { error: insertError } = await supabase
+              .from('knowledge_base')
+              .insert({
+                title: title.substring(0, 500),
+                content_text: content.substring(0, 200000),
+                category: body.category,
+                source_name: body.sourceName,
+                source_url: url,
+                is_active: true,
+              });
+
+            if (insertError) throw new Error(`DB: ${insertError.message}`);
+            successCount++;
+            return { url, status: 'success', title: title.substring(0, 100), method: 'gemini-ocr' };
+          } catch (error) {
+            errorCount++;
+            const msg = error instanceof Error ? error.message : 'Unknown';
+            console.error(`[Gemini OCR Error] ${url}: ${msg}`);
+            return { url, status: 'error', error: msg, method: 'gemini-ocr' };
           }
+        }));
+        results.push(...batchResults);
 
-          const content = scrapeData.data?.markdown || '';
-          const metadata = scrapeData.data?.metadata || {};
-          
-          if (!content || content.length < 50) {
-            throw new Error('Content too short');
-          }
-
-          const title = metadata.title || 
-                       decodeURIComponent(url.split('/').pop() || '').replace(/[_-]/g, ' ') || 
-                       'Untitled';
-
-          const { error: insertError } = await supabase
-            .from('knowledge_base')
-            .insert({
-              title: title.substring(0, 500),
-              content_text: content.substring(0, 100000),
-              category: body.category,
-              source_name: body.sourceName,
-              source_url: url,
-              is_active: true,
-            });
-
-          if (insertError) {
-            throw new Error(`DB: ${insertError.message}`);
-          }
-
-          successCount++;
-          return { url, status: 'success', title: title.substring(0, 100) };
-        } catch (error) {
-          errorCount++;
-          const msg = error instanceof Error ? error.message : 'Unknown';
-          console.error(`Error ${url}:`, msg);
-          return { url, status: 'error', error: msg };
+        // Delay between PDFs
+        if (i + PDF_CONCURRENCY < pdfUrls.length) {
+          await new Promise(resolve => setTimeout(resolve, 1500));
         }
+      }
+    } else {
+      // Fallback: use Firecrawl for PDFs too (lower quality)
+      pdfUrls.forEach(url => {
+        results.push({ url, status: 'error', error: 'No LOVABLE_API_KEY for Gemini OCR', method: 'skipped' });
+        errorCount++;
       });
+    }
 
-      const batchResults = await Promise.all(batchPromises);
-      results.push(...batchResults);
-      
-      if (i + BATCH_SIZE < batchUrls.length) {
-        await new Promise(resolve => setTimeout(resolve, 2000));
+    // Process HTML pages with Firecrawl
+    if (firecrawlKey && htmlUrls.length > 0) {
+      for (let i = 0; i < htmlUrls.length; i += HTML_CONCURRENCY) {
+        const batch = htmlUrls.slice(i, i + HTML_CONCURRENCY);
+        const batchResults = await Promise.all(batch.map(async (url) => {
+          try {
+            console.log(`[Firecrawl] ${url}`);
+            const { content, title } = await scrapeWithFirecrawl(url, firecrawlKey);
+
+            const { error: insertError } = await supabase
+              .from('knowledge_base')
+              .insert({
+                title: title.substring(0, 500),
+                content_text: content.substring(0, 100000),
+                category: body.category,
+                source_name: body.sourceName,
+                source_url: url,
+                is_active: true,
+              });
+
+            if (insertError) throw new Error(`DB: ${insertError.message}`);
+            successCount++;
+            return { url, status: 'success', title: title.substring(0, 100), method: 'firecrawl' };
+          } catch (error) {
+            errorCount++;
+            const msg = error instanceof Error ? error.message : 'Unknown';
+            console.error(`[Firecrawl Error] ${url}: ${msg}`);
+            return { url, status: 'error', error: msg, method: 'firecrawl' };
+          }
+        }));
+        results.push(...batchResults);
+
+        if (i + HTML_CONCURRENCY < htmlUrls.length) {
+          await new Promise(resolve => setTimeout(resolve, 1500));
+        }
       }
     }
 
@@ -232,6 +366,8 @@ Deno.serve(async (req) => {
         processed: batchUrls.length,
         successCount,
         errorCount,
+        pdfCount: pdfUrls.length,
+        htmlCount: htmlUrls.length,
         remainingUrls: urlsToProcess.length - batchUrls.length,
         results,
       }),
