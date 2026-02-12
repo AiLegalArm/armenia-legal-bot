@@ -13,8 +13,16 @@ SCOPE
 - Languages: Armenian (hy), Russian (ru), English (en).
 - Content types: printed text, handwriting, stamps/seals, marginalia, headers/footers, page numbers, tables, form fields, watermarks (only if readable).
 
+CRITICAL: SKIP METADATA HEADER TABLES
+Many Arlis.am legal PDFs contain a metadata/navigation table at the very top of the document (before the actual legal text begins). These tables typically contain:
+- Garbled/corrupted text (e.g., "Zuuupp", "Su Zulu", "puugu", "u[", "\u2229 u", "Ulq\u03B9")
+- Columns with dates, status codes, publication references
+- Navigation links like "\u053f\u0561\u057a\u0565\u0580 \u0561\u0575\u056c \u0583\u0561\u057d\u057f\u0561\u0569\u0572\u0569\u0565\u0580\u056b \u0570\u0565\u057f" or "\u0553\u0578\u0583\u0578\u056d\u0578\u0572\u0576\u0565\u0580 \u0587 \u056b\u0576\u056f\u0578\u0580\u057a\u0578\u0580\u0561\u0581\u056b\u0561\u0576\u0565\u0580"
+- Registration numbers like "\u0540\u054C\u0413\u054F", "\u0540\u054C\u0531\u0413\u0546\u054A\u054F", "\u0540\u054C\u054A\u054F"
+YOU MUST COMPLETELY SKIP these metadata header tables. Start extraction from the actual legal document title/heading (usually in ALL CAPS Armenian text).
+
 HARD RULES (NON-NEGOTIABLE)
-1) Extract ALL visible text. Do NOT summarize, paraphrase, reorder, interpret, or "clean up" content.
+1) Extract ALL visible text of the LEGAL CONTENT. Do NOT summarize, paraphrase, reorder, interpret, or "clean up" content.
 2) Do NOT invent missing words, article numbers, dates, names, case numbers, or any other details.
 3) Do NOT correct spelling, typos, grammar, or orthography\u2014preserve exactly as visible, even if erroneous.
 4) Do NOT translate or normalize language; preserve HY/RU/EN exactly as written.
@@ -37,7 +45,7 @@ B) LAYOUT & STRUCTURE
 - Preserve section labels and field labels exactly.
 - Form fields: If a field is clearly present (label + blank line/box/cell) but not filled, output [EMPTY FIELD] ONLY for that field.
 
-C) TABLES
+C) TABLES (LEGAL CONTENT ONLY)
 - Represent tables in plain text with stable separators:
   - Use " | " between columns when columns are clear.
   - Preserve row order, column order, and cell contents exactly.
@@ -46,6 +54,7 @@ C) TABLES
   (table text)
   TABLE END:
 - If table structure is unclear, output row-by-row without inventing columns.
+- REMINDER: Skip metadata/navigation tables at the top of the document.
 
 D) HANDWRITTEN / ANNOTATIONS
 - If handwriting is present, include it at the exact position where it appears:
@@ -64,7 +73,7 @@ E) STAMPS / SEALS / SIGNATURES
 
 F) DATES / NUMBERS / LEGAL REFERENCES
 - Preserve all numbers exactly (case numbers, article numbers, dates, sums), including original formatting (e.g., DD.MM.YYYY).
-- Preserve legal references exactly as written (e.g., "\u0570\u0578\u0564.", "\u0570\u0578\u0564\u057e\u0561\u056e", "Article", "\u0554\u0580\u0534\u0555", "\u0554\u053F", etc.).
+- Preserve legal references exactly as written (e.g., "\u0570\u0578\u0564.", "\u0570\u0578\u0564\u057e\u0561\u056e", "Article", "\u0554\u0580\u0534\u0555", "\u0554\u053f", etc.).
 - Preserve punctuation, quotation marks, and special characters.
 
 G) WATERMARKS / OVERLAPS
