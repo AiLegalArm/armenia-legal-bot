@@ -84,6 +84,8 @@ interface FetchRequest {
   kbIds: string[];
   batchSize?: number;
   delayMs?: number;
+  model?: string;
+  forceRescrape?: boolean;
 }
 
 async function fetchPdfBuffer(url: string): Promise<Uint8Array> {
@@ -167,7 +169,7 @@ serve(async (req) => {
     }
     // === END AUTH GUARD ===
 
-    const { kbIds, batchSize = 5, delayMs = 2000 } = await req.json() as FetchRequest;
+    const { kbIds, batchSize = 5, delayMs = 2000, model, forceRescrape = false } = await req.json() as FetchRequest;
 
     if (!kbIds || !Array.isArray(kbIds) || kbIds.length === 0) {
       return new Response(JSON.stringify({ 
@@ -226,8 +228,8 @@ serve(async (req) => {
             return { id: record.id, success: false, error: "No PDF URL" };
           }
 
-          // Skip if content already has substantial text (already scraped)
-          if (record.content_text && record.content_text.length > 500 && !record.content_text.startsWith('#')) {
+          // Skip if content already has substantial text (already scraped) — unless force rescrape
+          if (!forceRescrape && record.content_text && record.content_text.length > 500 && !record.content_text.startsWith('#')) {
             return { id: record.id, success: true, wordCount: record.content_text.split(/\s+/).length, skipped: true };
           }
 
@@ -270,7 +272,7 @@ serve(async (req) => {
                 "Content-Type": "application/json",
               },
               body: JSON.stringify({
-                model: "google/gemini-2.5-flash",
+                model: model || "google/gemini-2.5-flash",
                 messages: [
                   { role: "system", content: OCR_PROMPT },
                   { 
