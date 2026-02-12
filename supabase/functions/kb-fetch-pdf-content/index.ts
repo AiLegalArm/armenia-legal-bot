@@ -86,6 +86,30 @@ interface FetchRequest {
   delayMs?: number;
 }
 
+async function fetchWithRetry(url: string, maxRetries = 3): Promise<Response> {
+  for (let attempt = 1; attempt <= maxRetries; attempt++) {
+    try {
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 30000);
+      const resp = await fetch(url, {
+        signal: controller.signal,
+        headers: {
+          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+          'Accept': 'application/pdf,*/*',
+        },
+      });
+      clearTimeout(timeout);
+      if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+      return resp;
+    } catch (err) {
+      console.warn(`Fetch attempt ${attempt}/${maxRetries} failed for ${url}: ${err}`);
+      if (attempt === maxRetries) throw new Error(`PDF download failed after ${maxRetries} attempts: ${err}`);
+      await new Promise(r => setTimeout(r, 2000 * attempt));
+    }
+  }
+  throw new Error("unreachable");
+}
+
 serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
@@ -163,17 +187,19 @@ serve(async (req) => {
       const batchPromises = batch.map(async (record) => {
         try {
           const pdfUrl = record.source_url;
-          if (!pdfUrl || !pdfUrl.includes('pdf')) {
-            return { id: record.id, success: false, error: "No valid PDF URL" };
+          if (!pdfUrl) {
+            return { id: record.id, success: false, error: "No PDF URL" };
+          }
+
+          // Skip if content already has substantial text (already scraped)
+          if (record.content_text && record.content_text.length > 500 && !record.content_text.startsWith('#')) {
+            return { id: record.id, success: true, wordCount: record.content_text.split(/\s+/).length, skipped: true };
           }
 
           console.log(`Fetching PDF: ${pdfUrl}`);
 
-          // Download PDF
-          const pdfResponse = await fetch(pdfUrl);
-          if (!pdfResponse.ok) {
-            throw new Error(`Failed to download PDF: ${pdfResponse.status}`);
-          }
+          // Download PDF with retry and proper headers
+          const pdfResponse = await fetchWithRetry(pdfUrl);
 
           const pdfBuffer = await pdfResponse.arrayBuffer();
           const bytes = new Uint8Array(pdfBuffer);
