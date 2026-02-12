@@ -10,10 +10,26 @@ import { Loader2, Zap, Database, BookOpen } from "lucide-react";
 
 export function EmbeddingManager() {
   const { t } = useTranslation(["admin"]);
-  const [kbProgress, setKbProgress] = useState({ processed: 0, remaining: 0, running: false });
-  const [practiceProgress, setPracticeProgress] = useState({ processed: 0, remaining: 0, running: false });
+  const [kbProgress, setKbProgress] = useState({ processed: 0, remaining: 0, running: false, alreadyDone: 0 });
+  const [practiceProgress, setPracticeProgress] = useState({ processed: 0, remaining: 0, running: false, alreadyDone: 0 });
   const [errors, setErrors] = useState<string[]>([]);
   const abortRef = useRef<AbortController | null>(null);
+
+  // Check how many already have embeddings
+  const checkExisting = async () => {
+    const { supabase } = await import("@/integrations/supabase/client");
+    const [kbDone, kbRemaining, prDone, prRemaining] = await Promise.all([
+      supabase.from("knowledge_base").select("id", { count: "exact", head: true }).eq("is_active", true).not("embedding", "is", null),
+      supabase.from("knowledge_base").select("id", { count: "exact", head: true }).eq("is_active", true).is("embedding", null),
+      supabase.from("legal_practice_kb").select("id", { count: "exact", head: true }).eq("is_active", true).not("embedding", "is", null),
+      supabase.from("legal_practice_kb").select("id", { count: "exact", head: true }).eq("is_active", true).is("embedding", null),
+    ]);
+    setKbProgress(p => ({ ...p, alreadyDone: kbDone.count || 0, remaining: kbRemaining.count || 0 }));
+    setPracticeProgress(p => ({ ...p, alreadyDone: prDone.count || 0, remaining: prRemaining.count || 0 }));
+  };
+
+  // Load stats on mount
+  useState(() => { checkExisting(); });
 
   const runEmbeddings = async (table: "knowledge_base" | "legal_practice_kb") => {
     const setProgress = table === "knowledge_base" ? setKbProgress : setPracticeProgress;
@@ -28,12 +44,12 @@ export function EmbeddingManager() {
         batchLimit: 5,
         signal: abortRef.current.signal,
         onProgress: (p) => {
-          setProgress({ processed: p.processedDocs, remaining: p.totalRemaining, running: true });
+          setProgress(prev => ({ ...prev, processed: p.processedDocs, remaining: p.totalRemaining, running: true }));
           if (p.errors) setErrors(prev => [...new Set([...prev, ...p.errors!])]);
         },
       });
 
-      setProgress(p => ({ ...p, running: false }));
+      setProgress(p => ({ ...p, running: false, alreadyDone: p.alreadyDone + result.processedDocs }));
       toast.success(`Обработано ${result.processedDocs} документов. Осталось: ${result.totalRemaining}`);
     } catch (e) {
       setProgress(p => ({ ...p, running: false }));
