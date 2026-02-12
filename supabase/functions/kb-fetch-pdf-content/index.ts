@@ -86,7 +86,43 @@ interface FetchRequest {
   delayMs?: number;
 }
 
-async function fetchWithRetry(url: string, maxRetries = 3): Promise<Response> {
+async function fetchPdfBuffer(url: string): Promise<Uint8Array> {
+  // Try direct fetch first
+  try {
+    const resp = await directFetch(url);
+    const buf = await resp.arrayBuffer();
+    if (buf.byteLength > 100) return new Uint8Array(buf);
+  } catch (directErr) {
+    console.warn(`Direct fetch failed for ${url}: ${directErr}`);
+  }
+
+  // Fallback: use Firecrawl to scrape the PDF page
+  const firecrawlKey = Deno.env.get('FIRECRAWL_API_KEY');
+  if (firecrawlKey) {
+    console.log(`Trying Firecrawl for ${url}`);
+    const scrapeResp = await fetch('https://api.firecrawl.dev/v1/scrape', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${firecrawlKey}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        url,
+        formats: ['markdown'],
+        waitFor: 3000,
+      }),
+    });
+    const scrapeData = await scrapeResp.json();
+    if (scrapeResp.ok && scrapeData.success && scrapeData.data?.markdown) {
+      // Return markdown text as buffer (will be used as text, not PDF OCR)
+      return new TextEncoder().encode(`__FIRECRAWL_TEXT__${scrapeData.data.markdown}`);
+    }
+  }
+
+  throw new Error(`Cannot download PDF from ${url} (blocked by server)`);
+}
+
+async function directFetch(url: string, maxRetries = 3): Promise<Response> {
   for (let attempt = 1; attempt <= maxRetries; attempt++) {
     try {
       const controller = new AbortController();
@@ -102,8 +138,7 @@ async function fetchWithRetry(url: string, maxRetries = 3): Promise<Response> {
       if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
       return resp;
     } catch (err) {
-      console.warn(`Fetch attempt ${attempt}/${maxRetries} failed for ${url}: ${err}`);
-      if (attempt === maxRetries) throw new Error(`PDF download failed after ${maxRetries} attempts: ${err}`);
+      if (attempt === maxRetries) throw err;
       await new Promise(r => setTimeout(r, 2000 * attempt));
     }
   }
@@ -198,68 +233,70 @@ serve(async (req) => {
 
           console.log(`Fetching PDF: ${pdfUrl}`);
 
-          // Download PDF with retry and proper headers
-          const pdfResponse = await fetchWithRetry(pdfUrl);
-
-          const pdfBuffer = await pdfResponse.arrayBuffer();
-          const bytes = new Uint8Array(pdfBuffer);
+          const pdfBytes = await fetchPdfBuffer(pdfUrl);
           
-          // Check PDF size (limit to 10MB for processing)
-          if (bytes.length > 10 * 1024 * 1024) {
-            throw new Error("PDF too large (>10MB)");
-          }
-
-          // Convert to base64 in chunks
-          let binary = '';
-          const chunkSize = 8192;
-          for (let j = 0; j < bytes.length; j += chunkSize) {
-            const chunk = bytes.subarray(j, Math.min(j + chunkSize, bytes.length));
-            binary += String.fromCharCode.apply(null, chunk as unknown as number[]);
-          }
-          const base64 = btoa(binary);
-          const dataUrl = `data:application/pdf;base64,${base64}`;
-
-          console.log(`PDF ${record.id} converted, size: ${Math.round(base64.length / 1024)}KB`);
-
-          // Call Gemini Vision for OCR
-          const aiResponse = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
-            method: "POST",
-            headers: {
-              Authorization: `Bearer ${LOVABLE_API_KEY}`,
-              "Content-Type": "application/json",
-            },
-            body: JSON.stringify({
-              model: "google/gemini-2.5-flash",
-              messages: [
-                { role: "system", content: OCR_PROMPT },
-                { 
-                  role: "user", 
-                  content: [
-                    { 
-                      type: "text", 
-                      text: `Extract ALL text from this Armenian legal PDF document titled: "${record.title}"` 
-                    },
-                    { 
-                      type: "image_url", 
-                      image_url: { url: dataUrl } 
-                    }
-                  ]
-                }
-              ],
-              temperature: 0.1,
-              max_tokens: 16000,
-            }),
-          });
-
-          if (!aiResponse.ok) {
-            const errorText = await aiResponse.text();
-            throw new Error(`AI processing failed: ${aiResponse.status} - ${errorText.substring(0, 200)}`);
-          }
-
-          const aiResult = await aiResponse.json();
-          const extractedText = aiResult.choices?.[0]?.message?.content || "";
+          // Check if Firecrawl returned text directly
+          const textDecoder = new TextDecoder();
+          const prefix = textDecoder.decode(pdfBytes.subarray(0, 20));
           
-          if (!extractedText || extractedText.length < 100) {
+          let extractedText: string;
+          let tokensUsed = 0;
+          
+          if (prefix.startsWith('__FIRECRAWL_TEXT__')) {
+            // Firecrawl already extracted text — use directly
+            extractedText = textDecoder.decode(pdfBytes).substring('__FIRECRAWL_TEXT__'.length);
+            console.log(`Firecrawl text for ${record.id}: ${extractedText.length} chars`);
+          } else {
+            // Binary PDF — send to Gemini OCR
+            if (pdfBytes.length > 10 * 1024 * 1024) {
+              throw new Error("PDF too large (>10MB)");
+            }
+
+            let binary = '';
+            const chunkSize = 8192;
+            for (let j = 0; j < pdfBytes.length; j += chunkSize) {
+              const chunk = pdfBytes.subarray(j, Math.min(j + chunkSize, pdfBytes.length));
+              binary += String.fromCharCode.apply(null, chunk as unknown as number[]);
+            }
+            const base64 = btoa(binary);
+            const dataUrl = `data:application/pdf;base64,${base64}`;
+
+            console.log(`PDF ${record.id} converted, size: ${Math.round(base64.length / 1024)}KB`);
+
+            const aiResponse = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+              method: "POST",
+              headers: {
+                Authorization: `Bearer ${LOVABLE_API_KEY}`,
+                "Content-Type": "application/json",
+              },
+              body: JSON.stringify({
+                model: "google/gemini-2.5-flash",
+                messages: [
+                  { role: "system", content: OCR_PROMPT },
+                  { 
+                    role: "user", 
+                    content: [
+                      { type: "text", text: `Extract ALL text from this Armenian legal PDF document titled: "${record.title}"` },
+                      { type: "image_url", image_url: { url: dataUrl } }
+                    ]
+                  }
+                ],
+                temperature: 0.1,
+                max_tokens: 16000,
+              }),
+            });
+
+            if (!aiResponse.ok) {
+              const errorText = await aiResponse.text();
+              throw new Error(`AI processing failed: ${aiResponse.status} - ${errorText.substring(0, 200)}`);
+            }
+
+            const aiResult = await aiResponse.json();
+            extractedText = aiResult.choices?.[0]?.message?.content || "";
+            tokensUsed = aiResult.usage?.total_tokens || 0;
+          }
+          
+          if (!extractedText || extractedText.length < 50) {
             throw new Error("Insufficient text extracted");
           }
 
@@ -280,14 +317,15 @@ serve(async (req) => {
           console.log(`Updated KB ${record.id}: ${wordCount} words extracted`);
 
           // Log API usage
-          const tokensUsed = aiResult.usage?.total_tokens || 0;
-          await supabase.rpc("log_api_usage", {
-            _service_type: "kb_pdf_extraction",
-            _model_name: "google/gemini-2.5-flash",
-            _tokens_used: tokensUsed,
-            _estimated_cost: tokensUsed * 0.0000005,
-            _metadata: { kb_id: record.id, word_count: wordCount }
-          });
+          if (tokensUsed > 0) {
+            await supabase.rpc("log_api_usage", {
+              _service_type: "kb_pdf_extraction",
+              _model_name: "google/gemini-2.5-flash",
+              _tokens_used: tokensUsed,
+              _estimated_cost: tokensUsed * 0.0000005,
+              _metadata: { kb_id: record.id, word_count: wordCount }
+            });
+          }
 
           return { id: record.id, success: true, wordCount };
 
