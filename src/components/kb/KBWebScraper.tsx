@@ -69,25 +69,41 @@ export function KBWebScraper({ open, onOpenChange, onSuccess }: KBWebScraperProp
       const text = ev.target?.result as string;
       const urls: string[] = [];
       let skippedCount = 0;
+      let totalLines = 0;
+      let firstObj: any = null;
       for (const line of text.split('\n')) {
         const trimmed = line.trim();
         if (!trimmed) continue;
         try {
           const obj = JSON.parse(trimmed);
+          totalLines++;
+          if (!firstObj) firstObj = obj;
           // Filter: only include entries with ActStatus "Գործում է"
-          if (obj.ActStatus && obj.ActStatus !== 'Գործում է') {
+          if (obj.ActStatus && obj.ActStatus !== '\u0533\u0578\u0580\u056E\u0578\u0582\u0574 \u0567') {
             skippedCount++;
             continue;
           }
-          const url = obj.url || obj.link || obj.pdf_url || obj.source_url || obj.href;
+          // Try all common URL field names (case-insensitive search)
+          const url = obj.url || obj.URL || obj.Url
+            || obj.link || obj.Link || obj.LINK
+            || obj.pdf_url || obj.PdfUrl || obj.PDF_URL
+            || obj.source_url || obj.SourceUrl || obj.SOURCE_URL
+            || obj.href || obj.Href || obj.HREF
+            || obj.DocUrl || obj.doc_url || obj.DocumentUrl
+            || obj.FileUrl || obj.file_url;
           if (url && typeof url === 'string') urls.push(url);
         } catch {
           // skip invalid lines
         }
       }
       setParsedJsonlUrls(urls);
-      if (urls.length === 0) toast.error('JSONL файлда URL не найден');
-      if (skippedCount > 0) toast.info(`Пропущено ${skippedCount} записей (ActStatus ≠ "Գործում է")`);
+      if (urls.length === 0) {
+        const keys = firstObj ? Object.keys(firstObj).join(', ') : 'N/A';
+        toast.error(`URL \u0579\u056B \u0563\u057F\u0576\u057E\u0565\u056C. \u054F\u0578\u0572\u0565\u0580: ${totalLines}. \u0534\u0561\u0577\u057F\u0565\u0580: ${keys}`);
+        console.log('JSONL first object:', firstObj);
+      } else {
+        toast.success(`\u0533\u057F\u0576\u057E\u0565\u0581 ${urls.length} URL (${totalLines} \u057F\u0578\u0572\u0565\u0580\u056B\u0581, ${skippedCount} \u0562\u0561\u0581 \u0569\u0578\u0572\u057E\u0561\u056E)`);
+      }
     };
     reader.readAsText(file);
   };
