@@ -68,11 +68,17 @@ export function KBWebScraper({ open, onOpenChange, onSuccess }: KBWebScraperProp
     reader.onload = (ev) => {
       const text = ev.target?.result as string;
       const urls: string[] = [];
+      let skippedCount = 0;
       for (const line of text.split('\n')) {
         const trimmed = line.trim();
         if (!trimmed) continue;
         try {
           const obj = JSON.parse(trimmed);
+          // Filter: only include entries with ActStatus "Գործում է"
+          if (obj.ActStatus && obj.ActStatus !== 'Գործում է') {
+            skippedCount++;
+            continue;
+          }
           const url = obj.url || obj.link || obj.pdf_url || obj.source_url || obj.href;
           if (url && typeof url === 'string') urls.push(url);
         } catch {
@@ -81,6 +87,7 @@ export function KBWebScraper({ open, onOpenChange, onSuccess }: KBWebScraperProp
       }
       setParsedJsonlUrls(urls);
       if (urls.length === 0) toast.error('JSONL файлда URL не найден');
+      if (skippedCount > 0) toast.info(`Пропущено ${skippedCount} записей (ActStatus ≠ "Գործում է")`);
     };
     reader.readAsText(file);
   };
