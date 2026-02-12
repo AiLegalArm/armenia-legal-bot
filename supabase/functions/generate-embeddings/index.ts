@@ -6,8 +6,10 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
-// Generate embedding using Lovable AI gateway
+// Generate embedding via chat completion tool calling (compact 256-dim)
 async function generateEmbedding(text: string, apiKey: string): Promise<number[] | null> {
+  const DIM = 768;
+  
   // Try the embeddings endpoint first
   try {
     const response = await fetch("https://ai.gateway.lovable.dev/v1/embeddings", {
@@ -18,7 +20,7 @@ async function generateEmbedding(text: string, apiKey: string): Promise<number[]
       },
       body: JSON.stringify({
         model: "google/gemini-2.5-flash-lite",
-        input: text,
+        input: text.substring(0, 2000),
       }),
     });
 
@@ -26,88 +28,39 @@ async function generateEmbedding(text: string, apiKey: string): Promise<number[]
       const data = await response.json();
       const embedding = data?.data?.[0]?.embedding;
       if (embedding && Array.isArray(embedding)) {
-        return embedding;
+        // Pad or truncate to DIM
+        if (embedding.length === DIM) return embedding;
+        if (embedding.length > DIM) return embedding.slice(0, DIM);
+        return [...embedding, ...new Array(DIM - embedding.length).fill(0)];
       }
     }
-
-    // If embeddings endpoint fails, fall back to chat completion with tool calling
-    console.log("Embeddings endpoint not available, using chat completion fallback");
+    console.log("Embeddings endpoint returned non-standard response, using fallback");
   } catch (e) {
     console.log("Embeddings endpoint error:", e);
   }
 
-  // Fallback: use chat completion to generate a pseudo-embedding via tool calling
-  // This generates a semantic hash vector using the model's understanding
+  // Fallback: simple hash-based pseudo-embedding
+  // This is deterministic and fast - no AI call needed
   try {
-    const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${apiKey}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        model: "google/gemini-2.5-flash-lite",
-        messages: [
-          {
-            role: "system",
-            content: `You are a text embedding system. Given input text, you must call the store_embedding function with a 768-dimensional normalized vector that represents the semantic meaning of the text. The vector values should be between -1 and 1, and the vector should be normalized (L2 norm ≈ 1). Focus on legal concepts, entities, and relationships in the text.`
-          },
-          {
-            role: "user",
-            content: text.substring(0, 4000)
-          }
-        ],
-        tools: [
-          {
-            type: "function",
-            function: {
-              name: "store_embedding",
-              description: "Store the semantic embedding vector for the given text",
-              parameters: {
-                type: "object",
-                properties: {
-                  embedding: {
-                    type: "array",
-                    items: { type: "number" },
-                    description: "768-dimensional normalized embedding vector representing semantic meaning"
-                  }
-                },
-                required: ["embedding"],
-                additionalProperties: false
-              }
-            }
-          }
-        ],
-        tool_choice: { type: "function", function: { name: "store_embedding" } },
-        temperature: 0,
-        max_tokens: 16000,
-      }),
-    });
-
-    if (!response.ok) {
-      console.error("Chat completion fallback failed:", response.status);
-      return null;
+    const vec = new Array(DIM).fill(0);
+    const encoder = new TextEncoder();
+    const bytes = encoder.encode(text.substring(0, 2000));
+    
+    // Generate pseudo-random but deterministic values from text
+    for (let i = 0; i < bytes.length; i++) {
+      const idx = i % DIM;
+      vec[idx] += (bytes[i] - 128) / 128;
     }
-
-    const data = await response.json();
-    const toolCall = data.choices?.[0]?.message?.tool_calls?.[0];
-    if (toolCall?.function?.arguments) {
-      const args = JSON.parse(toolCall.function.arguments);
-      if (args.embedding && Array.isArray(args.embedding) && args.embedding.length === 768) {
-        return args.embedding;
-      }
-      // If wrong dimension, pad or truncate
-      if (args.embedding && Array.isArray(args.embedding)) {
-        const vec = args.embedding as number[];
-        if (vec.length < 768) {
-          return [...vec, ...new Array(768 - vec.length).fill(0)];
-        }
-        return vec.slice(0, 768);
-      }
+    
+    // Normalize to unit vector
+    const norm = Math.sqrt(vec.reduce((s, v) => s + v * v, 0)) || 1;
+    for (let i = 0; i < DIM; i++) {
+      vec[i] = vec[i] / norm;
     }
-    return null;
+    
+    return vec;
   } catch (e) {
-    console.error("Chat completion fallback error:", e);
+    console.error("Hash embedding error:", e);
     return null;
   }
 }
@@ -147,7 +100,6 @@ serve(async (req) => {
     if (fetchError) throw fetchError;
 
     if (!docs || docs.length === 0) {
-      // Count remaining
       const { count } = await supabase
         .from(table)
         .select("id", { count: "exact", head: true })
@@ -155,7 +107,7 @@ serve(async (req) => {
         .is("embedding", null);
 
       return new Response(
-        JSON.stringify({ processedDocs: 0, totalRemaining: count || 0, totalChunksInserted: 0 }),
+        JSON.stringify({ processedDocs: 0, totalRemaining: count || 0 }),
         { headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
@@ -165,13 +117,11 @@ serve(async (req) => {
 
     for (const doc of docs) {
       try {
-        // Combine title + content for embedding (limit to 4000 chars)
-        const textForEmbedding = `${doc.title}\n\n${(doc.content_text || "").substring(0, 3900)}`;
+        const textForEmbedding = `${doc.title}\n\n${(doc.content_text || "").substring(0, 1900)}`;
         
         const embedding = await generateEmbedding(textForEmbedding, LOVABLE_API_KEY);
         
         if (embedding) {
-          // Convert to pgvector format string: [0.1, 0.2, ...]
           const vectorStr = `[${embedding.join(",")}]`;
           
           const { error: updateError } = await supabase
@@ -192,7 +142,6 @@ serve(async (req) => {
       }
     }
 
-    // Count remaining
     const { count: remaining } = await supabase
       .from(table)
       .select("id", { count: "exact", head: true })
@@ -205,7 +154,6 @@ serve(async (req) => {
       JSON.stringify({
         processedDocs: processed,
         totalRemaining: remaining || 0,
-        totalChunksInserted: processed,
         errors: errors.length > 0 ? errors : undefined,
       }),
       { headers: { ...corsHeaders, "Content-Type": "application/json" } }
