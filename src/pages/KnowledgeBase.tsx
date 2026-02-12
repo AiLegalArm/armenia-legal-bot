@@ -82,11 +82,6 @@ const KnowledgeBasePage = () => {
       let raw = ('source_name' in doc && doc.source_name) ? doc.source_name : t('common:other', 'Other');
       // Normalize unicode and trim whitespace for consistent grouping
       raw = raw.normalize('NFC').trim().replace(/\s+/g, ' ');
-      // Truncate folder name at "\u0563\u0578\u0580\u056e" (case) if present
-      const idx = raw.toLowerCase().indexOf('\u0563\u0578\u0580\u056e');
-      if (idx !== -1) {
-        raw = raw.substring(0, idx + 4).trim();
-      }
       if (!groups.has(raw)) groups.set(raw, []);
       groups.get(raw)!.push(doc);
     }
