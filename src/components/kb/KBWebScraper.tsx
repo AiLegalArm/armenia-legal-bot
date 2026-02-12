@@ -173,33 +173,55 @@ export function KBWebScraper({ open, onOpenChange, onSuccess }: KBWebScraperProp
       setStatus('scraping');
       setProgress(10);
 
-      // Batch URLs: 50 per request to avoid payload/timeout issues
-      const FRONTEND_BATCH = 50;
+      // Smaller batches: 10 for PDF-heavy, avoid timeouts
+      const FRONTEND_BATCH = 10;
+      const MAX_RETRIES = 2;
       let totalSuccess = 0;
       let totalErrors = 0;
-      const allResults: Array<{ url: string; status: string; title?: string; error?: string }> = [];
+      const allResults: Array<{ url: string; status: string; title?: string; error?: string; method?: string }> = [];
 
       for (let i = 0; i < urlsToSend.length; i += FRONTEND_BATCH) {
         const batch = urlsToSend.slice(i, i + FRONTEND_BATCH);
+        const batchNum = Math.floor(i / FRONTEND_BATCH) + 1;
+        const totalBatches = Math.ceil(urlsToSend.length / FRONTEND_BATCH);
         const pct = Math.round(10 + (80 * i / urlsToSend.length));
         setProgress(pct);
-        toast.info(`\u0411\u0430\u0442\u0447 ${Math.floor(i / FRONTEND_BATCH) + 1}/${Math.ceil(urlsToSend.length / FRONTEND_BATCH)}: ${batch.length} URL`);
+        toast.info(`\u0411\u0430\u0442\u0447 ${batchNum}/${totalBatches}: ${batch.length} URL`);
 
-        try {
-          const { data, error: fnError } = await supabase.functions.invoke('kb-scrape-batch', {
-            body: { category, sourceName, urls: batch, ...(limit > 0 ? { limit } : {}) },
-          });
+        let retries = 0;
+        let batchDone = false;
 
-          if (fnError) throw fnError;
-          if (data.error) throw new Error(data.error);
+        while (!batchDone && retries <= MAX_RETRIES) {
+          try {
+            const { data, error: fnError } = await supabase.functions.invoke('kb-scrape-batch', {
+              body: { category, sourceName, urls: batch, ...(limit > 0 ? { limit } : {}) },
+            });
 
-          totalSuccess += data.successCount || 0;
-          totalErrors += data.errorCount || 0;
-          if (data.results) allResults.push(...data.results);
-        } catch (batchErr) {
-          console.error(`Batch error at offset ${i}:`, batchErr);
-          totalErrors += batch.length;
-          batch.forEach(url => allResults.push({ url, status: 'error', error: 'Batch failed' }));
+            if (fnError) throw fnError;
+            if (data.error) throw new Error(data.error);
+
+            totalSuccess += data.successCount || 0;
+            totalErrors += data.errorCount || 0;
+            if (data.results) allResults.push(...data.results);
+            batchDone = true;
+          } catch (batchErr) {
+            retries++;
+            if (retries <= MAX_RETRIES) {
+              console.warn(`Batch ${batchNum} retry ${retries}/${MAX_RETRIES}:`, batchErr);
+              toast.warning(`\u0411\u0430\u0442\u0447 ${batchNum}: \u043F\u043E\u0432\u0442\u043E\u0440 ${retries}/${MAX_RETRIES}...`);
+              await new Promise(resolve => setTimeout(resolve, 3000 * retries));
+            } else {
+              console.error(`Batch ${batchNum} failed after ${MAX_RETRIES} retries:`, batchErr);
+              totalErrors += batch.length;
+              batch.forEach(url => allResults.push({ url, status: 'error', error: 'Batch failed after retries' }));
+              batchDone = true;
+            }
+          }
+        }
+
+        // Longer delay between batches for PDF processing
+        if (i + FRONTEND_BATCH < urlsToSend.length) {
+          await new Promise(resolve => setTimeout(resolve, 2000));
         }
       }
 
@@ -412,7 +434,7 @@ export function KBWebScraper({ open, onOpenChange, onSuccess }: KBWebScraperProp
               )}
 
               <div className="max-h-40 overflow-y-auto space-y-1">
-                {result.results.slice(0, 10).map((item, i) => (
+                {result.results.slice(0, 20).map((item, i) => (
                   <div key={i} className="flex items-start gap-2 text-sm">
                     {item.status === 'success' ? (
                       <CheckCircle className="h-4 w-4 text-green-500 mt-0.5 shrink-0" />
