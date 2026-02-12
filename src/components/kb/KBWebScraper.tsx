@@ -21,7 +21,7 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { toast } from 'sonner';
-import { Globe, Loader2, CheckCircle, AlertTriangle, Search } from 'lucide-react';
+import { Globe, Loader2, CheckCircle, AlertTriangle, Search, Upload } from 'lucide-react';
 import { kbCategoryOptions, type KbCategory } from '@/components/kb/kbCategories';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 
@@ -32,6 +32,7 @@ interface KBWebScraperProps {
 }
 
 type ScrapeStatus = 'idle' | 'mapping' | 'scraping' | 'success' | 'error';
+type ScrapeMode = 'search' | 'sitemap' | 'urls' | 'jsonl';
 
 interface ScrapeResult {
   totalUrls: number;
@@ -55,7 +56,34 @@ export function KBWebScraper({ open, onOpenChange, onSuccess }: KBWebScraperProp
   const [limit, setLimit] = useState(20);
   const [result, setResult] = useState<ScrapeResult | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [mode, setMode] = useState<'search' | 'sitemap' | 'urls'>('search');
+  const [mode, setMode] = useState<ScrapeMode>('search');
+  const [jsonlFile, setJsonlFile] = useState<File | null>(null);
+  const [parsedJsonlUrls, setParsedJsonlUrls] = useState<string[]>([]);
+
+  const handleJsonlUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setJsonlFile(file);
+    const reader = new FileReader();
+    reader.onload = (ev) => {
+      const text = ev.target?.result as string;
+      const urls: string[] = [];
+      for (const line of text.split('\n')) {
+        const trimmed = line.trim();
+        if (!trimmed) continue;
+        try {
+          const obj = JSON.parse(trimmed);
+          const url = obj.url || obj.link || obj.pdf_url || obj.source_url || obj.href;
+          if (url && typeof url === 'string') urls.push(url);
+        } catch {
+          // skip invalid lines
+        }
+      }
+      setParsedJsonlUrls(urls);
+      if (urls.length === 0) toast.error('JSONL файлда URL не найден');
+    };
+    reader.readAsText(file);
+  };
 
   const handleScrape = async () => {
     if (mode === 'search' && !searchQuery.trim()) {
@@ -68,6 +96,10 @@ export function KBWebScraper({ open, onOpenChange, onSuccess }: KBWebScraperProp
     }
     if (mode === 'urls' && !manualUrls.trim()) {
       toast.error('Укажите URL-ы для скрейпинга');
+      return;
+    }
+    if (mode === 'jsonl' && parsedJsonlUrls.length === 0) {
+      toast.error('Загрузите JSONL файл с URL-ами');
       return;
     }
     if (!sourceName) {
@@ -91,6 +123,8 @@ export function KBWebScraper({ open, onOpenChange, onSuccess }: KBWebScraperProp
         body.searchQuery = searchQuery;
       } else if (mode === 'sitemap') {
         body.sitemapUrl = siteUrl;
+      } else if (mode === 'jsonl') {
+        body.urls = parsedJsonlUrls;
       } else {
         body.urls = manualUrls
           .split('\n')
@@ -135,6 +169,8 @@ export function KBWebScraper({ open, onOpenChange, onSuccess }: KBWebScraperProp
     setProgress(0);
     setResult(null);
     setError(null);
+    setJsonlFile(null);
+    setParsedJsonlUrls([]);
     onOpenChange(false);
   };
 
@@ -151,11 +187,12 @@ export function KBWebScraper({ open, onOpenChange, onSuccess }: KBWebScraperProp
           </DialogDescription>
         </DialogHeader>
 
-        <Tabs value={mode} onValueChange={(v) => setMode(v as 'search' | 'sitemap' | 'urls')} className="w-full">
-          <TabsList className="grid w-full grid-cols-3">
+        <Tabs value={mode} onValueChange={(v) => setMode(v as ScrapeMode)} className="w-full">
+          <TabsList className="grid w-full grid-cols-4">
             <TabsTrigger value="search">🔍 Поиск</TabsTrigger>
             <TabsTrigger value="sitemap">🗺️ Сайт</TabsTrigger>
             <TabsTrigger value="urls">📋 URL-ы</TabsTrigger>
+            <TabsTrigger value="jsonl">📄 JSONL</TabsTrigger>
           </TabsList>
 
           <TabsContent value="search" className="space-y-4">
@@ -195,6 +232,36 @@ export function KBWebScraper({ open, onOpenChange, onSuccess }: KBWebScraperProp
                 placeholder="https://arlis.am/DocumentView.aspx?docid=12345&#10;https://cassation.am/decision/123"
                 className="h-32 font-mono text-xs"
               />
+            </div>
+          </TabsContent>
+
+          <TabsContent value="jsonl" className="space-y-4">
+            <div className="space-y-2">
+              <Label>JSONL файл с URL-ами PDF</Label>
+              <div className="flex items-center gap-2">
+                <Input
+                  type="file"
+                  accept=".jsonl,.ndjson"
+                  onChange={handleJsonlUpload}
+                  className="flex-1"
+                />
+              </div>
+              <p className="text-xs text-muted-foreground">
+                Каждая строка — JSON объект с полем url, link, pdf_url или source_url
+              </p>
+              {parsedJsonlUrls.length > 0 && (
+                <div className="rounded-lg border bg-muted/50 p-3 space-y-1">
+                  <p className="text-sm font-medium">Найдено URL: {parsedJsonlUrls.length}</p>
+                  <div className="max-h-24 overflow-y-auto text-xs font-mono space-y-0.5">
+                    {parsedJsonlUrls.slice(0, 10).map((u, i) => (
+                      <p key={i} className="truncate text-muted-foreground">{u}</p>
+                    ))}
+                    {parsedJsonlUrls.length > 10 && (
+                      <p className="text-muted-foreground">... и ещё {parsedJsonlUrls.length - 10}</p>
+                    )}
+                  </div>
+                </div>
+              )}
             </div>
           </TabsContent>
         </Tabs>
