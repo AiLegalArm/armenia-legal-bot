@@ -2,6 +2,7 @@ import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.91.1";
 import { OCR_EXTRACTION, buildModelParams } from "../_shared/model-config.ts";
 import { redactForLog } from "../_shared/pii-redactor.ts";
+import { parseDocx } from "../_shared/docx-parser.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -427,138 +428,28 @@ serve(async (req) => {
       txtContent = decoder.decode(fileBuffer);
       console.log(`Read TXT file from storage, length: ${txtContent.length} chars`);
     }
-    // Handle DOCX files - extract both text AND embedded images
+    // Handle DOCX files - extract both text AND embedded images via ZIP-based parser
     if (isDocx && fileBuffer) {
-      console.log("Extracting text and images from DOCX file...");
+      console.log("Extracting text and images from DOCX file via ZIP parser...");
       try {
-        const bytes = new Uint8Array(fileBuffer);
-        
-        // DOCX is a ZIP file containing XML. We'll extract text and images.
-        const decoder = new TextDecoder('utf-8', { fatal: false });
-        const rawContent = decoder.decode(bytes);
-        
-        const textMatches: string[] = [];
-        
-        // Method 1: Extract text from <w:t> tags (Word text runs)
-        const wtRegex = /<w:t[^>]*>([^<]+)<\/w:t>/g;
-        let match;
-        while ((match = wtRegex.exec(rawContent)) !== null) {
-          if (match[1] && match[1].trim()) {
-            textMatches.push(match[1]);
-          }
+        const parsed = await parseDocx(fileBuffer);
+
+        if (parsed.text && parsed.text.length >= 20) {
+          docxTextContent = parsed.text;
+          console.log("Successfully extracted " + docxTextContent.length + " characters from DOCX (" + parsed.paragraphs.length + " paragraphs)");
         }
-        
-        // Method 2: Also check for paragraph breaks to preserve structure
-        let structuredText = textMatches.join('');
-        
-        const paragraphBoundaries = rawContent.match(/<\/w:p>/g);
-        if (paragraphBoundaries && paragraphBoundaries.length > 1) {
-          const paragraphRegex = /<w:p[^>]*>([\s\S]*?)<\/w:p>/g;
-          const paragraphs: string[] = [];
-          
-          while ((match = paragraphRegex.exec(rawContent)) !== null) {
-            const paragraphContent = match[1];
-            const paraTextMatches: string[] = [];
-            const innerWtRegex = /<w:t[^>]*>([^<]+)<\/w:t>/g;
-            let innerMatch;
-            while ((innerMatch = innerWtRegex.exec(paragraphContent)) !== null) {
-              if (innerMatch[1]) {
-                paraTextMatches.push(innerMatch[1]);
-              }
-            }
-            if (paraTextMatches.length > 0) {
-              paragraphs.push(paraTextMatches.join(''));
-            }
-          }
-          
-          if (paragraphs.length > 0) {
-            structuredText = paragraphs.join('\n\n');
-          }
+
+        if (parsed.images.length > 0) {
+          docxImages = parsed.images;
+          console.log("Found " + docxImages.length + " embedded images in DOCX");
         }
-        
-        // Method 3: Fallback - extract any readable text
-        if (!structuredText || structuredText.length < 20) {
-          console.log("Primary extraction failed, using fallback...");
-          const readableRegex = /[\u0531-\u058F\u0400-\u04FF\u0041-\u007Aa-z0-9\s.,!?;:'"()\-\u2013\u2014\u00AB\u00BB\u201E\u201C]+/g;
-          const readableMatches = rawContent.match(readableRegex);
-          if (readableMatches) {
-            const cleanMatches = readableMatches
-              .filter(t => t.length > 5 && !/^[\s\d.,]+$/.test(t))
-              .filter(t => !t.includes('xml') && !t.includes('schemas') && !t.includes('microsoft'));
-            if (cleanMatches.length > 0) {
-              structuredText = cleanMatches.join(' ');
-            }
-          }
+
+        if (parsed.warnings.length > 0) {
+          console.warn("DOCX parse warnings:", parsed.warnings);
         }
-        
-        // Extract embedded images from DOCX (they are in word/media/ folder)
-        // Look for image signatures in the binary data
-        const imageSignatures = [
-          { sig: [0x89, 0x50, 0x4E, 0x47], mime: 'image/png' },    // PNG
-          { sig: [0xFF, 0xD8, 0xFF], mime: 'image/jpeg' },          // JPEG
-        ];
-        
-        for (let i = 0; i < bytes.length - 4; i++) {
-          for (const { sig, mime } of imageSignatures) {
-            let match = true;
-            for (let j = 0; j < sig.length; j++) {
-              if (bytes[i + j] !== sig[j]) {
-                match = false;
-                break;
-              }
-            }
-            if (match) {
-              // Found image start, now find the end
-              let endIndex = i + 1000; // Minimum chunk
-              
-              if (mime === 'image/png') {
-                // PNG ends with IEND chunk
-                for (let k = i + sig.length; k < bytes.length - 8; k++) {
-                  if (bytes[k] === 0x49 && bytes[k+1] === 0x45 && bytes[k+2] === 0x4E && bytes[k+3] === 0x44) {
-                    endIndex = k + 8; // Include IEND and CRC
-                    break;
-                  }
-                }
-              } else if (mime === 'image/jpeg') {
-                // JPEG ends with FFD9
-                for (let k = i + sig.length; k < bytes.length - 1; k++) {
-                  if (bytes[k] === 0xFF && bytes[k+1] === 0xD9) {
-                    endIndex = k + 2;
-                    break;
-                  }
-                }
-              }
-              
-              if (endIndex > i + 100 && endIndex - i < 5000000) { // Reasonable image size
-                const imgBytes = bytes.slice(i, endIndex);
-                let binary = '';
-                const chunkSize = 8192;
-                for (let c = 0; c < imgBytes.length; c += chunkSize) {
-                  const chunk = imgBytes.subarray(c, Math.min(c + chunkSize, imgBytes.length));
-                  binary += String.fromCharCode.apply(null, chunk as unknown as number[]);
-                }
-                const base64Img = btoa(binary);
-                if (base64Img.length > 1000) { // Valid image size
-                  docxImages.push("data:" + mime + ";base64," + base64Img);
-                  console.log("Extracted embedded image: " + mime + ", size: " + base64Img.length + " chars");
-                }
-                i = endIndex - 1; // Skip past this image
-              }
-            }
-          }
-        }
-        
-        console.log("Found " + docxImages.length + " embedded images in DOCX");
-        
-        // Final check for text
-        if (structuredText && structuredText.length >= 20) {
-          docxTextContent = structuredText
-            .replace(/\s+/g, ' ')
-            .replace(/\n\s+\n/g, '\n\n')
-            .trim();
-          console.log("Successfully extracted " + docxTextContent.length + " characters from DOCX");
-        } else if (docxImages.length === 0) {
-          throw new Error('Could not extract meaningful text or images from DOCX');
+
+        if ((!docxTextContent || docxTextContent.length < 20) && docxImages.length === 0) {
+          throw new Error("Could not extract meaningful text or images from DOCX");
         }
       } catch (docxError) {
         console.error("DOCX extraction error:", docxError);
