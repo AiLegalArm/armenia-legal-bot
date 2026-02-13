@@ -10,9 +10,6 @@ import { assertEquals, assertExists } from "https://deno.land/std@0.224.0/assert
 import { normalize, validate } from "./index.ts";
 
 // ─── FIXTURE 1: Criminal Code header excerpt ────────────────────────
-// Represents: "ՀԱՅdelays ՀԱՆdelays DELAYS ՔDELAYS DELAYS DELAYS"
-// "Ընdelay 18 aprili 2003 tvakani"
-// "ՀdelaydelaysdDELAYS \u0540\u0555-528-\u0546"
 const CRIMINAL_CODE_FIXTURE =
   "\u0540\u0531\u0545\u0531\u054d\u054f\u0531\u0546\u053b " +
   "\u0540\u0531\u0546\u0550\u0531\u054a\u0535\u054f\u0548\u0552\u054f\u0545\u0531\u0546 " +
@@ -29,7 +26,6 @@ const CRIMINAL_CODE_FIXTURE =
   "\u057a\u0561\u057f\u0561\u057d\u056d\u0561\u0576\u0561\u057f\u057e\u0578\u0582\u0569\u0575\u0578\u0582\u0576\u0568";
 
 // ─── FIXTURE 2: Cassation decision header excerpt ───────────────────
-// Represents a cassation court decision header
 const CASSATION_FIXTURE =
   "\u0540\u0531\u0545\u0531\u054d\u054f\u0531\u0546\u053b " +
   "\u0540\u0531\u0546\u0550\u0531\u054a\u0535\u054f\u0548\u0552\u054f\u0545\u0531\u0546\n" +
@@ -43,8 +39,8 @@ const CASSATION_FIXTURE =
 
 // ─── TEST: Criminal Code parsing ────────────────────────────────────
 
-Deno.test("normalize: Criminal Code TXT -> doc_type=code, branch=criminal", () => {
-  const result = normalize({
+Deno.test("normalize: Criminal Code TXT -> doc_type=code, branch=criminal", async () => {
+  const result = await normalize({
     fileName: "criminal_code_am.txt",
     mimeType: "text/plain",
     rawText: CRIMINAL_CODE_FIXTURE,
@@ -62,6 +58,11 @@ Deno.test("normalize: Criminal Code TXT -> doc_type=code, branch=criminal", () =
   assertEquals(result.ingestion.schema_version, "1.0");
   assertEquals(result.ingestion.pipeline, "legal-document-normalizer");
 
+  // SHA-256 hash should be a 64-char hex string
+  assertExists(result.ingestion.source_hash);
+  assertEquals(result.ingestion.source_hash!.length, 64);
+  assertEquals(/^[0-9a-f]{64}$/.test(result.ingestion.source_hash!), true);
+
   // Act number detection
   assertEquals(result.document_number, "\u0540\u0555-528-\u0546");
 
@@ -75,8 +76,8 @@ Deno.test("normalize: Criminal Code TXT -> doc_type=code, branch=criminal", () =
 
 // ─── TEST: Cassation decision parsing ───────────────────────────────
 
-Deno.test("normalize: Cassation decision -> doc_type=cassation_ruling, court metadata", () => {
-  const result = normalize({
+Deno.test("normalize: Cassation decision -> doc_type=cassation_ruling, court metadata", async () => {
+  const result = await normalize({
     fileName: "cassation_decision_2024.pdf",
     mimeType: "application/pdf",
     rawText: CASSATION_FIXTURE,
@@ -136,13 +137,13 @@ Deno.test("validate: rejects invalid doc_type and empty content", () => {
   };
 
   const errors = validate(badDoc);
-  assertEquals(errors.length >= 3, true); // doc_type, title, content_text, date_adopted
+  assertEquals(errors.length >= 3, true);
 });
 
 // ─── TEST: Unknown file -> other ────────────────────────────────────
 
-Deno.test("normalize: unknown file type -> doc_type=other", () => {
-  const result = normalize({
+Deno.test("normalize: unknown file type -> doc_type=other", async () => {
+  const result = await normalize({
     fileName: "random_document.docx",
     mimeType: "application/docx",
     rawText: "Some random content without Armenian legal markers.",
@@ -155,4 +156,19 @@ Deno.test("normalize: unknown file type -> doc_type=other", () => {
 
   const errors = validate(result);
   assertEquals(errors.length, 0);
+});
+
+// ─── TEST: SHA-256 determinism ──────────────────────────────────────
+
+Deno.test("normalize: same input produces same source_hash", async () => {
+  const input = {
+    fileName: "test.txt",
+    mimeType: "text/plain",
+    rawText: "Deterministic hash test content",
+  };
+
+  const result1 = await normalize(input);
+  const result2 = await normalize(input);
+
+  assertEquals(result1.ingestion.source_hash, result2.ingestion.source_hash);
 });

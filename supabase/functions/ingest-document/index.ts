@@ -7,23 +7,21 @@
  * 3) Chunks via shared chunker logic
  * 4) Inserts chunks into public.legal_chunks with doc_id FK
  *
- * Auth: requires x-internal-key header
+ * Auth: requires x-internal-key header (fail-closed)
  * Input: { fileName, mimeType, rawText, sourceUrl? }
  * Output: { document_id, chunks_inserted, deduplicated }
  */
 
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.49.4";
-import { getCorsHeaders, checkInternalAuth, checkInputSize } from "../_shared/edge-security.ts";
+import { handleCors, checkInternalAuth, checkInputSize } from "../_shared/edge-security.ts";
 import { normalize, validate } from "../_shared/normalizer.ts";
 import { chunkDocument } from "../_shared/chunker.ts";
 
 serve(async (req) => {
-  const corsHeaders = getCorsHeaders(req.headers.get("origin"));
-
-  if (req.method === "OPTIONS") {
-    return new Response(null, { headers: corsHeaders });
-  }
+  const cors = handleCors(req);
+  if (cors.errorResponse) return cors.errorResponse;
+  const corsHeaders = cors.corsHeaders!;
 
   const authErr = checkInternalAuth(req, corsHeaders);
   if (authErr) return authErr;
@@ -53,8 +51,8 @@ serve(async (req) => {
     const sizeErr = checkInputSize(rawText, corsHeaders);
     if (sizeErr) return sizeErr;
 
-    // ── Step 1: Normalize ───────────────────────────────────────
-    const document = normalize({
+    // ── Step 1: Normalize (async for SHA-256) ───────────────────
+    const document = await normalize({
       fileName,
       mimeType: mimeType || "text/plain",
       rawText,
