@@ -240,6 +240,24 @@ serve(async (req) => {
     let ragContext = "";
     const sourcesUsed: Array<{ title: string; category: string; source_name: string }> = [];
 
+    // Resolve reference date for temporal legislation filtering
+    let referenceDate: string | null = null;
+    let dateAssumed = false;
+    if (caseId) {
+      const { data: dateRow } = await supabase
+        .from("cases")
+        .select("court_date")
+        .eq("id", caseId)
+        .maybeSingle();
+      if (dateRow?.court_date) {
+        referenceDate = dateRow.court_date;
+      } else {
+        dateAssumed = true;
+      }
+    } else {
+      dateAssumed = true;
+    }
+
     // Helper: sanitize for PostgREST ILIKE
     function sanitizeForPostgrest(input: string): string {
       return input
@@ -268,7 +286,7 @@ serve(async (req) => {
           "Content-Type": "application/json",
           Authorization: `Bearer ${supabaseServiceKey}`,
         },
-        body: JSON.stringify({ query: searchQuery, tables: "kb", limit: 10, threshold: 0.3 }),
+        body: JSON.stringify({ query: searchQuery, tables: "kb", limit: 10, threshold: 0.3, reference_date: referenceDate }),
       }).then(r => r.ok ? r.json() : { kb: [] }).catch(() => ({ kb: [] }));
 
       const keywordKbPromise = (async () => {
@@ -327,10 +345,9 @@ serve(async (req) => {
 
       // Fallback FTS
       if (!kbFound) {
-        const { data: kbResults, error: kbError } = await supabase.rpc("search_knowledge_base", {
-          search_query: searchQuery,
-          result_limit: 20,
-        });
+        const rpcParams: Record<string, unknown> = { search_query: searchQuery, result_limit: 20 };
+        if (referenceDate) rpcParams.reference_date = referenceDate;
+        const { data: kbResults, error: kbError } = await supabase.rpc("search_knowledge_base", rpcParams);
         if (!kbError && kbResults && kbResults.length > 0) {
           const topResults = kbResults.slice(0, 8);
           ragContext = "\n\n## Relevant Legal Sources from RA Knowledge Base:\n\n";
@@ -433,6 +450,13 @@ serve(async (req) => {
       }
     }
 
+    // Add temporal versioning disclaimer
+    if (dateAssumed && ragContext.length > 0) {
+      ragContext += "\n\n## TEMPORAL ASSUMPTION\nNo specific case date was provided. Legislation shown reflects the CURRENTLY EFFECTIVE version as of today. If the events occurred on a different date, the applicable version of laws may differ. State this assumption explicitly in the analysis.\n";
+    } else if (referenceDate && ragContext.length > 0) {
+      ragContext += `\n\n## TEMPORAL CONTEXT\nLegislation filtered for versions effective as of ${referenceDate} (case court date).\n`;
+    }
+
     // Fetch case files content (OCR results, audio transcriptions, and raw file content) if caseId is provided
     let caseFilesContext = "";
     const fileContentsForVision: Array<{ name: string; base64: string; mimeType: string }> = [];
@@ -445,7 +469,7 @@ serve(async (req) => {
     if (caseId) {
       const { data: caseMeta, error: caseMetaError } = await supabase
         .from("cases")
-        .select("case_type, party_role")
+        .select("case_type, party_role, court_date")
         .eq("id", caseId)
         .maybeSingle();
 

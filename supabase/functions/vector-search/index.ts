@@ -17,7 +17,7 @@ serve(async (req) => {
   }
 
   try {
-    const { query, tables = "both", category, limit = 10, threshold: _threshold } = await req.json();
+    const { query, tables = "both", category, limit = 10, threshold: _threshold, reference_date } = await req.json();
 
     if (!query || typeof query !== "string") {
       return new Response(
@@ -41,7 +41,7 @@ serve(async (req) => {
 
     // --- Knowledge Base search ---
     if (tables === "kb" || tables === "both") {
-      const candidates = await keywordSearchKB(supabase, query, candidateLimit);
+      const candidates = await keywordSearchKB(supabase, query, candidateLimit, reference_date || null);
       if (candidates.length > 0) {
         results.kb = await rerankWithAI(query, candidates, safeLimit, LOVABLE_API_KEY);
       }
@@ -75,15 +75,17 @@ serve(async (req) => {
 async function keywordSearchKB(
   supabase: ReturnType<typeof createClient>,
   query: string,
-  limit: number
+  limit: number,
+  referenceDate: string | null = null
 ): Promise<Array<{ id: string; title: string; content_text: string; similarity?: number }>> {
   const results = new Map<string, { id: string; title: string; content_text: string; similarity: number }>();
 
-  // 1. Try RPC with full query
-  const { data: rpcData } = await supabase.rpc("search_knowledge_base", {
-    search_query: query,
-    result_limit: limit,
-  });
+  // Build RPC params with optional temporal filter
+  const rpcParams: Record<string, unknown> = { search_query: query, result_limit: limit };
+  if (referenceDate) rpcParams.reference_date = referenceDate;
+
+  // 1. Try RPC with full query (date-aware)
+  const { data: rpcData } = await supabase.rpc("search_knowledge_base", rpcParams);
   for (const r of rpcData || []) {
     results.set(r.id, {
       id: r.id, title: r.title,
@@ -96,10 +98,9 @@ async function keywordSearchKB(
   const words = query.split(/\s+/).filter(w => w.length >= 2);
   for (const word of words.slice(0, 5)) {
     if (results.size >= limit) break;
-    const { data: wordData } = await supabase.rpc("search_knowledge_base", {
-      search_query: word,
-      result_limit: Math.min(10, limit),
-    });
+    const wordParams: Record<string, unknown> = { search_query: word, result_limit: Math.min(10, limit) };
+    if (referenceDate) wordParams.reference_date = referenceDate;
+    const { data: wordData } = await supabase.rpc("search_knowledge_base", wordParams);
     for (const r of wordData || []) {
       if (!results.has(r.id)) {
         results.set(r.id, {

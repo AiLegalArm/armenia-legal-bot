@@ -1036,6 +1036,8 @@ export type Database = {
           content_text: string
           created_at: string
           current_version: number | null
+          effective_from: string | null
+          effective_to: string | null
           embedding: string | null
           embedding_attempts: number
           embedding_error: string | null
@@ -1045,6 +1047,7 @@ export type Database = {
           is_active: boolean
           source_name: string | null
           source_url: string | null
+          supersedes_doc_id: string | null
           title: string
           updated_at: string
           uploaded_by: string | null
@@ -1056,6 +1059,8 @@ export type Database = {
           content_text: string
           created_at?: string
           current_version?: number | null
+          effective_from?: string | null
+          effective_to?: string | null
           embedding?: string | null
           embedding_attempts?: number
           embedding_error?: string | null
@@ -1065,6 +1070,7 @@ export type Database = {
           is_active?: boolean
           source_name?: string | null
           source_url?: string | null
+          supersedes_doc_id?: string | null
           title: string
           updated_at?: string
           uploaded_by?: string | null
@@ -1076,6 +1082,8 @@ export type Database = {
           content_text?: string
           created_at?: string
           current_version?: number | null
+          effective_from?: string | null
+          effective_to?: string | null
           embedding?: string | null
           embedding_attempts?: number
           embedding_error?: string | null
@@ -1085,12 +1093,21 @@ export type Database = {
           is_active?: boolean
           source_name?: string | null
           source_url?: string | null
+          supersedes_doc_id?: string | null
           title?: string
           updated_at?: string
           uploaded_by?: string | null
           version_date?: string | null
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "knowledge_base_supersedes_doc_id_fkey"
+            columns: ["supersedes_doc_id"]
+            isOneToOne: false
+            referencedRelation: "knowledge_base"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       legal_chunks: {
         Row: {
@@ -1862,11 +1879,18 @@ export type Database = {
         Returns: string
       }
       search_knowledge_base: {
-        Args: { result_limit?: number; search_query: string }
+        Args: {
+          reference_date?: string
+          result_limit?: number
+          search_query: string
+        }
         Returns: {
           category: Database["public"]["Enums"]["kb_category"]
           content_text: string
+          effective_from: string
+          effective_to: string
           id: string
+          is_current: boolean
           rank: number
           source_name: string
           title: string

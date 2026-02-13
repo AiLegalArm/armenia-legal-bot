@@ -35,10 +35,14 @@ async function vectorSearch(
 export async function searchKnowledgeBase(
   query: string, 
   supabaseUrl: string, 
-  supabaseKey: string
+  supabaseKey: string,
+  referenceDate?: string | null
 ): Promise<string> {
   try {
     // Parallel: vector search + keyword search
+    const rpcBody: Record<string, unknown> = { search_query: query, result_limit: 5 };
+    if (referenceDate) rpcBody.reference_date = referenceDate;
+
     const [vectorResults, keywordResponse] = await Promise.all([
       vectorSearch(query, "kb", supabaseUrl, supabaseKey),
       fetch(`${supabaseUrl}/rest/v1/rpc/search_knowledge_base`, {
@@ -48,7 +52,7 @@ export async function searchKnowledgeBase(
           'apikey': supabaseKey,
           'Authorization': `Bearer ${supabaseKey}`,
         },
-        body: JSON.stringify({ search_query: query, result_limit: 5 })
+        body: JSON.stringify(rpcBody)
       })
     ]);
 
