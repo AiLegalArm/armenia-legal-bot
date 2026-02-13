@@ -11,7 +11,8 @@ import {
   Users,
   Users2,
   MessageSquare,
-  FileCode2
+  FileCode2,
+  AlertTriangle
 } from "lucide-react";
 import { AdminHeader } from "@/components/admin/AdminHeader";
 import { AdminKnowledgeBaseTab } from "@/components/admin/AdminKnowledgeBaseTab";
@@ -22,6 +23,7 @@ import { UserFeedback } from "@/components/admin/UserFeedback";
 import { PromptManager } from "@/components/admin/PromptManager";
 import { UsageMonitor } from "@/components/UsageMonitor";
 import { EmbeddingManager } from "@/components/admin/EmbeddingManager";
+import { ErrorLogs } from "@/components/admin/ErrorLogs";
 
 const AdminPanel = () => {
   const navigate = useNavigate();
@@ -90,6 +92,10 @@ const AdminPanel = () => {
               <FileCode2 className="h-4 w-4 shrink-0" />
               <span className="hidden sm:inline">{t('admin:prompts')}</span>
             </TabsTrigger>
+            <TabsTrigger value="errors" className="gap-1.5 px-2 py-1.5 text-xs sm:px-3 sm:text-sm">
+              <AlertTriangle className="h-4 w-4 shrink-0" />
+              <span className="hidden sm:inline">Логи ошибок</span>
+            </TabsTrigger>
           </TabsList>
 
           {/* Knowledge Base Tab */}
@@ -126,6 +132,11 @@ const AdminPanel = () => {
           {/* Prompts Tab */}
           <TabsContent value="prompts">
             <PromptManager />
+          </TabsContent>
+
+          {/* Error Logs Tab */}
+          <TabsContent value="errors">
+            <ErrorLogs />
           </TabsContent>
         </Tabs>
       </main>
