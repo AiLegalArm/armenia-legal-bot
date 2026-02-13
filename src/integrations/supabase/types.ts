@@ -1164,6 +1164,89 @@ export type Database = {
           norm_refs?: Json | null
           updated_at?: string
         }
+        Relationships: [
+          {
+            foreignKeyName: "fk_legal_chunks_doc"
+            columns: ["doc_id"]
+            isOneToOne: false
+            referencedRelation: "legal_documents"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      legal_documents: {
+        Row: {
+          applied_articles: Json | null
+          branch: string
+          content_text: string
+          court_meta: Json | null
+          created_at: string
+          date_adopted: string | null
+          date_effective: string | null
+          decision_map: Json | null
+          doc_type: string
+          document_number: string | null
+          id: string
+          ingestion_meta: Json | null
+          is_active: boolean
+          jurisdiction: string
+          key_violations: string[] | null
+          legal_reasoning_summary: string | null
+          source_hash: string | null
+          source_name: string | null
+          source_url: string | null
+          title: string
+          title_alt: string | null
+          updated_at: string
+        }
+        Insert: {
+          applied_articles?: Json | null
+          branch?: string
+          content_text: string
+          court_meta?: Json | null
+          created_at?: string
+          date_adopted?: string | null
+          date_effective?: string | null
+          decision_map?: Json | null
+          doc_type: string
+          document_number?: string | null
+          id?: string
+          ingestion_meta?: Json | null
+          is_active?: boolean
+          jurisdiction?: string
+          key_violations?: string[] | null
+          legal_reasoning_summary?: string | null
+          source_hash?: string | null
+          source_name?: string | null
+          source_url?: string | null
+          title: string
+          title_alt?: string | null
+          updated_at?: string
+        }
+        Update: {
+          applied_articles?: Json | null
+          branch?: string
+          content_text?: string
+          court_meta?: Json | null
+          created_at?: string
+          date_adopted?: string | null
+          date_effective?: string | null
+          decision_map?: Json | null
+          doc_type?: string
+          document_number?: string | null
+          id?: string
+          ingestion_meta?: Json | null
+          is_active?: boolean
+          jurisdiction?: string
+          key_violations?: string[] | null
+          legal_reasoning_summary?: string | null
+          source_hash?: string | null
+          source_name?: string | null
+          source_url?: string | null
+          title?: string
+          title_alt?: string | null
+          updated_at?: string
+        }
         Relationships: []
       }
       legal_practice_kb: {
