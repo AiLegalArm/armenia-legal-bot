@@ -10,6 +10,7 @@ import {
 } from "./prompts/index.ts";
 import { BASE_SYSTEM_PROMPT } from "./system.ts";
 import { sandboxUserInput, secureSandbox, logInjectionAttempt, ANTI_INJECTION_RULES } from "../_shared/prompt-armor.ts";
+import { applyBudgets, logTokenUsage, type RankedContent } from "../_shared/token-budget.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -668,6 +669,19 @@ serve(async (req) => {
         return null;
       }
     }
+
+    // ====== TOKEN BUDGET LIMITER ======
+    const budgeted = applyBudgets({
+      userFacts: caseFacts || "",
+      ocrText: caseFilesContext || "",
+      ragLegislation: ragContext ? [{ text: ragContext, score: 10 }] : [],
+    }, "analyze");
+    logTokenUsage("ai-analyze", user.id, budgeted.usage);
+    
+    // Apply budgeted values
+    const budgetedFacts = budgeted.userFacts || caseFacts || "";
+    const budgetedOcr = budgeted.ocrText || caseFilesContext || "";
+    const budgetedRag = budgeted.ragLegislation || ragContext || "";
 
     // Build user message
     let userMessage = "";
