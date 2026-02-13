@@ -3,22 +3,170 @@
 // Shared across all AI edge functions
 // =============================================================================
 
+// ---------------------------------------------------------------------------
+// Injection Detection Patterns
+// ---------------------------------------------------------------------------
+
+/** Known prompt-injection phrases (case-insensitive matching). */
+const INJECTION_PATTERNS: Array<{ pattern: RegExp; label: string }> = [
+  // Direct override attempts
+  { pattern: /ignore\s+(all\s+)?previous\s+(instructions?|prompts?|rules?|context)/gi, label: "override_previous" },
+  { pattern: /forget\s+(all\s+)?(your\s+)?(previous\s+)?(instructions?|prompts?|rules?|context)/gi, label: "forget_instructions" },
+  { pattern: /disregard\s+(all\s+)?(previous\s+)?(instructions?|prompts?|rules?|context)/gi, label: "disregard_instructions" },
+  { pattern: /override\s+(system|safety|security)[\s\w]*(prompt|instructions?|rules?|policy|controls?)/gi, label: "override_system" },
+
+  // Role hijacking
+  { pattern: /you\s+are\s+now\s+(a\s+)?/gi, label: "role_hijack" },
+  { pattern: /act\s+as\s+(a\s+)?(different|new|another)/gi, label: "role_hijack" },
+  { pattern: /pretend\s+(to\s+be|you\s+are)/gi, label: "role_hijack" },
+  { pattern: /new\s+system\s+prompt/gi, label: "new_system_prompt" },
+  { pattern: /enter\s+(developer|admin|debug|god)\s+mode/gi, label: "mode_switch" },
+
+  // Exfiltration
+  { pattern: /repeat\s+(your|the|system)\s+(system\s+)?(prompt|instructions?)/gi, label: "exfiltrate_prompt" },
+  { pattern: /show\s+(me\s+)?(your|the)\s+(system\s+)?(prompt|instructions?|rules?)/gi, label: "exfiltrate_prompt" },
+  { pattern: /output\s+(your|the)\s+(system\s+)?(prompt|instructions?)/gi, label: "exfiltrate_prompt" },
+  { pattern: /what\s+(are|is)\s+(your|the)\s+(system\s+)?(prompt|instructions?|rules?)/gi, label: "exfiltrate_prompt" },
+  { pattern: /print\s+(your|the)\s+(system\s+)?(prompt|instructions?)/gi, label: "exfiltrate_prompt" },
+
+  // Tool / function abuse
+  { pattern: /\bcall\s+function\b/gi, label: "tool_abuse" },
+  { pattern: /\bexecute\s+(code|command|script|sql|query)\b/gi, label: "tool_abuse" },
+  { pattern: /\brun\s+(this\s+)?(code|command|script|sql)\b/gi, label: "tool_abuse" },
+
+  // Encoding evasion (base64, hex instructions)
+  { pattern: /base64[:\s]+decode/gi, label: "encoding_evasion" },
+  { pattern: /\batob\s*\(/gi, label: "encoding_evasion" },
+
+  // Delimiter injection (ChatML, Llama, etc.)
+  { pattern: /<\|(?:im_start|im_end|system|user|assistant|endoftext)\|>/gi, label: "delimiter_injection" },
+  { pattern: /\[INST\]/gi, label: "delimiter_injection" },
+  { pattern: /\[\/INST\]/gi, label: "delimiter_injection" },
+  { pattern: /<\/?system>/gi, label: "delimiter_injection" },
+  { pattern: /<<\s*SYS\s*>>/gi, label: "delimiter_injection" },
+  { pattern: /<<\s*\/SYS\s*>>/gi, label: "delimiter_injection" },
+];
+
+/**
+ * Result of injection detection scan.
+ */
+export interface InjectionScanResult {
+  /** Whether any injection patterns were detected */
+  injectionDetected: boolean;
+  /** Labels of detected patterns */
+  detectedPatterns: string[];
+  /** Sanitized text with injection payloads neutralized */
+  sanitizedText: string;
+  /** Original text length */
+  originalLength: number;
+  /** Number of patterns neutralized */
+  patternsNeutralized: number;
+}
+
+/**
+ * Scans and sanitizes user input for prompt injection attempts.
+ * Returns sanitized text + detection metadata for logging.
+ *
+ * This does NOT wrap in data blocks (use sandboxUserInput for that).
+ * This is the first-pass firewall before sandboxing.
+ */
+export function sanitizeUserInput(text: string): InjectionScanResult {
+  if (!text || typeof text !== "string") {
+    return {
+      injectionDetected: false,
+      detectedPatterns: [],
+      sanitizedText: "",
+      originalLength: 0,
+      patternsNeutralized: 0,
+    };
+  }
+
+  const detectedPatterns: string[] = [];
+  let sanitized = text;
+  let patternsNeutralized = 0;
+
+  for (const { pattern, label } of INJECTION_PATTERNS) {
+    // Reset lastIndex for global regexes
+    pattern.lastIndex = 0;
+    if (pattern.test(sanitized)) {
+      if (!detectedPatterns.includes(label)) {
+        detectedPatterns.push(label);
+      }
+      // Neutralize by wrapping matched text in [BLOCKED] markers
+      pattern.lastIndex = 0;
+      sanitized = sanitized.replace(pattern, (match) => {
+        patternsNeutralized++;
+        return `[BLOCKED:${label}]`;
+      });
+    }
+  }
+
+  // Strip structural delimiters that survived pattern matching
+  sanitized = sanitized
+    .replace(/={5,}/g, "----")
+    .replace(/<\|[^|]*\|>/g, "")
+    .replace(/<<\s*\/?SYS\s*>>/gi, "");
+
+  return {
+    injectionDetected: detectedPatterns.length > 0,
+    detectedPatterns,
+    sanitizedText: sanitized,
+    originalLength: text.length,
+    patternsNeutralized,
+  };
+}
+
+/**
+ * Logs injection detection results. Call this in edge functions
+ * when injectionDetected is true.
+ */
+export function logInjectionAttempt(
+  functionName: string,
+  label: string,
+  scanResult: InjectionScanResult
+): void {
+  if (!scanResult.injectionDetected) return;
+  console.warn(
+    `[PROMPT-ARMOR] INJECTION DETECTED in ${functionName}/${label}: ` +
+    `patterns=[${scanResult.detectedPatterns.join(",")}] ` +
+    `neutralized=${scanResult.patternsNeutralized} ` +
+    `inputLen=${scanResult.originalLength}`
+  );
+}
+
+/**
+ * Combined sanitize + sandbox: first neutralizes injection patterns,
+ * then wraps in a fenced data block. This is the recommended entry point.
+ */
+export function secureSandbox(
+  label: string,
+  text: string,
+  functionName = "unknown"
+): { output: string; scanResult: InjectionScanResult } {
+  const scanResult = sanitizeUserInput(text);
+  logInjectionAttempt(functionName, label, scanResult);
+
+  if (!scanResult.sanitizedText) return { output: "", scanResult };
+
+  const output =
+    `\n======== BEGIN USER DATA: ${label} ========\n` +
+    `${scanResult.sanitizedText}\n` +
+    `======== END USER DATA: ${label} ========\n`;
+
+  return { output, scanResult };
+}
+
 /**
  * Wraps user-supplied text in a quoted data block that the LLM treats as DATA,
  * not as instructions.  Any embedded "system" / "ignore previous" attacks are
  * neutralised because the model sees them inside a clearly demarcated fence.
+ *
+ * @deprecated Use secureSandbox() for new code. This is kept for backward compat.
  */
 export function sandboxUserInput(label: string, text: string): string {
   if (!text || typeof text !== "string") return "";
-  // Strip any attempt to close the fence early
-  const sanitized = text
-    .replace(/={5,}/g, "----")
-    .replace(/<\/?system>/gi, "")
-    .replace(/\[INST\]/gi, "")
-    .replace(/\[\/INST\]/gi, "")
-    .replace(/<\|im_start\|>/gi, "")
-    .replace(/<\|im_end\|>/gi, "");
-  return `\n======== BEGIN USER DATA: ${label} ========\n${sanitized}\n======== END USER DATA: ${label} ========\n`;
+  const { output } = secureSandbox(label, text);
+  return output;
 }
 
 /**
