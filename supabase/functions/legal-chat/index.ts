@@ -3,6 +3,7 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2.91.1";
 import { sandboxUserInput, secureSandbox, logInjectionAttempt, sanitizeUserInput, ANTI_INJECTION_RULES } from "../_shared/prompt-armor.ts";
 import { applyBudgets, logTokenUsage, type RankedContent } from "../_shared/token-budget.ts";
 import { LEGAL_CHAT, buildModelParams } from "../_shared/model-config.ts";
+import { redactForLog } from "../_shared/pii-redactor.ts";
 
 // Type for knowledge base search results
 interface KBSearchResult {
@@ -261,7 +262,7 @@ serve(async (req) => {
         .slice(0, 8);
       
       const safeKeywords = keywords.map(sanitizeForPostgrest).filter((k: string) => k.length > 0);
-      console.log(`Searching KB with ${safeKeywords.length} keywords: ${safeKeywords.join(', ')}`);
+      console.log(`Searching KB with ${safeKeywords.length} keywords: ${redactForLog(safeKeywords.join(', '), 200)}`);
       
       // Determine reference date for temporal legislation filtering
       const referenceDate: string | null = (caseDate && typeof caseDate === "string") ? caseDate : null;
