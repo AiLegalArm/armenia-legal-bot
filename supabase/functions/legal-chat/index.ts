@@ -2,6 +2,7 @@ import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.91.1";
 import { sandboxUserInput, secureSandbox, logInjectionAttempt, sanitizeUserInput, ANTI_INJECTION_RULES } from "../_shared/prompt-armor.ts";
 import { applyBudgets, logTokenUsage, type RankedContent } from "../_shared/token-budget.ts";
+import { LEGAL_CHAT, buildModelParams } from "../_shared/model-config.ts";
 
 // Type for knowledge base search results
 interface KBSearchResult {
@@ -488,10 +489,8 @@ ${fullText}`;
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        model: "google/gemini-2.5-pro",
+        ...buildModelParams(LEGAL_CHAT),
         messages,
-        temperature: 0.2,
-        max_tokens: 16000,
         stream: true,
       }),
     });

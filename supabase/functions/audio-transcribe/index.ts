@@ -1,5 +1,6 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.91.1";
+import { AUDIO_TRANSCRIPTION, buildModelParams } from "../_shared/model-config.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -195,7 +196,7 @@ serve(async (req) => {
     // Build request - use inline data for all files
     // Lovable AI Gateway handles large inline content well
     const requestBody = {
-      model: "google/gemini-2.5-flash",
+      ...buildModelParams(AUDIO_TRANSCRIPTION),
       messages: [
         { role: "system", content: TRANSCRIPTION_SYSTEM_PROMPT },
         { 
@@ -215,8 +216,6 @@ serve(async (req) => {
           ]
         }
       ],
-      temperature: 0.1,
-      max_tokens: 16000,
     };
 
     // Call Gemini via Lovable AI Gateway
