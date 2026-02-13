@@ -1080,6 +1080,63 @@ export type Database = {
         }
         Relationships: []
       }
+      legal_chunks: {
+        Row: {
+          char_end: number
+          char_start: number
+          chunk_hash: string | null
+          chunk_index: number
+          chunk_text: string
+          chunk_type: string
+          created_at: string
+          doc_id: string
+          doc_type: string
+          embedding: string | null
+          id: string
+          is_active: boolean
+          label: string | null
+          metadata: Json | null
+          norm_refs: Json | null
+          updated_at: string
+        }
+        Insert: {
+          char_end?: number
+          char_start?: number
+          chunk_hash?: string | null
+          chunk_index?: number
+          chunk_text: string
+          chunk_type?: string
+          created_at?: string
+          doc_id: string
+          doc_type: string
+          embedding?: string | null
+          id?: string
+          is_active?: boolean
+          label?: string | null
+          metadata?: Json | null
+          norm_refs?: Json | null
+          updated_at?: string
+        }
+        Update: {
+          char_end?: number
+          char_start?: number
+          chunk_hash?: string | null
+          chunk_index?: number
+          chunk_text?: string
+          chunk_type?: string
+          created_at?: string
+          doc_id?: string
+          doc_type?: string
+          embedding?: string | null
+          id?: string
+          is_active?: boolean
+          label?: string | null
+          metadata?: Json | null
+          norm_refs?: Json | null
+          updated_at?: string
+        }
+        Relationships: []
+      }
       legal_practice_kb: {
         Row: {
           applied_articles: Json | null
@@ -1787,6 +1844,19 @@ export type Database = {
           title: string
           version_date: string
         }[]
+      }
+      search_legal_chunks: {
+        Args: {
+          filter_chunk_types?: string[]
+          filter_doc_types?: string[]
+          filter_norm_article?: string
+          legislation_budget?: number
+          match_count?: number
+          match_threshold?: number
+          practice_budget?: number
+          query_embedding: string
+        }
+        Returns: Json
       }
       search_legal_practice: {
         Args: {
