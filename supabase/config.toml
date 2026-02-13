@@ -41,3 +41,6 @@ verify_jwt = false
 
 [functions.vector-search]
 verify_jwt = false
+
+[functions.legal-document-normalizer]
+verify_jwt = false
