@@ -1,5 +1,6 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.91.1";
+import { KEYWORD_EXTRACTION, buildModelParams } from "../_shared/model-config.ts";
 
 interface KBSearchResult {
   id: string;
@@ -174,13 +175,11 @@ serve(async (req) => {
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
-          model: "google/gemini-2.5-flash-lite",
+          ...buildModelParams(KEYWORD_EXTRACTION),
           messages: [
             { role: "system", content: SEARCH_ASSISTANT_SYSTEM_PROMPT },
             { role: "user", content: query }
           ],
-          temperature: 0.1,
-          max_tokens: 200,
         }),
       });
 

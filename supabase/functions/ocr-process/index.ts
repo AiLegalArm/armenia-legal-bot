@@ -1,5 +1,6 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.91.1";
+import { OCR_EXTRACTION, buildModelParams } from "../_shared/model-config.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -737,10 +738,8 @@ serve(async (req) => {
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        model: "google/gemini-2.5-flash",
+        ...buildModelParams(OCR_EXTRACTION),
         messages,
-        temperature: 0.1,
-        max_tokens: 8000,
       }),
     });
 

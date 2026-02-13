@@ -1,5 +1,6 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { COMPLAINT_GENERATION, buildModelParams } from "../_shared/model-config.ts";
 
 import { SYSTEM_PROMPT, COURT_INSTRUCTIONS, LANGUAGE_INSTRUCTIONS } from "./prompts/index.ts";
 import { validateRequest } from "./validators.ts";
@@ -132,13 +133,11 @@ Use the court practice examples above to strengthen legal argumentation with rel
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        model: "google/gemini-2.5-pro",
+        ...buildModelParams(COMPLAINT_GENERATION),
         messages: [
           { role: "system", content: SYSTEM_PROMPT },
           { role: "user", content: userPrompt }
         ],
-        temperature: 0.1, // Low temperature for legal precision
-        max_tokens: 12000,
       }),
     });
 

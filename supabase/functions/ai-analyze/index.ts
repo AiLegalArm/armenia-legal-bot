@@ -11,6 +11,7 @@ import {
 import { BASE_SYSTEM_PROMPT } from "./system.ts";
 import { sandboxUserInput, secureSandbox, logInjectionAttempt, ANTI_INJECTION_RULES } from "../_shared/prompt-armor.ts";
 import { applyBudgets, logTokenUsage, type RankedContent } from "../_shared/token-budget.ts";
+import { LEGAL_DETERMINISTIC, buildModelParams } from "../_shared/model-config.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -807,15 +808,11 @@ Please provide your professional legal analysis from your designated role perspe
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        model: "google/gemini-2.5-pro",
+        ...buildModelParams(LEGAL_DETERMINISTIC),
         messages: [
           { role: "system", content: systemPrompt },
           { role: "user", content: messageContent },
         ],
-        temperature: 0.3,
-        top_p: 0.92,
-        frequency_penalty: 1.2,
-        max_tokens: 16384,
       }),
     });
 
