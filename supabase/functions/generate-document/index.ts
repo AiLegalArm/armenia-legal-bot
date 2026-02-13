@@ -1,6 +1,7 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { sandboxUserInput, secureSandbox, logInjectionAttempt, ANTI_INJECTION_RULES } from "../_shared/prompt-armor.ts";
+import { applyBudgets, logTokenUsage, type RankedContent } from "../_shared/token-budget.ts";
 import { DOCUMENT_PROMPTS } from "./prompts/index.ts";
 import { SYSTEM_PROMPTS } from "./system-prompts.ts";
 import {
@@ -90,6 +91,16 @@ serve(async (req) => {
       
       kbContext = kbResults;
       legalPracticeContext = practiceResults;
+      
+      // Apply token budgets to RAG contexts
+      const budgeted = applyBudgets({
+        userFacts: contextText,
+        ragLegislation: kbContext ? [{ text: kbContext, score: 10 }] : [],
+        ragPractice: legalPracticeContext ? [{ text: legalPracticeContext, score: 10 }] : [],
+      }, "document");
+      logTokenUsage("generate-document", user.id, budgeted.usage);
+      kbContext = budgeted.ragLegislation;
+      legalPracticeContext = budgeted.ragPractice;
       
       console.log(`RAG: KB context length: ${kbContext.length}, Legal practice length: ${legalPracticeContext.length}`);
     }
