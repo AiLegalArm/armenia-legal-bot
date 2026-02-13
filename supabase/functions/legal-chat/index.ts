@@ -1,6 +1,6 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.91.1";
-import { sandboxUserInput, ANTI_INJECTION_RULES } from "../_shared/prompt-armor.ts";
+import { sandboxUserInput, secureSandbox, logInjectionAttempt, sanitizeUserInput, ANTI_INJECTION_RULES } from "../_shared/prompt-armor.ts";
 
 // Type for knowledge base search results
 interface KBSearchResult {
@@ -437,11 +437,16 @@ ${fullText}`;
       console.error("Legal practice search error:", practiceErr);
     }
 
-    // Build the final prompt with context
+    // Pre-scan user message for injection attempts
+    const messageScan = sanitizeUserInput(message);
+    if (messageScan.injectionDetected) {
+      logInjectionAttempt("legal-chat", "USER_MESSAGE", messageScan);
+    }
+
     const systemPromptWithContext = LEGAL_AI_SYSTEM_PROMPT
       .replace("{CONTEXT}", kbContext || "\u0533\u056B\u057F\u0565\u056C\u056B\u0584\u0576\u0565\u0580\u056B \u0562\u0561\u0566\u0561\u0575\u0578\u0582\u0574 \u0570\u0561\u0574\u0561\u057A\u0561\u057F\u0561\u057D\u056D\u0561\u0576 \u057F\u0565\u0572\u0565\u056F\u0561\u057F\u057E\u0578\u0582\u0569\u0575\u0578\u0582\u0576 \u0579\u056B \u0563\u057F\u0576\u057E\u0565\u056C\u0589")
       .replace("{PRACTICE_CONTEXT}", practiceContext || "\u0534\u0561\u057F\u0561\u056F\u0561\u0576 \u057A\u0580\u0561\u056F\u057F\u056B\u056F\u0561\u0575\u056B \u0570\u0561\u0574\u0561\u057A\u0561\u057F\u0561\u057D\u056D\u0561\u0576 \u0578\u0580\u0578\u0577\u0578\u0582\u0574\u0576\u0565\u0580 \u0579\u0565\u0576 \u0563\u057F\u0576\u057E\u0565\u056C\u0589")
-      .replace("{USER_MESSAGE}", sandboxUserInput("USER_MESSAGE", message));
+      .replace("{USER_MESSAGE}", secureSandbox("USER_MESSAGE", messageScan.sanitizedText, "legal-chat").output);
 
     // Build messages array with conversation history
     const messages: Array<{ role: string; content: string }> = [

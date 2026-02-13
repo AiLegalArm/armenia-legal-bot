@@ -1,6 +1,6 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
-import { sandboxUserInput, ANTI_INJECTION_RULES } from "../_shared/prompt-armor.ts";
+import { sandboxUserInput, secureSandbox, logInjectionAttempt, ANTI_INJECTION_RULES } from "../_shared/prompt-armor.ts";
 import { DOCUMENT_PROMPTS } from "./prompts/index.ts";
 import { SYSTEM_PROMPTS } from "./system-prompts.ts";
 import {
@@ -121,7 +121,7 @@ APPLICANT/SENDER INFORMATION:
 ${senderInfo}
 
 CONTEXT AND FACTS:
-${sandboxUserInput("CONTEXT_AND_FACTS", contextText)}
+${secureSandbox("CONTEXT_AND_FACTS", contextText, "generate-document").output}
 
 ${request.additionalFields ? `ADDITIONAL INFORMATION:\n${JSON.stringify(request.additionalFields, null, 2)}` : ''}
 

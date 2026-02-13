@@ -9,7 +9,7 @@ import {
   PROMPT_REGISTRY,
 } from "./prompts/index.ts";
 import { BASE_SYSTEM_PROMPT } from "./system.ts";
-import { sandboxUserInput, ANTI_INJECTION_RULES } from "../_shared/prompt-armor.ts";
+import { sandboxUserInput, secureSandbox, logInjectionAttempt, ANTI_INJECTION_RULES } from "../_shared/prompt-armor.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
