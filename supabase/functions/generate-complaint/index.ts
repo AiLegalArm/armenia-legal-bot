@@ -10,6 +10,7 @@ import {
   buildSearchQuery,
   mapCourtTypeToPracticeCategory 
 } from "./rag-search.ts";
+import { redactForLog } from "../_shared/pii-redactor.ts";
 
 // =============================================================================
 // CORS HEADERS
@@ -54,6 +55,7 @@ serve(async (req) => {
 
     const body = await req.json();
     const request = validateRequest(body);
+    const anonymize = body.anonymize === true;
 
     const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
     if (!LOVABLE_API_KEY) {
@@ -124,7 +126,7 @@ Use the court practice examples above to strengthen legal argumentation with rel
 
     console.log(`Generating ${request.courtType} complaint, language: ${request.language}`);
     console.log(`Extracted text length: ${request.extractedText.length}`);
-    console.log(`KB context length: ${kbContext.length}, Legal practice length: ${legalPracticeContext.length}`);
+    console.log(`KB context length: ${kbContext.length}, Legal practice: ${legalPracticeContext.length}`);
 
     const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
       method: "POST",
@@ -160,7 +162,14 @@ Use the court practice examples above to strengthen legal argumentation with rel
     }
 
     const data = await response.json();
-    const generatedContent = data.choices?.[0]?.message?.content || "";
+    let generatedContent = data.choices?.[0]?.message?.content || "";
+
+    // Optional: redact PII from AI output when user requests anonymized draft
+    if (anonymize && generatedContent) {
+      const { redactAIOutput } = await import("../_shared/pii-redactor.ts");
+      generatedContent = redactAIOutput(generatedContent);
+      console.log("Anonymized complaint output");
+    }
 
     console.log("Complaint generated, length:", generatedContent.length);
 
@@ -171,7 +180,8 @@ Use the court practice examples above to strengthen legal argumentation with rel
         courtType: request.courtType,
         category: request.category,
         ragSourcesUsed: kbContext.length > 0 || legalPracticeContext.length > 0,
-        legalPracticeUsed: legalPracticeContext.length > 0
+        legalPracticeUsed: legalPracticeContext.length > 0,
+        anonymized: anonymize
       }),
       { headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );

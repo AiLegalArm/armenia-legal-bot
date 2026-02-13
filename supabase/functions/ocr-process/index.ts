@@ -1,6 +1,7 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.91.1";
 import { OCR_EXTRACTION, buildModelParams } from "../_shared/model-config.ts";
+import { redactForLog } from "../_shared/pii-redactor.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -770,7 +771,7 @@ serve(async (req) => {
     const aiResponse = await response.json();
     const rawContent = aiResponse.choices?.[0]?.message?.content || "";
     
-    console.log("Raw OCR response:", rawContent.substring(0, 500));
+    console.log("Raw OCR response:", redactForLog(rawContent, 500));
 
     // Parse the JSON response
     let ocrResult;

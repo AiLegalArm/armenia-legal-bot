@@ -12,6 +12,7 @@ import { BASE_SYSTEM_PROMPT } from "./system.ts";
 import { sandboxUserInput, secureSandbox, logInjectionAttempt, ANTI_INJECTION_RULES } from "../_shared/prompt-armor.ts";
 import { applyBudgets, logTokenUsage, type RankedContent } from "../_shared/token-budget.ts";
 import { LEGAL_DETERMINISTIC, buildModelParams } from "../_shared/model-config.ts";
+import { redactPII } from "../_shared/pii-redactor.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -976,7 +977,7 @@ Please provide your professional legal analysis from your designated role perspe
       await supabase.from("ai_analysis").insert({
         case_id: caseId,
         role: roleToStore,
-        prompt_used: userMessage.substring(0, 2000),
+        prompt_used: redactPII(userMessage.substring(0, 2000)),
         response_text: analysisText,
         sources_used: sourcesUsed.length > 0 ? sourcesUsed : null,
         created_by: userId,
