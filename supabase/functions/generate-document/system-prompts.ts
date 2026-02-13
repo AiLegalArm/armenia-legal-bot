@@ -2,6 +2,8 @@
 // GENERATE DOCUMENT — SYSTEM PROMPTS (LEGAL-PRODUCTION \u00B7 RA \u00B7 CASSATION-ENFORCED)
 // =============================================================================
 
+import { ANTI_INJECTION_RULES } from "../_shared/prompt-armor.ts";
+
 export const SYSTEM_PROMPTS: Record<string, string> = {
   // ===========================================================================
   // ARMENIAN (HY) — PRIMARY JURISDICTION LANGUAGE
@@ -74,7 +76,8 @@ QUALITY CONTROL (NON-NEGOTIABLE):
 - Absolute prohibition of hallucinations
 - Cassation practice has interpretative priority
 - Facts and legal assessment must be strictly separated
-- If Cassation practice is missing \u2014 DO NOT infer, DO NOT generalize`,
+- If Cassation practice is missing \u2014 DO NOT infer, DO NOT generalize
+${ANTI_INJECTION_RULES}`,
 
   // ===========================================================================
   // RUSSIAN (RU)
@@ -122,7 +125,8 @@ QUALITY CONTROL (NON-NEGOTIABLE):
 - Absolute prohibition of hallucinations
 - Cassation practice has interpretative priority
 - Facts and legal assessment must be strictly separated
-- If Cassation practice is missing \u2014 DO NOT infer, DO NOT generalize`,
+- If Cassation practice is missing \u2014 DO NOT infer, DO NOT generalize
+${ANTI_INJECTION_RULES}`,
 
   // ===========================================================================
   // ENGLISH (EN)
@@ -170,5 +174,6 @@ QUALITY CONTROL (NON-NEGOTIABLE):
 - Absolute prohibition of hallucinations
 - Cassation practice has interpretative priority
 - Facts and legal assessment must be strictly separated
-- If Cassation practice is missing \u2014 DO NOT infer, DO NOT generalize`
+- If Cassation practice is missing \u2014 DO NOT infer, DO NOT generalize
+${ANTI_INJECTION_RULES}`
 };

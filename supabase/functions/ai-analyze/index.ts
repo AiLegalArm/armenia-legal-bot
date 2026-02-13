@@ -9,6 +9,7 @@ import {
   PROMPT_REGISTRY,
 } from "./prompts/index.ts";
 import { BASE_SYSTEM_PROMPT } from "./system.ts";
+import { sandboxUserInput, ANTI_INJECTION_RULES } from "../_shared/prompt-armor.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -707,10 +708,10 @@ Please provide a comprehensive synthesis of all perspectives and your final reco
 
 ${partyContextBlock}
 ### \u0533\u0578\u0580\u056E\u056B \u0583\u0561\u057D\u057F\u0565\u0580 (Case Facts):
-${caseFacts || "\u0546\u0577\u057E\u0561\u056E \u0579\u0567"}
+${sandboxUserInput("CASE_FACTS", caseFacts || "\u0546\u0577\u057E\u0561\u056E \u0579\u0567")}
 
 ### \u053B\u0580\u0561\u057E\u0561\u056F\u0561\u0576 \u0570\u0561\u0580\u0581 (Legal Question):
-${legalQuestion || "\u0546\u0577\u057E\u0561\u056E \u0579\u0567"}
+${sandboxUserInput("LEGAL_QUESTION", legalQuestion || "\u0546\u0577\u057E\u0561\u056E \u0579\u0567")}
 
 ${caseFilesContext}
 
@@ -722,10 +723,10 @@ Perform focused analysis as specified in the system prompt. Base your analysis O
 
 ${partyContextBlock}
 ### Case Facts:
-${caseFacts || "Not provided"}
+${sandboxUserInput("CASE_FACTS", caseFacts || "Not provided")}
 
 ### Legal Question:
-${legalQuestion || "Not provided"}
+${sandboxUserInput("LEGAL_QUESTION", legalQuestion || "Not provided")}
 
 ${caseFilesContext}
 
@@ -797,7 +798,7 @@ Please provide your professional legal analysis from your designated role perspe
           { role: "system", content: systemPrompt },
           { role: "user", content: messageContent },
         ],
-        temperature: 0.7,
+        temperature: 0.3,
         top_p: 0.92,
         frequency_penalty: 1.2,
         max_tokens: 16384,
