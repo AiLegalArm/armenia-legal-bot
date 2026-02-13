@@ -809,29 +809,60 @@ serve(async (req) => {
 
     const needsReview = confidence_score < CONFIDENCE_THRESHOLD;
 
-    // Save to ocr_results table
-    const { data: ocrRecord, error: insertError } = await supabase
-      .from("ocr_results")
-      .insert({
-        file_id: fileId,
-        extracted_text: extracted_text,
-        confidence: confidence_score,
-        language: languages_detected?.join(", ") || "unknown",
-        needs_review: needsReview,
-        reviewed_by: null
-      })
-      .select()
-      .single();
+    // Save to ocr_results table (only if fileId is provided)
+    let ocrRecord = null;
+    if (fileId) {
+      // Check if result already exists for this file
+      const { data: existingOcr } = await supabase
+        .from("ocr_results")
+        .select("id")
+        .eq("file_id", fileId)
+        .maybeSingle();
 
-    if (insertError) {
-      console.error("Failed to save OCR result:", insertError);
-      await supabase.rpc("log_error", {
-        _error_type: "ocr",
-        _error_message: "Failed to save OCR result",
-        _error_details: { error: insertError, fileId },
-        _case_id: caseId || null,
-        _file_id: fileId || null
-      });
+      if (existingOcr) {
+        const { data: updated, error: updateError } = await supabase
+          .from("ocr_results")
+          .update({
+            extracted_text: extracted_text,
+            confidence: confidence_score,
+            language: languages_detected?.join(", ") || "unknown",
+            needs_review: needsReview,
+          })
+          .eq("id", existingOcr.id)
+          .select()
+          .single();
+        if (updateError) {
+          console.error("Failed to update OCR result:", updateError);
+        } else {
+          ocrRecord = updated;
+        }
+      } else {
+        const { data: inserted, error: insertError } = await supabase
+          .from("ocr_results")
+          .insert({
+            file_id: fileId,
+            extracted_text: extracted_text,
+            confidence: confidence_score,
+            language: languages_detected?.join(", ") || "unknown",
+            needs_review: needsReview,
+          })
+          .select()
+          .single();
+        if (insertError) {
+          console.error("Failed to save OCR result:", insertError);
+          await supabase.rpc("log_error", {
+            _error_type: "ocr",
+            _error_message: "Failed to save OCR result",
+            _error_details: { error: insertError, fileId },
+            _case_id: caseId || null,
+            _file_id: fileId || null
+          });
+        } else {
+          ocrRecord = inserted;
+        }
+      }
+    } else {
+      console.warn("No fileId provided, skipping OCR result save to database");
     }
 
     // Log API usage for cost tracking
