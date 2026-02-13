@@ -3,12 +3,13 @@ import { supabase } from "@/integrations/supabase/client";
 type EmbeddingProgress = {
   processedDocs: number;
   totalRemaining: number;
+  deadLetterCount?: number;
   errors?: string[];
 };
 
 /**
  * Runs generate-embeddings in a loop until all documents are processed.
- * Each call processes up to `batchLimit` docs (default 10).
+ * Each call processes up to `batchLimit` docs (default 5).
  */
 export async function runBatchEmbedding(opts: {
   table: "knowledge_base" | "legal_practice_kb";
@@ -19,6 +20,7 @@ export async function runBatchEmbedding(opts: {
   const batchLimit = opts.batchLimit ?? 5;
   let totalProcessed = 0;
   let remaining = Infinity;
+  let deadLetterCount = 0;
   const allErrors: string[] = [];
 
   while (remaining > 0) {
@@ -32,6 +34,7 @@ export async function runBatchEmbedding(opts: {
 
     const batchProcessed = data?.processedDocs ?? 0;
     remaining = data?.totalRemaining ?? 0;
+    deadLetterCount = data?.deadLetterCount ?? 0;
     totalProcessed += batchProcessed;
     
     if (data?.errors) allErrors.push(...data.errors);
@@ -39,6 +42,7 @@ export async function runBatchEmbedding(opts: {
     opts.onProgress?.({
       processedDocs: totalProcessed,
       totalRemaining: remaining,
+      deadLetterCount,
       errors: allErrors.length > 0 ? allErrors : undefined,
     });
 
@@ -49,6 +53,7 @@ export async function runBatchEmbedding(opts: {
   return {
     processedDocs: totalProcessed,
     totalRemaining: remaining,
+    deadLetterCount,
     errors: allErrors.length > 0 ? allErrors : undefined,
   };
 }
