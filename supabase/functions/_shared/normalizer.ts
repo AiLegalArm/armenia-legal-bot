@@ -233,19 +233,27 @@ function extractTitle(text: string, _docType: DocType): string {
   return title.slice(0, 500);
 }
 
-function simpleHash(text: string): string {
-  let hash = 0;
-  for (let i = 0; i < Math.min(text.length, 10000); i++) {
-    const char = text.charCodeAt(i);
-    hash = ((hash << 5) - hash) + char;
-    hash |= 0;
-  }
-  return Math.abs(hash).toString(16).padStart(8, "0");
+// ─── SHA-256 HASH ───────────────────────────────────────────────────
+
+const HASH_PREFIX_CHARS = 10_000;
+
+/**
+ * Compute SHA-256 hex digest of the first N chars of text.
+ * Uses Web Crypto API (available in Deno/Edge runtime).
+ */
+export async function sha256Hex(text: string): Promise<string> {
+  const prefix = text.slice(0, HASH_PREFIX_CHARS);
+  const data = new TextEncoder().encode(prefix);
+  const hashBuffer = await crypto.subtle.digest("SHA-256", data);
+  const hashArray = new Uint8Array(hashBuffer);
+  return Array.from(hashArray)
+    .map((b) => b.toString(16).padStart(2, "0"))
+    .join("");
 }
 
-// ─── NORMALIZER ─────────────────────────────────────────────────────
+// ─── NORMALIZER (now async for SHA-256) ─────────────────────────────
 
-export function normalize(input: NormalizerInput): LegalDocument {
+export async function normalize(input: NormalizerInput): Promise<LegalDocument> {
   const { fileName, rawText, sourceUrl } = input;
 
   const docType = inferDocType(fileName, rawText);
@@ -279,6 +287,8 @@ export function normalize(input: NormalizerInput): LegalDocument {
           : null)
     : null;
 
+  const sourceHash = await sha256Hex(rawText);
+
   return {
     doc_type: docType,
     jurisdiction: "AM",
@@ -300,7 +310,7 @@ export function normalize(input: NormalizerInput): LegalDocument {
       pipeline: "legal-document-normalizer",
       ingested_at: new Date().toISOString(),
       schema_version: "1.0",
-      source_hash: simpleHash(rawText),
+      source_hash: sourceHash,
     },
     is_active: true,
   };

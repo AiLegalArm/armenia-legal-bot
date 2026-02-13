@@ -6,7 +6,7 @@
  */
 
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
-import { getCorsHeaders, checkInternalAuth, checkInputSize } from "../_shared/edge-security.ts";
+import { handleCors, checkInternalAuth, checkInputSize } from "../_shared/edge-security.ts";
 import { normalize, validate } from "../_shared/normalizer.ts";
 import type { NormalizerInput } from "../_shared/normalizer.ts";
 
@@ -14,11 +14,9 @@ import type { NormalizerInput } from "../_shared/normalizer.ts";
 export { normalize, validate } from "../_shared/normalizer.ts";
 
 serve(async (req) => {
-  const corsHeaders = getCorsHeaders(req.headers.get("origin"));
-
-  if (req.method === "OPTIONS") {
-    return new Response(null, { headers: corsHeaders });
-  }
+  const cors = handleCors(req);
+  if (cors.errorResponse) return cors.errorResponse;
+  const corsHeaders = cors.corsHeaders!;
 
   // Auth guard
   const authErr = checkInternalAuth(req, corsHeaders);
@@ -59,7 +57,7 @@ serve(async (req) => {
     const sizeErr = checkInputSize(rawText, corsHeaders);
     if (sizeErr) return sizeErr;
 
-    const document = normalize({
+    const document = await normalize({
       fileName,
       mimeType: mimeType || "text/plain",
       rawText,

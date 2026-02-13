@@ -1,22 +1,12 @@
 /**
- * edge-security.ts
+ * edge-security.ts — Fail-closed perimeter guards.
  *
- * Problem:
- *   Internal ingestion endpoints (legal-chunker, legal-document-normalizer)
- *   use wildcard CORS, no auth guard, and no input size limits. This exposes
- *   them to cross-origin abuse, unauthorized access, and denial-of-service
- *   via oversized payloads.
- *
- * Risk:
- *   - Any origin can call these endpoints (data exfiltration / abuse)
- *   - No authentication on ingestion pipeline (unauthorized writes)
- *   - Unbounded input size allows memory exhaustion attacks
- *
- * Solution:
- *   Shared helpers that:
- *   1) Build CORS headers from an ALLOWED_ORIGINS env allowlist
- *   2) Validate x-internal-key against INTERNAL_INGEST_KEY secret
- *   3) Enforce MAX_INPUT_CHARS (default 2_000_000) on text payloads
+ * Env vars:
+ *   ALLOWED_ORIGINS        – comma-separated allowlist (REQUIRED in prod)
+ *   ALLOW_WILDCARD_CORS    – set to "true" to allow "*" when ALLOWED_ORIGINS is missing
+ *   INTERNAL_INGEST_KEY    – shared secret for x-internal-key header (REQUIRED in prod)
+ *   ALLOW_UNAUTH_INGEST    – set to "true" to bypass auth when key is missing
+ *   MAX_INPUT_CHARS         – max text length (default 2 000 000)
  */
 
 // ─── CORS ALLOWLIST ─────────────────────────────────────────────────
@@ -35,55 +25,111 @@ function getAllowedOrigins(): string[] {
     .filter(Boolean);
 }
 
+function isWildcardAllowed(): boolean {
+  return Deno.env.get("ALLOW_WILDCARD_CORS") === "true";
+}
+
 /**
- * Build CORS headers based on the request Origin and the ALLOWED_ORIGINS env.
- *
- * Strategy: If the request origin is in the allowlist, reflect it.
- * Otherwise, use the first allowlisted origin as default (safe: browser
- * won't send cookies/credentials to a non-matching origin).
- * If ALLOWED_ORIGINS is empty/unset, fall back to "*" for dev environments.
+ * Build CORS headers. Fail-closed:
+ * - If ALLOWED_ORIGINS is unset and ALLOW_WILDCARD_CORS !== "true" → returns null (caller must 403).
+ * - If origin matches allowlist → reflect it.
+ * - If origin doesn't match → use first allowlisted origin.
+ * - If wildcard explicitly allowed → "*".
  */
-export function getCorsHeaders(requestOrigin?: string | null): Record<string, string> {
+export function getCorsHeaders(requestOrigin?: string | null): Record<string, string> | null {
   const allowed = getAllowedOrigins();
 
-  let origin: string;
   if (allowed.length === 0) {
-    // No allowlist configured (dev mode) -> permissive
-    origin = "*";
-  } else if (requestOrigin && allowed.includes(requestOrigin)) {
+    if (isWildcardAllowed()) {
+      return {
+        "Access-Control-Allow-Origin": "*",
+        "Access-Control-Allow-Headers": DEFAULT_ALLOWED_HEADERS,
+        "Access-Control-Allow-Methods": "POST, OPTIONS",
+      };
+    }
+    // Fail-closed: CORS not configured
+    return null;
+  }
+
+  let origin: string;
+  if (requestOrigin && allowed.includes(requestOrigin)) {
     origin = requestOrigin;
   } else {
     origin = allowed[0];
   }
 
-  const headers: Record<string, string> = {
+  return {
     "Access-Control-Allow-Origin": origin,
     "Access-Control-Allow-Headers": DEFAULT_ALLOWED_HEADERS,
     "Access-Control-Allow-Methods": "POST, OPTIONS",
+    "Vary": "Origin",
   };
+}
 
-  // Vary: Origin is critical when origin is not "*"
-  if (origin !== "*") {
-    headers["Vary"] = "Origin";
+/**
+ * Handle CORS preflight or reject if CORS is not configured.
+ * Returns a Response for OPTIONS or when CORS is misconfigured; null to continue.
+ */
+export function handleCors(req: Request): { corsHeaders: Record<string, string>; errorResponse?: Response } | { corsHeaders?: undefined; errorResponse: Response } {
+  const headers = getCorsHeaders(req.headers.get("origin"));
+
+  if (!headers) {
+    // CORS not configured – fail-closed
+    const fallback = { "Content-Type": "application/json" };
+    if (req.method === "OPTIONS") {
+      return {
+        errorResponse: new Response(JSON.stringify({ error: "CORS not configured" }), {
+          status: 403,
+          headers: fallback,
+        }),
+      };
+    }
+    return {
+      errorResponse: new Response(JSON.stringify({ error: "CORS not configured" }), {
+        status: 403,
+        headers: fallback,
+      }),
+    };
   }
 
-  return headers;
+  if (req.method === "OPTIONS") {
+    return {
+      corsHeaders: headers,
+      errorResponse: new Response(null, { status: 204, headers }),
+    };
+  }
+
+  return { corsHeaders: headers };
 }
 
 // ─── AUTH GUARD ─────────────────────────────────────────────────────
 
+function isUnauthAllowed(): boolean {
+  return Deno.env.get("ALLOW_UNAUTH_INGEST") === "true";
+}
+
 /**
  * Validate x-internal-key header against INTERNAL_INGEST_KEY secret.
- * Returns null if valid, or a 401 Response if invalid.
+ * Fail-closed: if secret is missing and ALLOW_UNAUTH_INGEST !== "true" → 500.
  */
 export function checkInternalAuth(
   req: Request,
   corsHeaders: Record<string, string>,
 ): Response | null {
   const secret = Deno.env.get("INTERNAL_INGEST_KEY");
+
   if (!secret) {
-    // No secret configured -> skip guard (dev mode)
-    return null;
+    if (isUnauthAllowed()) {
+      return null; // Explicit dev bypass
+    }
+    // Fail-closed: server misconfigured
+    return new Response(
+      JSON.stringify({ error: "Server misconfigured" }),
+      {
+        status: 500,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      },
+    );
   }
 
   const provided = req.headers.get("x-internal-key");

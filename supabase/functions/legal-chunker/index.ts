@@ -6,18 +6,16 @@
  */
 
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
-import { getCorsHeaders, checkInternalAuth, checkInputSize } from "../_shared/edge-security.ts";
+import { handleCors, checkInternalAuth, checkInputSize } from "../_shared/edge-security.ts";
 import { chunkDocument } from "../_shared/chunker.ts";
 
 // Re-export for tests
 export { chunkDocument } from "../_shared/chunker.ts";
 
 serve(async (req) => {
-  const corsHeaders = getCorsHeaders(req.headers.get("origin"));
-
-  if (req.method === "OPTIONS") {
-    return new Response(null, { headers: corsHeaders });
-  }
+  const cors = handleCors(req);
+  if (cors.errorResponse) return cors.errorResponse;
+  const corsHeaders = cors.corsHeaders!;
 
   // Auth guard
   const authErr = checkInternalAuth(req, corsHeaders);
