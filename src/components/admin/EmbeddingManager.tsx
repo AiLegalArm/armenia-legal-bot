@@ -1,39 +1,59 @@
-import { useState, useRef } from "react";
-import { useTranslation } from "react-i18next";
+import { useState, useRef, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
 import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
 import { runBatchEmbedding } from "@/lib/batchEmbedding";
-import { Loader2, Zap, Database, BookOpen } from "lucide-react";
+import { Loader2, Zap, Database, BookOpen, AlertTriangle, RotateCcw } from "lucide-react";
+import { supabase } from "@/integrations/supabase/client";
+
+type TableStats = {
+  success: number;
+  pending: number;
+  failed: number;
+  deadLetter: number;
+  running: boolean;
+  processed: number;
+};
+
+const emptyStats = (): TableStats => ({
+  success: 0, pending: 0, failed: 0, deadLetter: 0, running: false, processed: 0,
+});
 
 export function EmbeddingManager() {
-  const { t } = useTranslation(["admin"]);
-  const [kbProgress, setKbProgress] = useState({ processed: 0, remaining: 0, running: false, alreadyDone: 0 });
-  const [practiceProgress, setPracticeProgress] = useState({ processed: 0, remaining: 0, running: false, alreadyDone: 0 });
+  const [kbStats, setKbStats] = useState<TableStats>(emptyStats());
+  const [practiceStats, setPracticeStats] = useState<TableStats>(emptyStats());
   const [errors, setErrors] = useState<string[]>([]);
   const abortRef = useRef<AbortController | null>(null);
 
-  // Check how many already have embeddings
-  const checkExisting = async () => {
-    const { supabase } = await import("@/integrations/supabase/client");
-    const [kbDone, kbRemaining, prDone, prRemaining] = await Promise.all([
-      supabase.from("knowledge_base").select("id", { count: "exact", head: true }).eq("is_active", true).not("embedding", "is", null),
-      supabase.from("knowledge_base").select("id", { count: "exact", head: true }).eq("is_active", true).is("embedding", null),
-      supabase.from("legal_practice_kb").select("id", { count: "exact", head: true }).eq("is_active", true).not("embedding", "is", null),
-      supabase.from("legal_practice_kb").select("id", { count: "exact", head: true }).eq("is_active", true).is("embedding", null),
-    ]);
-    setKbProgress(p => ({ ...p, alreadyDone: kbDone.count || 0, remaining: kbRemaining.count || 0 }));
-    setPracticeProgress(p => ({ ...p, alreadyDone: prDone.count || 0, remaining: prRemaining.count || 0 }));
+  const loadStats = async () => {
+    const tables = ["knowledge_base", "legal_practice_kb"] as const;
+    const setters = [setKbStats, setPracticeStats];
+
+    for (let i = 0; i < tables.length; i++) {
+      const t = tables[i];
+      const [successRes, pendingRes, failedRes, deadRes] = await Promise.all([
+        supabase.from(t).select("id", { count: "exact", head: true }).eq("is_active", true).eq("embedding_status", "success"),
+        supabase.from(t).select("id", { count: "exact", head: true }).eq("is_active", true).eq("embedding_status", "pending"),
+        supabase.from(t).select("id", { count: "exact", head: true }).eq("is_active", true).eq("embedding_status", "failed").lt("embedding_attempts", 5),
+        supabase.from(t).select("id", { count: "exact", head: true }).eq("is_active", true).eq("embedding_status", "failed").gte("embedding_attempts", 5),
+      ]);
+      setters[i](prev => ({
+        ...prev,
+        success: successRes.count || 0,
+        pending: pendingRes.count || 0,
+        failed: failedRes.count || 0,
+        deadLetter: deadRes.count || 0,
+      }));
+    }
   };
 
-  // Load stats on mount
-  useState(() => { checkExisting(); });
+  useEffect(() => { loadStats(); }, []);
 
   const runEmbeddings = async (table: "knowledge_base" | "legal_practice_kb") => {
-    const setProgress = table === "knowledge_base" ? setKbProgress : setPracticeProgress;
-    setProgress(p => ({ ...p, running: true, processed: 0 }));
+    const setStats = table === "knowledge_base" ? setKbStats : setPracticeStats;
+    setStats(p => ({ ...p, running: true, processed: 0 }));
     setErrors([]);
 
     abortRef.current = new AbortController();
@@ -44,107 +64,133 @@ export function EmbeddingManager() {
         batchLimit: 5,
         signal: abortRef.current.signal,
         onProgress: (p) => {
-          setProgress(prev => ({ ...prev, processed: p.processedDocs, remaining: p.totalRemaining, running: true }));
+          setStats(prev => ({
+            ...prev,
+            processed: p.processedDocs,
+            pending: p.totalRemaining,
+            deadLetter: p.deadLetterCount || prev.deadLetter,
+            running: true,
+          }));
           if (p.errors) setErrors(prev => [...new Set([...prev, ...p.errors!])]);
         },
       });
 
-      setProgress(p => ({ ...p, running: false, alreadyDone: p.alreadyDone + result.processedDocs }));
-      toast.success(`Обработано ${result.processedDocs} документов. Осталось: ${result.totalRemaining}`);
+      setStats(p => ({ ...p, running: false, success: p.success + result.processedDocs }));
+      toast.success(`Processed ${result.processedDocs} docs. Remaining: ${result.totalRemaining}. Dead-letter: ${result.deadLetterCount || 0}`);
+      loadStats();
     } catch (e) {
-      setProgress(p => ({ ...p, running: false }));
-      toast.error(e instanceof Error ? e.message : "Ошибка генерации эмбеддингов");
+      setStats(p => ({ ...p, running: false }));
+      toast.error(e instanceof Error ? e.message : "Embedding generation error");
+    }
+  };
+
+  const retryDeadLetters = async (table: "knowledge_base" | "legal_practice_kb") => {
+    const { error } = await supabase
+      .from(table)
+      .update({ embedding_status: "pending" as string, embedding_attempts: 0, embedding_error: null } as Record<string, unknown>)
+      .eq("is_active", true)
+      .eq("embedding_status", "failed")
+      .gte("embedding_attempts", 5);
+
+    if (error) {
+      toast.error(error.message);
+    } else {
+      toast.success("Dead-letter docs reset to pending");
+      loadStats();
     }
   };
 
   const stop = () => {
     abortRef.current?.abort();
-    setKbProgress(p => ({ ...p, running: false }));
-    setPracticeProgress(p => ({ ...p, running: false }));
+    setKbStats(p => ({ ...p, running: false }));
+    setPracticeStats(p => ({ ...p, running: false }));
   };
 
-  const isRunning = kbProgress.running || practiceProgress.running;
+  const isRunning = kbStats.running || practiceStats.running;
+
+  const renderSection = (
+    label: string,
+    icon: React.ReactNode,
+    stats: TableStats,
+    table: "knowledge_base" | "legal_practice_kb"
+  ) => (
+    <div className="space-y-2 rounded-lg border p-4">
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-2">
+          {icon}
+          <span className="font-medium">{label}</span>
+        </div>
+        <Button size="sm" onClick={() => runEmbeddings(table)} disabled={isRunning}>
+          {stats.running ? <Loader2 className="mr-1 h-4 w-4 animate-spin" /> : null}
+          {stats.running ? "Processing..." : "Run"}
+        </Button>
+      </div>
+
+      <div className="flex flex-wrap gap-2 text-xs">
+        <Badge variant="secondary" className="bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200">
+          {"\u2713"} {stats.success}
+        </Badge>
+        <Badge variant="secondary" className="bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200">
+          Pending: {stats.pending}
+        </Badge>
+        {stats.failed > 0 && (
+          <Badge variant="secondary" className="bg-orange-100 text-orange-800 dark:bg-orange-900 dark:text-orange-200">
+            Retrying: {stats.failed}
+          </Badge>
+        )}
+        {stats.deadLetter > 0 && (
+          <Badge variant="destructive" className="flex items-center gap-1">
+            <AlertTriangle className="h-3 w-3" /> Dead-letter: {stats.deadLetter}
+          </Badge>
+        )}
+      </div>
+
+      {stats.deadLetter > 0 && (
+        <Button variant="outline" size="sm" className="text-xs" onClick={() => retryDeadLetters(table)}>
+          <RotateCcw className="mr-1 h-3 w-3" /> Reset dead-letters
+        </Button>
+      )}
+
+      {stats.running && (
+        <div className="space-y-1">
+          <Progress value={stats.pending > 0 ? (stats.processed / (stats.processed + stats.pending)) * 100 : 0} />
+          <p className="text-xs text-muted-foreground">
+            Processed: {stats.processed} | Remaining: {stats.pending}
+          </p>
+        </div>
+      )}
+    </div>
+  );
 
   return (
     <Card>
       <CardHeader>
         <CardTitle className="flex items-center gap-2">
           <Zap className="h-5 w-5" />
-          Векторные эмбеддинги (семантический поиск)
+          Vector Embeddings (Semantic Search)
         </CardTitle>
       </CardHeader>
       <CardContent className="space-y-4">
         <p className="text-sm text-muted-foreground">
-          Генерация эмбеддингов позволяет ИИ находить документы по смыслу, а не только по ключевым словам.
+          Generate embeddings for AI-powered semantic document search. Failed docs are retried with exponential backoff up to 5 attempts before being dead-lettered.
         </p>
 
-        {/* KB Section */}
-        <div className="space-y-2 rounded-lg border p-4">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              <Database className="h-4 w-4" />
-              <span className="font-medium">База знаний</span>
-            </div>
-            <Button
-              size="sm"
-              onClick={() => runEmbeddings("knowledge_base")}
-              disabled={isRunning}
-            >
-              {kbProgress.running ? <Loader2 className="mr-1 h-4 w-4 animate-spin" /> : null}
-              {kbProgress.running ? "Обработка..." : "Запустить"}
-            </Button>
-          </div>
-          {kbProgress.running && (
-            <div className="space-y-1">
-              <Progress value={kbProgress.remaining > 0 ? (kbProgress.processed / (kbProgress.processed + kbProgress.remaining)) * 100 : 0} />
-              <p className="text-xs text-muted-foreground">
-                Обработано: {kbProgress.processed} | Осталось: {kbProgress.remaining}
-              </p>
-            </div>
-          )}
-          {!kbProgress.running && kbProgress.processed > 0 && (
-            <Badge variant="secondary">Готово: {kbProgress.processed} документов</Badge>
-          )}
-        </div>
-
-        {/* Practice Section */}
-        <div className="space-y-2 rounded-lg border p-4">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              <BookOpen className="h-4 w-4" />
-              <span className="font-medium">Судебная практика</span>
-            </div>
-            <Button
-              size="sm"
-              onClick={() => runEmbeddings("legal_practice_kb")}
-              disabled={isRunning}
-            >
-              {practiceProgress.running ? <Loader2 className="mr-1 h-4 w-4 animate-spin" /> : null}
-              {practiceProgress.running ? "Обработка..." : "Запустить"}
-            </Button>
-          </div>
-          {practiceProgress.running && (
-            <div className="space-y-1">
-              <Progress value={practiceProgress.remaining > 0 ? (practiceProgress.processed / (practiceProgress.processed + practiceProgress.remaining)) * 100 : 0} />
-              <p className="text-xs text-muted-foreground">
-                Обработано: {practiceProgress.processed} | Осталось: {practiceProgress.remaining}
-              </p>
-            </div>
-          )}
-          {!practiceProgress.running && practiceProgress.processed > 0 && (
-            <Badge variant="secondary">Готово: {practiceProgress.processed} документов</Badge>
-          )}
-        </div>
+        {renderSection("Knowledge Base", <Database className="h-4 w-4" />, kbStats, "knowledge_base")}
+        {renderSection("Legal Practice", <BookOpen className="h-4 w-4" />, practiceStats, "legal_practice_kb")}
 
         {isRunning && (
           <Button variant="destructive" size="sm" onClick={stop}>
-            Остановить
+            Stop
           </Button>
         )}
 
         {errors.length > 0 && (
           <div className="max-h-32 overflow-auto rounded border border-destructive/30 bg-destructive/5 p-2 text-xs">
-            {errors.slice(-10).map((e, i) => <div key={i}>{e}</div>)}
+            {errors.slice(-10).map((e, i) => (
+              <div key={i} className={e.includes("[DEAD-LETTER]") ? "font-bold text-destructive" : ""}>
+                {e}
+              </div>
+            ))}
           </div>
         )}
       </CardContent>

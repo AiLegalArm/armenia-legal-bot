@@ -1037,6 +1037,10 @@ export type Database = {
           created_at: string
           current_version: number | null
           embedding: string | null
+          embedding_attempts: number
+          embedding_error: string | null
+          embedding_last_attempt: string | null
+          embedding_status: string
           id: string
           is_active: boolean
           source_name: string | null
@@ -1053,6 +1057,10 @@ export type Database = {
           created_at?: string
           current_version?: number | null
           embedding?: string | null
+          embedding_attempts?: number
+          embedding_error?: string | null
+          embedding_last_attempt?: string | null
+          embedding_status?: string
           id?: string
           is_active?: boolean
           source_name?: string | null
@@ -1069,6 +1077,10 @@ export type Database = {
           created_at?: string
           current_version?: number | null
           embedding?: string | null
+          embedding_attempts?: number
+          embedding_error?: string | null
+          embedding_last_attempt?: string | null
+          embedding_status?: string
           id?: string
           is_active?: boolean
           source_name?: string | null
@@ -1151,6 +1163,10 @@ export type Database = {
           decision_map: Json | null
           description: string | null
           embedding: string | null
+          embedding_attempts: number
+          embedding_error: string | null
+          embedding_last_attempt: string | null
+          embedding_status: string
           id: string
           is_active: boolean
           is_anonymized: boolean
@@ -1179,6 +1195,10 @@ export type Database = {
           decision_map?: Json | null
           description?: string | null
           embedding?: string | null
+          embedding_attempts?: number
+          embedding_error?: string | null
+          embedding_last_attempt?: string | null
+          embedding_status?: string
           id?: string
           is_active?: boolean
           is_anonymized?: boolean
@@ -1207,6 +1227,10 @@ export type Database = {
           decision_map?: Json | null
           description?: string | null
           embedding?: string | null
+          embedding_attempts?: number
+          embedding_error?: string | null
+          embedding_last_attempt?: string | null
+          embedding_status?: string
           id?: string
           is_active?: boolean
           is_anonymized?: boolean
@@ -1742,6 +1766,10 @@ export type Database = {
           decision_map: Json | null
           description: string | null
           embedding: string | null
+          embedding_attempts: number
+          embedding_error: string | null
+          embedding_last_attempt: string | null
+          embedding_status: string
           id: string
           is_active: boolean
           is_anonymized: boolean
