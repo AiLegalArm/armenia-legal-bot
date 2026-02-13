@@ -44,3 +44,6 @@ verify_jwt = false
 
 [functions.legal-document-normalizer]
 verify_jwt = false
+
+[functions.legal-chunker]
+verify_jwt = false
