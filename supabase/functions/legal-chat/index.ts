@@ -218,7 +218,7 @@ serve(async (req) => {
     }
     // === END AUTH GUARD ===
 
-    const { message, conversationHistory } = await req.json();
+    const { message, conversationHistory, caseDate } = await req.json();
 
     if (!message || typeof message !== "string") {
       return new Response(
@@ -263,6 +263,10 @@ serve(async (req) => {
       const safeKeywords = keywords.map(sanitizeForPostgrest).filter((k: string) => k.length > 0);
       console.log(`Searching KB with ${safeKeywords.length} keywords: ${safeKeywords.join(', ')}`);
       
+      // Determine reference date for temporal legislation filtering
+      const referenceDate: string | null = (caseDate && typeof caseDate === "string") ? caseDate : null;
+      const dateAssumed = !referenceDate;
+
       // Parallel: vector search + keyword ILIKE search
       const vectorSearchPromise = fetch(`${supabaseUrl}/functions/v1/vector-search`, {
         method: "POST",
@@ -270,7 +274,7 @@ serve(async (req) => {
           "Content-Type": "application/json",
           Authorization: `Bearer ${supabaseServiceKey}`,
         },
-        body: JSON.stringify({ query: message, tables: "kb", limit: 10, threshold: 0.3 }),
+        body: JSON.stringify({ query: message, tables: "kb", limit: 10, threshold: 0.3, reference_date: referenceDate }),
       }).then(r => r.ok ? r.json() : { kb: [] }).catch(() => ({ kb: [] }));
 
       const keywordSearchPromise = (async () => {
@@ -319,9 +323,10 @@ serve(async (req) => {
       
       // Fallback: full-text search if nothing found
       if (topResults.length === 0) {
+        const ftsParams: Record<string, unknown> = { search_query: message, result_limit: 20 };
+        if (referenceDate) ftsParams.reference_date = referenceDate;
         const { data: searchResults, error: searchError } = await supabase.rpc(
-          "search_knowledge_base",
-          { search_query: message, result_limit: 20 }
+          "search_knowledge_base", ftsParams
         );
         if (!searchError && searchResults && searchResults.length > 0) {
           topResults = searchResults.filter((r: KBSearchResult) => r.rank > 0.001).slice(0, 8);
@@ -334,6 +339,13 @@ serve(async (req) => {
         kbContext = topResults.map((r: KBSearchResult, i: number) => 
           `[${i + 1}] ${r.title} (${r.category}, ${r.source_name || "N/A"}):\n${r.content_text.substring(0, 4000)}`
         ).join("\n\n---\n\n");
+
+        // Add temporal versioning notice
+        if (dateAssumed) {
+          kbContext += "\n\n[TEMPORAL NOTE: No case date provided. Legislation shown is the currently effective version. If events occurred on a different date, applicable law may differ. State this assumption explicitly.]";
+        } else {
+          kbContext += `\n\n[TEMPORAL NOTE: Legislation filtered for versions effective as of ${referenceDate}.]`;
+        }
       } else {
         console.log("No KB results found for query");
       }

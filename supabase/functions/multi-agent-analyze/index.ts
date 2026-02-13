@@ -774,12 +774,13 @@ serve(async (req) => {
     const searchQuery = `${caseData.facts || ""} ${caseData.legal_question || ""}`.trim();
     
     if (searchQuery) {
-      // Search main Knowledge Base
+      const referenceDate = caseData.court_date || null;
+      const rpcParams: Record<string, unknown> = { search_query: searchQuery, result_limit: 5 };
+      if (referenceDate) rpcParams.reference_date = referenceDate;
+
+      // Search main Knowledge Base (date-aware)
       const { data: kbResults } = await supabase
-        .rpc("search_knowledge_base", { 
-          search_query: searchQuery,
-          result_limit: 5
-        });
+        .rpc("search_knowledge_base", rpcParams);
 
       if (kbResults && kbResults.length > 0) {
         contextParts.push("\n\u053b\u0550\u0531\u054e\u0531\u053f\u0531\u0546 \u0532\u0531\u0536\u0531 (KB):");
