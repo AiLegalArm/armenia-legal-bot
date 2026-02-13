@@ -20,13 +20,7 @@
  */
 
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
-
-// ─── CORS ───────────────────────────────────────────────────────────
-const corsHeaders = {
-  "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers":
-    "authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
-};
+import { getCorsHeaders, checkInternalAuth, checkInputSize } from "../_shared/edge-security.ts";
 
 // ─── ENUMS ──────────────────────────────────────────────────────────
 const DOC_TYPES = [
@@ -502,9 +496,15 @@ export function validate(doc: LegalDocument): ValidationError[] {
 // ─── HTTP HANDLER ───────────────────────────────────────────────────
 
 serve(async (req) => {
+  const corsHeaders = getCorsHeaders(req.headers.get("origin"));
+
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
   }
+
+  // Auth guard
+  const authErr = checkInternalAuth(req, corsHeaders);
+  if (authErr) return authErr;
 
   try {
     if (req.method !== "POST") {
@@ -536,6 +536,10 @@ serve(async (req) => {
         { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
+
+    // Input size limit
+    const sizeErr = checkInputSize(rawText, corsHeaders);
+    if (sizeErr) return sizeErr;
 
     const document = normalize({
       fileName,
