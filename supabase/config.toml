@@ -47,3 +47,6 @@ verify_jwt = false
 
 [functions.legal-chunker]
 verify_jwt = false
+
+[functions.norm-ref-extractor]
+verify_jwt = false
