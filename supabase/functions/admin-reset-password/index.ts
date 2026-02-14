@@ -81,7 +81,7 @@ serve(async (req) => {
       }
     );
   } catch (error) {
-    console.error("Error resetting password:", error);
+    console.error(JSON.stringify({ ts: new Date().toISOString(), lvl: "error", fn: "admin-reset-password", msg: error instanceof Error ? error.message : "Reset failed" }));
     return new Response(
       JSON.stringify({ error: error instanceof Error ? error.message : "Password reset failed" }),
       {

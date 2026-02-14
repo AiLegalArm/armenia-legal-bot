@@ -130,7 +130,7 @@ serve(async (req) => {
     const { data: documents, error } = await dbQuery;
 
     if (error) {
-      console.error("KB search error:", error);
+      console.error(JSON.stringify({ ts: new Date().toISOString(), lvl: "error", fn: "kb-search", msg: "DB search failed" }));
       return new Response(
         JSON.stringify({ error: "Database search failed" }),
         { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
@@ -177,7 +177,7 @@ serve(async (req) => {
     );
 
   } catch (error) {
-    console.error("KB search error:", error);
+    console.error(JSON.stringify({ ts: new Date().toISOString(), lvl: "error", fn: "kb-search", msg: error instanceof Error ? error.message : "Unknown" }));
     return new Response(
       JSON.stringify({ error: error instanceof Error ? error.message : "Search failed" }),
       { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }

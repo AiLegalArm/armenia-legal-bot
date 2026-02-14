@@ -115,7 +115,7 @@ serve(async (req) => {
       .single();
 
     if (docErr) {
-      console.error("Failed to insert legal_document:", docErr.message);
+      err("ingest-document", "Failed to insert legal_document", undefined, { detail: docErr.message });
       return json({ error: "Failed to insert document", details: docErr.message }, 500);
     }
 
@@ -159,7 +159,7 @@ serve(async (req) => {
         .insert(batch);
 
       if (chunkErr) {
-        console.error(`Failed to insert chunk batch ${i}:`, chunkErr.message);
+        err("ingest-document", "Chunk batch insert failed", undefined, { batch: i, detail: chunkErr.message });
         // Cleanup: delete the document (CASCADE removes partial chunks)
         await supabase.from("legal_documents").delete().eq("id", docId);
         return json({
@@ -176,7 +176,7 @@ serve(async (req) => {
       deduplicated: false,
     }, 200);
   } catch (error) {
-    console.error("ingest-document error:", error);
+    err("ingest-document", "Unhandled error", error);
     return json({
       error: error instanceof Error ? error.message : "Unknown error",
     }, 500);

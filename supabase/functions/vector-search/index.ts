@@ -1,5 +1,6 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.91.1";
+import { log, err } from "../_shared/safe-logger.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -55,14 +56,14 @@ serve(async (req) => {
       }
     }
 
-    console.log(`AI-rerank search: query="${query.substring(0, 50)}…", kb=${results.kb.length}, practice=${results.practice.length}`);
+    log("vector-search", "Search complete", { kb: results.kb.length, practice: results.practice.length });
 
     return new Response(
       JSON.stringify(results),
       { headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
   } catch (error) {
-    console.error("Vector search error:", error);
+    err("vector-search", "Search error", error);
     return new Response(
       JSON.stringify({ error: error instanceof Error ? error.message : "Unknown error" }),
       { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
@@ -274,7 +275,7 @@ async function rerankWithAI(
     });
 
     if (!response.ok) {
-      console.error("AI rerank failed:", response.status);
+      err("vector-search", "AI rerank failed", undefined, { status: response.status });
       return candidates.slice(0, topK); // fallback: return first N
     }
 
@@ -295,7 +296,7 @@ async function rerankWithAI(
 
     return candidates.slice(0, topK);
   } catch (e) {
-    console.error("AI rerank error:", e);
+    err("vector-search", "Rerank error", e);
     return candidates.slice(0, topK);
   }
 }
