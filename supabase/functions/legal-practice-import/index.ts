@@ -56,11 +56,23 @@ function normalizeUnicodeEscapes(input: string): NormalizeResult {
   return { text: result, invalidEscapeFound };
 }
 
-/** Apply normalizeUnicodeEscapes to a string, also strip real NUL bytes */
+/**
+ * Aggressively sanitize a string for PostgreSQL compatibility:
+ * 1. Decode literal \uXXXX escapes to real chars
+ * 2. Strip NUL bytes (U+0000)
+ * 3. Strip lone surrogates (U+D800-U+DFFF) that break JSON→PG pipeline
+ * 4. Strip other problematic control chars
+ */
 function sanitizeString(s: unknown): string {
   if (typeof s !== "string") return String(s ?? "");
   const { text } = normalizeUnicodeEscapes(s);
-  return text.replace(/\0/g, "");
+  return text
+    // Strip real NUL bytes
+    .replace(/\x00/g, "")
+    // Strip lone surrogates (invalid in UTF-8, cause PG "unsupported Unicode escape")
+    .replace(/[\uD800-\uDFFF]/g, "")
+    // Strip other dangerous control chars (keep \t \n \r)
+    .replace(/[\x01-\x08\x0B\x0C\x0E-\x1F\x7F]/g, "");
 }
 
 type AnyRow = Record<string, unknown>;
@@ -70,6 +82,7 @@ function sanitizeRow(row: AnyRow): AnyRow {
   const STRING_FIELDS = [
     "title", "content_text", "source_name", "court_name",
     "case_number_anonymized", "legal_reasoning_summary", "description",
+    "import_ref", "visibility",
   ];
   const sanitized = { ...row };
   for (const field of STRING_FIELDS) {
@@ -688,14 +701,41 @@ serve(async (req) => {
         const batchSize = 50;
         for (let batchStart = 0; batchStart < validRows.length; batchStart += batchSize) {
           const batch = validRows.slice(batchStart, batchStart + batchSize).map(sanitizeRow);
+
+          // Diagnostic: check for remaining problematic chars
+          for (const row of batch) {
+            const ct = String(row.content_text ?? "");
+            const hasNul = ct.includes("\x00");
+            const hasSurrogate = /[\uD800-\uDFFF]/.test(ct);
+            if (hasNul || hasSurrogate) {
+              console.warn(`[bulk-import] job=${jobId} WARN: post-sanitize content still has nul=${hasNul} surrogate=${hasSurrogate} len=${ct.length}`);
+            }
+          }
+
           const { error: insertErr, data: inserted } = await adminDb
             .from("legal_practice_kb")
             .insert(batch)
             .select("id, import_ref");
           if (insertErr) {
-            console.error(`[bulk-import] job=${jobId} batch_error:`, insertErr.message);
+            console.error(`[bulk-import] job=${jobId} batch_error: ${insertErr.message} code=${insertErr.code ?? "?"}`);
+            // Try inserting one-by-one to identify the problematic row
             for (const row of batch) {
-              errors.push({ index: -1, title: String(row.title), error: insertErr.message });
+              const { error: singleErr } = await adminDb
+                .from("legal_practice_kb")
+                .insert(row)
+                .select("id");
+              if (singleErr) {
+                const titleSnippet = String(row.title ?? "").substring(0, 60);
+                console.error(`[bulk-import] job=${jobId} row_error title="${titleSnippet}" err=${singleErr.message}`);
+                errors.push({ index: -1, title: String(row.title), error: singleErr.message });
+              } else {
+                insertedPractice += 1;
+                insertedDocs.push({
+                  id: "", // will be populated below if needed
+                  title: String(row.title ?? ""),
+                  content_text: String(row.content_text ?? ""),
+                });
+              }
             }
           } else {
             const ids = inserted ?? [];
@@ -739,9 +779,9 @@ serve(async (req) => {
         const chunkRows = chunks.map((c) => ({
           doc_id: doc.id,
           chunk_index: c.idx,
-          chunk_text: c.text,
+          chunk_text: sanitizeString(c.text),
           chunk_hash: computeChunkHash(c.text),
-          title: doc.title,
+          title: sanitizeString(doc.title),
         }));
 
         const chunkBatchSize = 200;
