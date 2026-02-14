@@ -50,13 +50,15 @@ serve(async (req) => {
     const sizeErr = checkInputSize(document.content_text, corsHeaders);
     if (sizeErr) return sizeErr;
 
-    const chunks = chunkDocument(document);
+    const result = chunkDocument(document);
 
     return new Response(
       JSON.stringify({
-        chunks,
-        total_chunks: chunks.length,
+        chunks: result.chunks,
+        total_chunks: result.chunks.length,
         doc_type: document.doc_type,
+        strategy: result.strategy,
+        case_number: result.case_number || null,
       }),
       { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
