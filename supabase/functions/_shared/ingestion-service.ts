@@ -81,12 +81,19 @@ export interface ChunkOptions {
   mode?: ChunkMode;
 }
 
+export type JsonlCollection = "knowledge_base" | "legal_practice_kb";
+
 export interface JsonlMeta {
   doc_id?: string;
   doc_type?: string;
+  title?: string;
   source_name?: string;
   source_url?: string;
+  source_file_name?: string;
   category?: string;
+  language?: string;
+  collection?: JsonlCollection;
+  chunk_strategy?: string;
 }
 
 export interface JsonlLine {
@@ -311,22 +318,43 @@ export function buildJsonl(
   chunks: LegalChunk[],
   meta: JsonlMeta
 ): JsonlLine[] {
+  const total = chunks.length;
+  const strategy = meta.chunk_strategy || "semantic";
+  const collection = meta.collection || "knowledge_base";
+
   return chunks.map((chunk, i) => {
+    // Stable deterministic ID: collection + doc hash + chunk index
+    const stableIdInput = `${collection}:${meta.doc_id || "unknown"}:${chunk.chunk_index}`;
+    const stableId = `${collection.replace("_", "")}-${chunk.chunk_hash || String(chunk.chunk_index)}`;
+
     const record: Record<string, unknown> = {
-      chunk_index: chunk.chunk_index,
-      chunk_type: chunk.chunk_type,
-      chunk_text: chunk.chunk_text,
-      char_start: chunk.char_start,
-      char_end: chunk.char_end,
-      label: chunk.label,
-      chunk_hash: chunk.chunk_hash,
-      locator: chunk.locator,
-      // Attach document-level metadata
-      doc_id: meta.doc_id || null,
+      id: stableId,
+      jurisdiction: "RA",
+      collection,
       doc_type: meta.doc_type || null,
-      source_name: meta.source_name || null,
-      source_url: meta.source_url || null,
-      category: meta.category || null,
+      title: meta.title || null,
+      source: {
+        type: meta.source_url ? "url" : "file",
+        uri: meta.source_url || null,
+        file_name: meta.source_file_name || meta.source_name || null,
+      },
+      language: meta.language || "hy",
+      chunk: {
+        index: chunk.chunk_index,
+        total,
+        strategy,
+        type: chunk.chunk_type,
+        text: chunk.chunk_text,
+        char_start: chunk.char_start,
+        char_end: chunk.char_end,
+        label: chunk.label || null,
+        locator: chunk.locator || null,
+      },
+      metadata: {
+        doc_id: meta.doc_id || null,
+        category: meta.category || null,
+        chunk_hash: chunk.chunk_hash || null,
+      },
     };
 
     const json = JSON.stringify(record);
@@ -336,12 +364,17 @@ export function buildJsonl(
 
 // ─── 5. validateJsonl ───────────────────────────────────────────────
 
-const REQUIRED_FIELDS = ["chunk_text"];
 const MAX_CHUNK_TEXT_LENGTH = 50_000;
+const VALID_COLLECTIONS: JsonlCollection[] = ["knowledge_base", "legal_practice_kb"];
+const VALID_CHUNK_TYPES = [
+  "header", "operative", "resolution", "reasoning", "facts", "dissent",
+  "article", "preamble", "table", "reference_list", "full_text", "other",
+];
 
 /**
- * Validate JSONL lines: each must be valid JSON with required fields.
- * Returns parsed records if all valid.
+ * Validate JSONL lines against the deterministic schema.
+ * Each line must have: jurisdiction, collection, chunk.text.
+ * Also accepts legacy flat format (chunk_text field).
  */
 export function validateJsonl(lines: string[]): JsonlValidationResult {
   const errors: { line: number; message: string }[] = [];
@@ -349,7 +382,7 @@ export function validateJsonl(lines: string[]): JsonlValidationResult {
 
   for (let i = 0; i < lines.length; i++) {
     const lineText = lines[i].trim();
-    if (!lineText) continue; // skip blank lines
+    if (!lineText) continue;
 
     let parsed: Record<string, unknown>;
     try {
@@ -364,34 +397,29 @@ export function validateJsonl(lines: string[]): JsonlValidationResult {
       continue;
     }
 
-    // Check required fields
-    for (const field of REQUIRED_FIELDS) {
-      if (!parsed[field] || typeof parsed[field] !== "string") {
-        errors.push({ line: i + 1, message: `Missing or invalid required field: ${field}` });
-      }
-    }
+    // Support both new nested schema and legacy flat schema
+    const chunk = parsed.chunk as Record<string, unknown> | undefined;
+    const chunkText = chunk?.text ?? parsed.chunk_text;
 
-    // Check chunk_text length
-    const chunkText = parsed.chunk_text;
-    if (typeof chunkText === "string" && chunkText.length > MAX_CHUNK_TEXT_LENGTH) {
+    if (!chunkText || typeof chunkText !== "string") {
+      errors.push({ line: i + 1, message: "Missing chunk text (chunk.text or chunk_text)" });
+    } else if (chunkText.length > MAX_CHUNK_TEXT_LENGTH) {
       errors.push({
         line: i + 1,
-        message: `chunk_text exceeds max length (${chunkText.length} > ${MAX_CHUNK_TEXT_LENGTH})`,
+        message: `chunk text exceeds max length (${chunkText.length} > ${MAX_CHUNK_TEXT_LENGTH})`,
       });
     }
 
-    // Validate chunk_type if present
-    const validChunkTypes = [
-      "header", "operative", "resolution", "reasoning", "facts", "dissent",
-      "article", "preamble", "table", "reference_list", "full_text", "other",
-    ];
-    if (parsed.chunk_type && typeof parsed.chunk_type === "string") {
-      if (!validChunkTypes.includes(parsed.chunk_type)) {
-        errors.push({
-          line: i + 1,
-          message: `Invalid chunk_type: ${parsed.chunk_type}`,
-        });
-      }
+    // Validate collection if present
+    const collection = parsed.collection as string | undefined;
+    if (collection && !VALID_COLLECTIONS.includes(collection as JsonlCollection)) {
+      errors.push({ line: i + 1, message: `Invalid collection: ${collection}` });
+    }
+
+    // Validate chunk type
+    const chunkType = chunk?.type ?? parsed.chunk_type;
+    if (chunkType && typeof chunkType === "string" && !VALID_CHUNK_TYPES.includes(chunkType)) {
+      errors.push({ line: i + 1, message: `Invalid chunk_type: ${chunkType}` });
     }
 
     records.push(parsed);
@@ -417,6 +445,8 @@ export async function ingestText(
     mimeType?: string;
     chunkMode?: ChunkMode;
     category?: string;
+    collection?: JsonlCollection;
+    language?: string;
   }
 ): Promise<{
   document: LegalDocument;
@@ -434,9 +464,14 @@ export async function ingestText(
 
   const jsonl = buildJsonl(chunks, {
     doc_type: document.doc_type,
+    title: document.title,
     source_name: document.source_name || undefined,
     source_url: document.source_url || undefined,
+    source_file_name: opts?.fileName,
     category: opts?.category,
+    collection: opts?.collection || "knowledge_base",
+    language: opts?.language || "hy",
+    chunk_strategy: opts?.chunkMode || "auto",
   });
 
   return { document, chunks, jsonl, preprocess, validationErrors };
