@@ -123,30 +123,9 @@ export function AdminKnowledgeBaseTab() {
   };
 
   // ── Import Wizard dispatch ────────────────────────────────────────
+  // The wizard now handles the full import flow via useBulkImport internally.
+  // We only log the payload here; the wizard stays open to show progress.
   const handleImportWizard = useCallback((payload: ImportPayload) => {
-    setImportWizardOpen(false);
-
-    // Route to the appropriate legacy modal based on source type
-    switch (payload.source) {
-      case 'files':
-        // Check if files are PDFs (single) or mixed (multi)
-        if (payload.files && payload.files.length === 1 && payload.files[0].type === 'application/pdf') {
-          setPdfUploadOpen(true);
-        } else {
-          setMultiFileUploadOpen(true);
-        }
-        break;
-      case 'url':
-        setWebScraperOpen(true);
-        break;
-      case 'paste_text':
-        setBulkImportOpen(true);
-        break;
-      case 'paste_jsonl':
-        setJsonlImportOpen(true);
-        break;
-    }
-
     toast.info(`Импорт: ${payload.previewRecords.length} записей → ${payload.target === 'knowledge_base' ? 'Законодательство' : 'Суд. практика'}`);
   }, []);
 
