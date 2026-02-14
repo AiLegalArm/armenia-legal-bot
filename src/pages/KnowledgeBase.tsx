@@ -75,17 +75,19 @@ const KnowledgeBasePage = () => {
     deleteDocument 
   } = useKnowledgeBase(filters);
 
-  // Group documents by source_name
+  // Group documents by category
   const groupedDocuments = useMemo(() => {
     const groups = new Map<string, Array<(typeof documents)[number]>>();
     for (const doc of documents) {
-      let raw = ('source_name' in doc && doc.source_name) ? doc.source_name : t('common:other', 'Other');
-      // Normalize unicode and trim whitespace for consistent grouping
-      raw = raw.normalize('NFC').trim().replace(/\s+/g, ' ');
-      if (!groups.has(raw)) groups.set(raw, []);
-      groups.get(raw)!.push(doc);
+      const cat = ('category' in doc && doc.category) ? String(doc.category) : 'other';
+      if (!groups.has(cat)) groups.set(cat, []);
+      groups.get(cat)!.push(doc);
     }
-    return Array.from(groups.entries()).sort((a, b) => a[0].localeCompare(b[0]));
+    return Array.from(groups.entries()).sort((a, b) => {
+      const labelA = t(`category_${a[0]}`, a[0]);
+      const labelB = t(`category_${b[0]}`, b[0]);
+      return labelA.localeCompare(labelB);
+    });
   }, [documents, t]);
 
   const toggleFolder = (name: string) => {
@@ -227,10 +229,11 @@ const KnowledgeBasePage = () => {
             ) : (
               <>
                 <div className="space-y-3">
-                  {groupedDocuments.map(([sourceName, docs]) => {
-                    const isOpen = openFolders.has(sourceName);
+                  {groupedDocuments.map(([categoryKey, docs]) => {
+                    const isOpen = openFolders.has(categoryKey);
+                    const folderLabel = t(`category_${categoryKey}`, categoryKey);
                     return (
-                      <Collapsible key={sourceName} open={isOpen} onOpenChange={() => toggleFolder(sourceName)}>
+                      <Collapsible key={categoryKey} open={isOpen} onOpenChange={() => toggleFolder(categoryKey)}>
                         <CollapsibleTrigger asChild>
                           <button className="flex w-full items-center gap-2 rounded-lg border bg-card px-4 py-3 text-left transition-colors hover:bg-muted/50">
                             <ChevronRight className={`h-4 w-4 text-muted-foreground transition-transform ${isOpen ? 'rotate-90' : ''}`} />
@@ -239,7 +242,7 @@ const KnowledgeBasePage = () => {
                             ) : (
                               <Folder className="h-5 w-5 text-primary" />
                             )}
-                            <span className="flex-1 font-medium">{sourceName}</span>
+                            <span className="flex-1 font-medium">{folderLabel}</span>
                             <span className="text-sm text-muted-foreground">{docs.length}</span>
                           </button>
                         </CollapsibleTrigger>
