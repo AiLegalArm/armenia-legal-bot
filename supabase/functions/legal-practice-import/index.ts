@@ -579,9 +579,11 @@ serve(async (req) => {
           const courtType = COURT.has(item.court_type) ? item.court_type : "cassation";
           const outcome = OUTCOME.has(item.outcome) ? item.outcome : "granted";
 
+          const importRef = `${jobId}:${i}`;
           validRows.push({
             title,
             content_text: contentText,
+            import_ref: importRef,
             practice_category: practiceCategory,
             court_type: courtType,
             outcome,
@@ -601,8 +603,7 @@ serve(async (req) => {
         }
       }
 
-      // Batch insert (50 at a time), collect inserted IDs for chunking
-      // Use positional index to map back content_text (safe even with duplicate titles)
+      // Batch insert (50 at a time), then map back via import_ref
       const insertedDocs: Array<{ id: string; title: string; content_text: string }> = [];
       if (validRows.length > 0) {
         const batchSize = 50;
@@ -611,7 +612,7 @@ serve(async (req) => {
           const { error: insertErr, data: inserted } = await adminDb
             .from("legal_practice_kb")
             .insert(batch)
-            .select("id");
+            .select("id, import_ref");
           if (insertErr) {
             console.error(`[bulk-import] job=${jobId} batch_error:`, insertErr.message);
             for (const row of batch) {
@@ -620,12 +621,17 @@ serve(async (req) => {
           } else {
             const ids = inserted ?? [];
             insertedPractice += ids.length;
-            // Positional mapping: Supabase returns rows in insertion order
-            for (let k = 0; k < ids.length; k++) {
+            // Deterministic mapping via import_ref -> original batch item
+            const refMap = new Map<string, Record<string, unknown>>();
+            for (const row of batch) {
+              refMap.set(String(row.import_ref), row);
+            }
+            for (const ins of ids) {
+              const orig = refMap.get(ins.import_ref ?? "");
               insertedDocs.push({
-                id: ids[k].id,
-                title: String(batch[k]?.title ?? ""),
-                content_text: String(batch[k]?.content_text ?? ""),
+                id: ins.id,
+                title: String(orig?.title ?? ""),
+                content_text: String(orig?.content_text ?? ""),
               });
             }
           }
