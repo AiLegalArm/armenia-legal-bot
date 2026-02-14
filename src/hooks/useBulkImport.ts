@@ -85,10 +85,20 @@ export function useBulkImport() {
   const [items, setItems] = useState<QueueItem[]>([]);
   const [isRunning, setIsRunning] = useState(false);
   const abortRef = useRef(false);
+  const itemsRef = useRef<QueueItem[]>([]);
+
+  // Keep ref in sync with state
+  const setItemsAndRef = useCallback((updater: QueueItem[] | ((prev: QueueItem[]) => QueueItem[])) => {
+    setItems(prev => {
+      const next = typeof updater === 'function' ? updater(prev) : updater;
+      itemsRef.current = next;
+      return next;
+    });
+  }, []);
 
   const updateItem = useCallback((id: string, patch: Partial<QueueItem>) => {
-    setItems(prev => prev.map(it => it.id === id ? { ...it, ...patch } : it));
-  }, []);
+    setItemsAndRef(prev => prev.map(it => it.id === id ? { ...it, ...patch } : it));
+  }, [setItemsAndRef]);
 
   // ── Build queue from various sources ────────────────────────────
 
@@ -107,9 +117,9 @@ export function useBulkImport() {
       retryCount: 0,
       payload: s.payload,
     }));
-    setItems(prev => [...prev, ...newItems]);
+    setItemsAndRef(prev => [...prev, ...newItems]);
     return newItems;
-  }, []);
+  }, [setItemsAndRef]);
 
   // ── Process single item through all stages ─────────────────────
 
@@ -220,8 +230,8 @@ export function useBulkImport() {
     setIsRunning(true);
     abortRef.current = false;
 
-    // Process items that are queued or failed (retry)
-    const toProcess = items.filter(it => it.stage === 'queued' || it.stage === 'error');
+    // Use ref to get latest items (enqueue may have just updated state)
+    const toProcess = itemsRef.current.filter(it => it.stage === 'queued' || it.stage === 'error');
 
     for (const item of toProcess) {
       if (abortRef.current) break;
@@ -242,7 +252,7 @@ export function useBulkImport() {
     }
 
     setIsRunning(false);
-  }, [items, processItem, updateItem]);
+  }, [processItem, updateItem]);
 
   // ── Retry failed items only ────────────────────────────────────
 
@@ -250,7 +260,7 @@ export function useBulkImport() {
     setIsRunning(true);
     abortRef.current = false;
 
-    const failed = items.filter(it => it.stage === 'error');
+    const failed = itemsRef.current.filter(it => it.stage === 'error');
 
     for (const item of failed) {
       if (abortRef.current) break;
@@ -266,7 +276,7 @@ export function useBulkImport() {
     }
 
     setIsRunning(false);
-  }, [items, processItem, updateItem]);
+  }, [processItem, updateItem]);
 
   // ── Abort ──────────────────────────────────────────────────────
 
@@ -277,12 +287,12 @@ export function useBulkImport() {
   // ── Clear queue ────────────────────────────────────────────────
 
   const clearCompleted = useCallback(() => {
-    setItems(prev => prev.filter(it => it.stage !== 'inserted'));
-  }, []);
+    setItemsAndRef(prev => prev.filter(it => it.stage !== 'inserted'));
+  }, [setItemsAndRef]);
 
   const clearAll = useCallback(() => {
-    setItems([]);
-  }, []);
+    setItemsAndRef([]);
+  }, [setItemsAndRef]);
 
   // ── Export error report ────────────────────────────────────────
 
