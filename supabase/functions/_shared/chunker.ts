@@ -239,43 +239,21 @@ function chunkLegislation(text: string): LegalChunk[] {
 
     if (articleText.length === 0) continue;
 
-    const parts = splitByParts(articleText);
-
-    if (parts.length > 1) {
-      for (const part of parts) {
-        const partLocator: ChunkLocator = {
-          article: articleNum,
-          part: part.partNum || undefined,
-          section_title: "\u0540\u0578\u0564\u057e\u0561\u056e " + articleNum,
-        };
-        const absStart = start + part.offset;
-        chunks.push(makeChunk(
-          chunkIdx++,
-          "article",
-          part.text,
-          absStart,
-          "\u0540\u0578\u0564\u057e\u0561\u056e " + articleNum +
-            (part.partNum ? ", \u0574\u0561\u057d " + part.partNum : ""),
-          partLocator
-        ));
-      }
-    } else {
-      const locator: ChunkLocator = {
-        article: articleNum,
-        section_title: "\u0540\u0578\u0564\u057e\u0561\u056e " + articleNum,
-      };
-      chunks.push(makeChunk(
-        chunkIdx++,
-        "article",
-        articleText,
-        start,
-        "\u0540\u0578\u0564\u057e\u0561\u056e " + articleNum,
-        locator
-      ));
-    }
+    const locator: ChunkLocator = {
+      article: articleNum,
+      section_title: "\u0540\u0578\u0564\u057e\u0561\u056e " + articleNum,
+    };
+    chunks.push(makeChunk(
+      chunkIdx++,
+      "article",
+      articleText,
+      start,
+      "\u0540\u0578\u0564\u057e\u0561\u056e " + articleNum,
+      locator
+    ));
   }
 
-  return splitOversized(chunks);
+  return chunks;
 }
 
 interface PartSegment {
