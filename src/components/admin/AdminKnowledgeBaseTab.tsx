@@ -13,6 +13,7 @@ import { KBWebScraper } from "@/components/kb/KBWebScraper";
 import { KBJsonlImport } from "@/components/kb/KBJsonlImport";
 import { KBMultiFileUpload } from "@/components/kb/KBMultiFileUpload";
 import { KBExport } from "@/components/kb/KBExport";
+import { ImportWizard, type ImportPayload } from "@/components/kb/ImportWizard";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
@@ -22,14 +23,11 @@ import {
   Plus, 
   Loader2,
   BookOpen,
-  FileUp,
-  FileStack,
-  Globe,
-  FileJson,
   Download,
   Zap,
   Pause,
   Play,
+  Upload,
 } from "lucide-react";
 import {
   AlertDialog,
@@ -51,14 +49,17 @@ export function AdminKnowledgeBaseTab() {
 
   const [filters, setFilters] = useState<KBFilters>({ page: 1, pageSize: 12 });
   const [formOpen, setFormOpen] = useState(false);
+  const [importWizardOpen, setImportWizardOpen] = useState(false);
+  const [exportOpen, setExportOpen] = useState(false);
+  const [editingDoc, setEditingDoc] = useState<KnowledgeBase | null>(null);
+  const [deletingDocId, setDeletingDocId] = useState<string | null>(null);
+
+  // Legacy modals — still wired behind the wizard for now
   const [pdfUploadOpen, setPdfUploadOpen] = useState(false);
   const [bulkImportOpen, setBulkImportOpen] = useState(false);
   const [multiFileUploadOpen, setMultiFileUploadOpen] = useState(false);
   const [webScraperOpen, setWebScraperOpen] = useState(false);
   const [jsonlImportOpen, setJsonlImportOpen] = useState(false);
-  const [exportOpen, setExportOpen] = useState(false);
-  const [editingDoc, setEditingDoc] = useState<KnowledgeBase | null>(null);
-  const [deletingDocId, setDeletingDocId] = useState<string | null>(null);
   
   // Bulk scrape state
   const [scrapeRunning, setScrapeRunning] = useState(false);
@@ -121,7 +122,36 @@ export function AdminKnowledgeBaseTab() {
     setFilters({ ...filters });
   };
 
-  // Process a list of IDs in batches
+  // ── Import Wizard dispatch ────────────────────────────────────────
+  const handleImportWizard = useCallback((payload: ImportPayload) => {
+    setImportWizardOpen(false);
+
+    // Route to the appropriate legacy modal based on source type
+    switch (payload.source) {
+      case 'files':
+        // Check if files are PDFs (single) or mixed (multi)
+        if (payload.files && payload.files.length === 1 && payload.files[0].type === 'application/pdf') {
+          setPdfUploadOpen(true);
+        } else {
+          setMultiFileUploadOpen(true);
+        }
+        break;
+      case 'url':
+        setWebScraperOpen(true);
+        break;
+      case 'paste_text':
+        setBulkImportOpen(true);
+        break;
+      case 'paste_jsonl':
+        setJsonlImportOpen(true);
+        break;
+    }
+
+    toast.info(`Импорт: ${payload.previewRecords.length} записей → ${payload.target === 'knowledge_base' ? 'Законодательство' : 'Суд. практика'}`);
+  }, []);
+
+  // ── Bulk scrape logic ─────────────────────────────────────────────
+
   const processBatch = useCallback(async (allIds: string[], isRetry = false) => {
     setScrapeRunning(true);
     setScrapePaused(false);
@@ -153,7 +183,6 @@ export function AdminKnowledgeBaseTab() {
         } else if (data) {
           doneCount += data.processed || 0;
           errorCount += data.errors || 0;
-          // Track individual failed IDs from response
           if (data.results) {
             for (const r of data.results) {
               if (!r.success) newFailedIds.push(r.id);
@@ -191,7 +220,6 @@ export function AdminKnowledgeBaseTab() {
     refreshList();
   }, [scrapePaused]);
 
-  // Schedule auto-retry after 5 minutes
   const scheduleRetry = useCallback((ids: string[]) => {
     setRetryScheduled(true);
     setRetryCountdown(300);
@@ -209,7 +237,6 @@ export function AdminKnowledgeBaseTab() {
     }, 1000);
   }, [processBatch]);
 
-  // Bulk scrape: fetch all KB IDs without content, process in batches
   const startBulkScrape = useCallback(async () => {
     setScrapeRunning(true);
     setScrapePaused(false);
@@ -253,7 +280,7 @@ export function AdminKnowledgeBaseTab() {
   return (
     <>
       <div className="space-y-6">
-        {/* Action Buttons */}
+        {/* Action Buttons — unified */}
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
@@ -262,40 +289,23 @@ export function AdminKnowledgeBaseTab() {
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="grid grid-cols-2 gap-2 sm:flex sm:flex-wrap">
-              <Button onClick={() => setFormOpen(true)} className="w-full sm:w-auto">
+            <div className="flex flex-wrap gap-2">
+              <Button onClick={() => setFormOpen(true)}>
                 <Plus className="mr-1.5 h-4 w-4" />
                 <span className="text-xs sm:text-sm">{t("add_document")}</span>
               </Button>
-              <Button variant="secondary" onClick={() => setJsonlImportOpen(true)} className="w-full sm:w-auto">
-                <FileJson className="mr-1.5 h-4 w-4" />
-                <span className="text-xs sm:text-sm">JSONL</span>
+              <Button variant="secondary" onClick={() => setImportWizardOpen(true)}>
+                <Upload className="mr-1.5 h-4 w-4" />
+                <span className="text-xs sm:text-sm">Импорт</span>
               </Button>
-              <Button variant="outline" onClick={() => setWebScraperOpen(true)} className="w-full sm:w-auto">
-                <Globe className="mr-1.5 h-4 w-4" />
-                <span className="text-xs sm:text-sm">Web</span>
-              </Button>
-              <Button variant="outline" onClick={() => setMultiFileUploadOpen(true)} className="w-full sm:w-auto">
-                <FileStack className="mr-1.5 h-4 w-4" />
-                <span className="text-xs sm:text-sm">{"\u0424\u0430\u0439\u043B\u044B"}</span>
-              </Button>
-              <Button variant="outline" onClick={() => setBulkImportOpen(true)} className="w-full sm:w-auto">
-                <FileUp className="mr-1.5 h-4 w-4" />
-                <span className="text-xs sm:text-sm">TXT</span>
-              </Button>
-              <Button variant="outline" onClick={() => setPdfUploadOpen(true)} className="w-full sm:w-auto">
-                <FileUp className="mr-1.5 h-4 w-4" />
-                <span className="text-xs sm:text-sm">PDF</span>
-              </Button>
-              <Button variant="secondary" onClick={() => setExportOpen(true)} className="w-full sm:w-auto">
+              <Button variant="secondary" onClick={() => setExportOpen(true)}>
                 <Download className="mr-1.5 h-4 w-4" />
-                <span className="text-xs sm:text-sm">{"\u042d\u043a\u0441\u043f\u043e\u0440\u0442"}</span>
+                <span className="text-xs sm:text-sm">Экспорт</span>
               </Button>
               <Button 
-                variant="default" 
+                variant="outline" 
                 onClick={startBulkScrape} 
                 disabled={scrapeRunning}
-                className="w-full sm:w-auto"
               >
                 {scrapeRunning ? <Loader2 className="mr-1.5 h-4 w-4 animate-spin" /> : <Zap className="mr-1.5 h-4 w-4" />}
                 <span className="text-xs sm:text-sm">Scrape PDFs</span>
@@ -416,51 +426,38 @@ export function AdminKnowledgeBaseTab() {
         isLoading={createDocument.isPending || updateDocument.isPending}
       />
 
-      {/* PDF Upload */}
+      {/* ── Unified Import Wizard ─────────────────────────────── */}
+      <ImportWizard
+        open={importWizardOpen}
+        onOpenChange={setImportWizardOpen}
+        onImport={handleImportWizard}
+      />
+
+      {/* Legacy modals — still needed as backends behind wizard dispatch */}
       <KBPdfUpload
         open={pdfUploadOpen}
         onOpenChange={setPdfUploadOpen}
         onSuccess={handlePdfImport}
       />
-
-      {/* Bulk Import (TXT) */}
       <KBBulkImport
         open={bulkImportOpen}
         onOpenChange={setBulkImportOpen}
-        onSuccess={() => {
-          setBulkImportOpen(false);
-          refreshList();
-        }}
+        onSuccess={() => { setBulkImportOpen(false); refreshList(); }}
       />
-
-      {/* Multi-File Upload (Bulk PDF/Images) */}
       <KBMultiFileUpload
         open={multiFileUploadOpen}
         onOpenChange={setMultiFileUploadOpen}
-        onSuccess={() => {
-          setMultiFileUploadOpen(false);
-          refreshList();
-        }}
+        onSuccess={() => { setMultiFileUploadOpen(false); refreshList(); }}
       />
-
-      {/* Web Scraper for bulk PDF import */}
       <KBWebScraper
         open={webScraperOpen}
         onOpenChange={setWebScraperOpen}
-        onSuccess={() => {
-          setWebScraperOpen(false);
-          refreshList();
-        }}
+        onSuccess={() => { setWebScraperOpen(false); refreshList(); }}
       />
-
-      {/* JSONL Import for massive bulk import */}
       <KBJsonlImport
         open={jsonlImportOpen}
         onOpenChange={setJsonlImportOpen}
-        onSuccess={() => {
-          setJsonlImportOpen(false);
-          refreshList();
-        }}
+        onSuccess={() => { setJsonlImportOpen(false); refreshList(); }}
       />
 
       {/* Export */}
@@ -481,7 +478,7 @@ export function AdminKnowledgeBaseTab() {
           <AlertDialogFooter>
             <AlertDialogCancel>{t("common:cancel")}</AlertDialogCancel>
             <AlertDialogAction onClick={handleDeleteConfirm}>
-              {t("common:delete", "Delete")}
+              {t("common:delete")}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
