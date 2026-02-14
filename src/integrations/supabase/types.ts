@@ -1112,6 +1112,56 @@ export type Database = {
           },
         ]
       }
+      knowledge_base_chunks: {
+        Row: {
+          char_end: number
+          char_start: number
+          chunk_hash: string | null
+          chunk_index: number
+          chunk_text: string
+          chunk_type: string
+          created_at: string
+          id: string
+          is_active: boolean
+          kb_id: string
+          label: string | null
+        }
+        Insert: {
+          char_end?: number
+          char_start?: number
+          chunk_hash?: string | null
+          chunk_index?: number
+          chunk_text: string
+          chunk_type?: string
+          created_at?: string
+          id?: string
+          is_active?: boolean
+          kb_id: string
+          label?: string | null
+        }
+        Update: {
+          char_end?: number
+          char_start?: number
+          chunk_hash?: string | null
+          chunk_index?: number
+          chunk_text?: string
+          chunk_type?: string
+          created_at?: string
+          id?: string
+          is_active?: boolean
+          kb_id?: string
+          label?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "knowledge_base_chunks_kb_id_fkey"
+            columns: ["kb_id"]
+            isOneToOne: false
+            referencedRelation: "knowledge_base"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       legal_chunks: {
         Row: {
           char_end: number
@@ -1971,6 +2021,16 @@ export type Database = {
       retrieve_decrypted_pii: {
         Args: { p_field_name: string; p_user_id: string }
         Returns: string
+      }
+      search_kb_chunks: {
+        Args: {
+          p_category?: string
+          p_chunks_per_doc?: number
+          p_limit_chunks?: number
+          p_limit_docs?: number
+          p_query: string
+        }
+        Returns: Json
       }
       search_knowledge_base: {
         Args: {

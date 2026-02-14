@@ -29,11 +29,20 @@ type KBDocumentType = {
   id: string;
   title: string;
   content_text: string;
-  category: KbCategory;
+  category: KbCategory | string;
   source_name?: string | null;
   version_date?: string | null;
   source_url?: string | null;
   article_number?: string | null;
+  chunks?: Array<{
+    doc_id: string;
+    chunk_index: number;
+    chunk_type: string;
+    label: string | null;
+    char_start: number;
+    excerpt: string;
+    score: number;
+  }>;
 };
 
 interface KBDocumentCardProps {
@@ -94,8 +103,9 @@ export function KBDocumentCard({
 }: KBDocumentCardProps) {
   const { t } = useTranslation('kb');
 
-  // Extract relevant snippets when search query is present
-  const snippets = searchQuery
+  // Use server-returned chunks if available, otherwise fallback to client-side extraction
+  const serverChunks = document.chunks || [];
+  const clientSnippets = serverChunks.length === 0 && searchQuery
     ? extractRelevantSnippets(document.content_text, searchQuery, 3, 200)
     : [];
 
@@ -146,9 +156,33 @@ export function KBDocumentCard({
         )}
       </CardHeader>
       <CardContent>
-        {snippets.length > 0 ? (
+        {serverChunks.length > 0 ? (
           <div className="mb-3 space-y-2">
-            {snippets.map((snippet, idx) => (
+            {serverChunks.map((chunk, idx) => (
+              <div
+                key={idx}
+                className="rounded border-l-2 border-primary/40 bg-muted/40 px-2.5 py-1.5 text-xs leading-relaxed text-foreground/80"
+              >
+                {chunk.label && (
+                  <span className="font-semibold text-primary text-[10px] block mb-0.5">
+                    {chunk.label}
+                  </span>
+                )}
+                {searchQuery ? highlightTerms(chunk.excerpt, searchQuery).map((seg, i) =>
+                  seg.highlight ? (
+                    <mark key={i} className="bg-primary/20 text-foreground rounded px-0.5">
+                      {seg.text}
+                    </mark>
+                  ) : (
+                    <span key={i}>{seg.text}</span>
+                  )
+                ) : chunk.excerpt}
+              </div>
+            ))}
+          </div>
+        ) : clientSnippets.length > 0 ? (
+          <div className="mb-3 space-y-2">
+            {clientSnippets.map((snippet, idx) => (
               <div
                 key={idx}
                 className="rounded border-l-2 border-primary/40 bg-muted/40 px-2.5 py-1.5 text-xs leading-relaxed text-foreground/80"
@@ -172,7 +206,7 @@ export function KBDocumentCard({
         )}
         
         <div className="flex flex-wrap items-center gap-2">
-          <Badge className={getCategoryColor(document.category)}>
+          <Badge className={getCategoryColor(document.category as KbCategory)}>
             {t(`category_${document.category}`)}
           </Badge>
           {rank !== undefined && (
