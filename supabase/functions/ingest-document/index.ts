@@ -41,7 +41,9 @@ serve(async (req) => {
     }
 
     const body = await req.json();
-    const { fileName, mimeType, rawText, sourceUrl } = body;
+    const { fileName, mimeType, rawText, sourceUrl, dedupMode } = body;
+    // dedupMode: "skip" (default) | "upsert"
+    const dedup: "skip" | "upsert" = dedupMode === "upsert" ? "upsert" : "skip";
 
     // ── Validate input ──────────────────────────────────────────
     if (!fileName || typeof fileName !== "string") {
@@ -72,7 +74,7 @@ serve(async (req) => {
 
     const sourceHash = document.ingestion.source_hash;
 
-    // Check dedup
+    // Check dedup by source_hash
     if (sourceHash) {
       const { data: existing } = await supabase
         .from("legal_documents")
@@ -81,11 +83,15 @@ serve(async (req) => {
         .maybeSingle();
 
       if (existing) {
-        return json({
-          document_id: existing.id,
-          chunks_inserted: 0,
-          deduplicated: true,
-        }, 200);
+        if (dedup === "skip") {
+          return json({
+            document_id: existing.id,
+            chunks_inserted: 0,
+            deduplicated: true,
+          }, 200);
+        }
+        // upsert: delete old doc+chunks (CASCADE), then re-insert below
+        await supabase.from("legal_documents").delete().eq("id", existing.id);
       }
     }
 
