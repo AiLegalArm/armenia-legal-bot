@@ -42,6 +42,7 @@ export interface KBChunkSearchResult {
     label: string | null;
     char_start: number;
     excerpt: string;
+    full_text: string | null;
     score: number;
   }>;
 }
@@ -80,7 +81,8 @@ export function useKnowledgeBase(filters: KBFilters = {}) {
         }>;
         chunks: Array<{
           doc_id: string; chunk_index: number; chunk_type: string;
-          label: string | null; char_start: number; excerpt: string; score: number;
+          label: string | null; char_start: number; excerpt: string;
+          full_text: string | null; score: number;
         }>;
       };
       
