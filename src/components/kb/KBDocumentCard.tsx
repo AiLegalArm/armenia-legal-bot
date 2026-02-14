@@ -19,6 +19,7 @@ import {
 } from '@/components/ui/dropdown-menu';
 import { format } from 'date-fns';
 import type { Database } from '@/integrations/supabase/types';
+import { extractRelevantSnippets, highlightTerms } from '@/lib/snippet-extractor';
 
 type KnowledgeBase = Database['public']['Tables']['knowledge_base']['Row'];
 type KbCategory = Database['public']['Enums']['kb_category'];
@@ -42,6 +43,7 @@ interface KBDocumentCardProps {
   onDelete?: (id: string) => void;
   isAdmin?: boolean;
   rank?: number;
+  searchQuery?: string;
 }
 
 const categoryColors: Partial<Record<KbCategory, string>> = {
@@ -87,9 +89,15 @@ export function KBDocumentCard({
   onEdit, 
   onDelete, 
   isAdmin,
-  rank 
+  rank,
+  searchQuery,
 }: KBDocumentCardProps) {
   const { t } = useTranslation('kb');
+
+  // Extract relevant snippets when search query is present
+  const snippets = searchQuery
+    ? extractRelevantSnippets(document.content_text, searchQuery, 3, 200)
+    : [];
 
   return (
     <Card className="transition-shadow hover:shadow-md">
@@ -138,9 +146,30 @@ export function KBDocumentCard({
         )}
       </CardHeader>
       <CardContent>
-        <p className="mb-3 line-clamp-3 text-sm text-muted-foreground">
-          {document.content_text.substring(0, 200)}...
-        </p>
+        {snippets.length > 0 ? (
+          <div className="mb-3 space-y-2">
+            {snippets.map((snippet, idx) => (
+              <div
+                key={idx}
+                className="rounded border-l-2 border-primary/40 bg-muted/40 px-2.5 py-1.5 text-xs leading-relaxed text-foreground/80"
+              >
+                {highlightTerms(snippet.text, searchQuery!).map((seg, i) =>
+                  seg.highlight ? (
+                    <mark key={i} className="bg-primary/20 text-foreground rounded px-0.5">
+                      {seg.text}
+                    </mark>
+                  ) : (
+                    <span key={i}>{seg.text}</span>
+                  )
+                )}
+              </div>
+            ))}
+          </div>
+        ) : (
+          <p className="mb-3 line-clamp-3 text-sm text-muted-foreground">
+            {document.content_text.substring(0, 200)}...
+          </p>
+        )}
         
         <div className="flex flex-wrap items-center gap-2">
           <Badge className={getCategoryColor(document.category)}>
