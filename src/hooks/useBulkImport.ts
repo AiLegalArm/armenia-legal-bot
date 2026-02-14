@@ -87,18 +87,11 @@ export function useBulkImport() {
   const abortRef = useRef(false);
   const itemsRef = useRef<QueueItem[]>([]);
 
-  // Keep ref in sync with state
-  const setItemsAndRef = useCallback((updater: QueueItem[] | ((prev: QueueItem[]) => QueueItem[])) => {
-    setItems(prev => {
-      const next = typeof updater === 'function' ? updater(prev) : updater;
-      itemsRef.current = next;
-      return next;
-    });
-  }, []);
 
   const updateItem = useCallback((id: string, patch: Partial<QueueItem>) => {
-    setItemsAndRef(prev => prev.map(it => it.id === id ? { ...it, ...patch } : it));
-  }, [setItemsAndRef]);
+    itemsRef.current = itemsRef.current.map(it => it.id === id ? { ...it, ...patch } : it);
+    setItems(itemsRef.current);
+  }, []);
 
   // ── Build queue from various sources ────────────────────────────
 
@@ -117,9 +110,11 @@ export function useBulkImport() {
       retryCount: 0,
       payload: s.payload,
     }));
-    setItemsAndRef(prev => [...prev, ...newItems]);
+    // Update ref synchronously so run() can access items immediately
+    itemsRef.current = [...itemsRef.current, ...newItems];
+    setItems(itemsRef.current);
     return newItems;
-  }, [setItemsAndRef]);
+  }, []);
 
   // ── Process single item through all stages ─────────────────────
 
@@ -287,12 +282,14 @@ export function useBulkImport() {
   // ── Clear queue ────────────────────────────────────────────────
 
   const clearCompleted = useCallback(() => {
-    setItemsAndRef(prev => prev.filter(it => it.stage !== 'inserted'));
-  }, [setItemsAndRef]);
+    itemsRef.current = itemsRef.current.filter(it => it.stage !== 'inserted');
+    setItems(itemsRef.current);
+  }, []);
 
   const clearAll = useCallback(() => {
-    setItemsAndRef([]);
-  }, [setItemsAndRef]);
+    itemsRef.current = [];
+    setItems([]);
+  }, []);
 
   // ── Export error report ────────────────────────────────────────
 
