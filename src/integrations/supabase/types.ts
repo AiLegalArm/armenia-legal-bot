@@ -1272,6 +1272,7 @@ export type Database = {
           embedding_last_attempt: string | null
           embedding_status: string
           id: string
+          import_ref: string | null
           is_active: boolean
           is_anonymized: boolean
           key_paragraphs: Json | null
@@ -1305,6 +1306,7 @@ export type Database = {
           embedding_last_attempt?: string | null
           embedding_status?: string
           id?: string
+          import_ref?: string | null
           is_active?: boolean
           is_anonymized?: boolean
           key_paragraphs?: Json | null
@@ -1338,6 +1340,7 @@ export type Database = {
           embedding_last_attempt?: string | null
           embedding_status?: string
           id?: string
+          import_ref?: string | null
           is_active?: boolean
           is_anonymized?: boolean
           key_paragraphs?: Json | null
@@ -1878,6 +1881,7 @@ export type Database = {
           embedding_last_attempt: string | null
           embedding_status: string
           id: string
+          import_ref: string | null
           is_active: boolean
           is_anonymized: boolean
           key_paragraphs: Json | null
