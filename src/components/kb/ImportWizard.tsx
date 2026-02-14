@@ -40,6 +40,8 @@ import {
   Play,
 } from 'lucide-react';
 import { kbCategoryOptions, type KbCategory } from '@/components/kb/kbCategories';
+import { useBulkImport } from '@/hooks/useBulkImport';
+import { BulkImportQueue } from '@/components/kb/BulkImportQueue';
 
 // ── Types ────────────────────────────────────────────────────────────
 
@@ -109,10 +111,14 @@ export function ImportWizard({ open, onOpenChange, onImport }: ImportWizardProps
   const [source, setSource] = useState<ImportSource | null>(null);
   const [files, setFiles] = useState<File[]>([]);
   const [url, setUrl] = useState('');
+  const [urlList, setUrlList] = useState('');
   const [pastedText, setPastedText] = useState('');
   const [pastedJsonl, setPastedJsonl] = useState('');
   const [jsonlRecords, setJsonlRecords] = useState<Record<string, unknown>[]>([]);
   const [jsonlError, setJsonlError] = useState<string | null>(null);
+
+  // Bulk import hook
+  const bulk = useBulkImport();
 
   // Step 1: Target
   const [target, setTarget] = useState<ImportTarget>('knowledge_base');
@@ -139,6 +145,7 @@ export function ImportWizard({ open, onOpenChange, onImport }: ImportWizardProps
     setSource(null);
     setFiles([]);
     setUrl('');
+    setUrlList('');
     setPastedText('');
     setPastedJsonl('');
     setJsonlRecords([]);
@@ -147,7 +154,8 @@ export function ImportWizard({ open, onOpenChange, onImport }: ImportWizardProps
     setOptions({ normalize: true, chunk: true, category: 'other' as KbCategory, sourceName: '' });
     setPreviewRecords([]);
     setImporting(false);
-  }, []);
+    bulk.clearAll();
+  }, [bulk]);
 
   const handleClose = useCallback(() => {
     reset();
@@ -169,6 +177,14 @@ export function ImportWizard({ open, onOpenChange, onImport }: ImportWizardProps
     return records;
   }, []);
 
+  /** Parse URL list (single URL field + multi-URL textarea) */
+  const parseUrls = useCallback((): string[] => {
+    const combined = [url.trim(), ...urlList.split('\n').map(l => l.trim())]
+      .filter(u => u.length > 0 && (u.startsWith('http://') || u.startsWith('https://')));
+    // Deduplicate
+    return [...new Set(combined)];
+  }, [url, urlList]);
+
   const buildPreview = useCallback((): PreviewRecord[] => {
     if (source === 'files') {
       return files.map(f => ({
@@ -179,17 +195,18 @@ export function ImportWizard({ open, onOpenChange, onImport }: ImportWizardProps
       }));
     }
     if (source === 'url') {
-      return [{
-        title: url,
-        content_preview: `[URL будет обработан при импорте]`,
+      const urls = parseUrls();
+      return urls.map(u => ({
+        title: u,
+        content_preview: '[URL \u0431\u0443\u0434\u0435\u0442 \u043e\u0431\u0440\u0430\u0431\u043e\u0442\u0430\u043d \u043f\u0440\u0438 \u0438\u043c\u043f\u043e\u0440\u0442\u0435]',
         category: options.category,
-        source_name: options.sourceName || url,
-      }];
+        source_name: options.sourceName || u,
+      }));
     }
     if (source === 'paste_text') {
       const preview = pastedText.substring(0, 200);
       return [{
-        title: options.sourceName || 'Вставленный текст',
+        title: options.sourceName || '\u0412\u0441\u0442\u0430\u0432\u043b\u0435\u043d\u043d\u044b\u0439 \u0442\u0435\u043a\u0441\u0442',
         content_preview: preview + (pastedText.length > 200 ? '...' : ''),
         category: options.category,
         source_name: options.sourceName,
@@ -204,14 +221,14 @@ export function ImportWizard({ open, onOpenChange, onImport }: ImportWizardProps
       }));
     }
     return [];
-  }, [source, files, url, pastedText, jsonlRecords, options]);
+  }, [source, files, url, urlList, pastedText, jsonlRecords, options]);
 
   const canAdvance = useCallback((): boolean => {
     switch (step) {
       case 0:
         if (!source) return false;
         if (source === 'files') return files.length > 0;
-        if (source === 'url') return url.trim().length > 0;
+        if (source === 'url') return url.trim().length > 0 || urlList.trim().length > 0;
         if (source === 'paste_text') return pastedText.trim().length > 0;
         if (source === 'paste_jsonl') return jsonlRecords.length > 0;
         return false;
@@ -222,7 +239,7 @@ export function ImportWizard({ open, onOpenChange, onImport }: ImportWizardProps
       case 5: return false;
       default: return false;
     }
-  }, [step, source, files, url, pastedText, jsonlRecords, target, previewRecords]);
+  }, [step, source, files, url, urlList, pastedText, jsonlRecords, target, previewRecords]);
 
   const goNext = useCallback(() => {
     if (step === 3) {
@@ -258,6 +275,36 @@ export function ImportWizard({ open, onOpenChange, onImport }: ImportWizardProps
 
   const handleImport = useCallback(() => {
     setImporting(true);
+
+    // Build queue items from all sources
+    const queueSources: Array<{
+      source: 'file' | 'url' | 'text' | 'jsonl_record';
+      label: string;
+      payload: { file?: File; url?: string; text?: string; record?: Record<string, unknown> };
+    }> = [];
+
+    if (source === 'files') {
+      for (const f of files) {
+        queueSources.push({ source: 'file', label: f.name, payload: { file: f } });
+      }
+    } else if (source === 'url') {
+      const urls = parseUrls();
+      for (const u of urls) {
+        queueSources.push({ source: 'url', label: u, payload: { url: u } });
+      }
+    } else if (source === 'paste_text') {
+      queueSources.push({ source: 'text', label: options.sourceName || 'Pasted text', payload: { text: pastedText } });
+    } else if (source === 'paste_jsonl') {
+      for (let i = 0; i < jsonlRecords.length; i++) {
+        const rec = jsonlRecords[i];
+        const label = String(rec.title || rec.name || `Record ${i + 1}`);
+        queueSources.push({ source: 'jsonl_record', label, payload: { record: rec } });
+      }
+    }
+
+    bulk.enqueue(queueSources);
+
+    // Also notify parent with the legacy payload
     const payload: ImportPayload = {
       source: source!,
       target,
@@ -269,8 +316,16 @@ export function ImportWizard({ open, onOpenChange, onImport }: ImportWizardProps
       ...(source === 'paste_jsonl' && { jsonlRecords }),
     };
     onImport(payload);
-    // Parent is responsible for closing / resetting
-  }, [source, target, options, previewRecords, files, url, pastedText, jsonlRecords, onImport]);
+
+    // Start processing
+    bulk.run({
+      target,
+      category: options.category,
+      sourceName: options.sourceName,
+      normalize: options.normalize,
+      chunk: options.chunk,
+    });
+  }, [source, target, options, previewRecords, files, url, pastedText, jsonlRecords, onImport, bulk, parseUrls]);
 
   // ── Source selection cards ──────────────────────────────────────
 
@@ -368,13 +423,32 @@ export function ImportWizard({ open, onOpenChange, onImport }: ImportWizardProps
                 )}
 
                 {source === 'url' && (
-                  <div className="space-y-2">
-                    <Label>URL</Label>
-                    <Input
-                      placeholder="https://example.com/document.pdf"
-                      value={url}
-                      onChange={(e) => setUrl(e.target.value)}
-                    />
+                  <div className="space-y-3">
+                    <div className="space-y-2">
+                      <Label>URL</Label>
+                      <Input
+                        placeholder="https://example.com/document.pdf"
+                        value={url}
+                        onChange={(e) => setUrl(e.target.value)}
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label>
+                        {'\u0414\u043e\u043f\u043e\u043b\u043d\u0438\u0442\u0435\u043b\u044c\u043d\u044b\u0435 URL'}{' '}
+                        <span className="text-muted-foreground font-normal">({'\u043f\u043e \u043e\u0434\u043d\u043e\u043c\u0443 \u043d\u0430 \u0441\u0442\u0440\u043e\u043a\u0443'})</span>
+                      </Label>
+                      <Textarea
+                        placeholder={'https://example.com/doc1.pdf\nhttps://example.com/doc2.pdf'}
+                        value={urlList}
+                        onChange={(e) => setUrlList(e.target.value)}
+                        className="min-h-[80px] font-mono text-xs"
+                      />
+                      {(url || urlList) && (
+                        <p className="text-xs text-muted-foreground">
+                          {parseUrls().length} URL {'\u0440\u0430\u0441\u043f\u043e\u0437\u043d\u0430\u043d\u043e'}
+                        </p>
+                      )}
+                    </div>
                   </div>
                 )}
 
@@ -549,32 +623,41 @@ export function ImportWizard({ open, onOpenChange, onImport }: ImportWizardProps
               </div>
             )}
 
-            {/* ── Step 5: Import ──────────────────────── */}
             {step === 5 && (
-              <div className="flex flex-col items-center gap-4 py-8">
-                {importing ? (
-                  <>
-                    <Loader2 className="h-12 w-12 animate-spin text-primary" />
-                    <p className="text-sm text-muted-foreground">Импорт запущен...</p>
-                    <p className="text-xs text-muted-foreground">
-                      Обработка будет продолжена существующими обработчиками
-                    </p>
-                  </>
+              <div className="space-y-4 py-2">
+                {importing || bulk.items.length > 0 ? (
+                  <BulkImportQueue
+                    items={bulk.items}
+                    isRunning={bulk.isRunning}
+                    completed={bulk.completed}
+                    failed={bulk.failed}
+                    total={bulk.total}
+                    onRetryFailed={() => bulk.retryFailed({
+                      target,
+                      category: options.category,
+                      sourceName: options.sourceName,
+                      normalize: options.normalize,
+                      chunk: options.chunk,
+                    })}
+                    onAbort={bulk.abort}
+                    onClearCompleted={bulk.clearCompleted}
+                    onDownloadErrors={bulk.downloadErrorReport}
+                  />
                 ) : (
-                  <>
+                  <div className="flex flex-col items-center gap-4 py-8">
                     <div className="rounded-full bg-primary/10 p-4">
                       <Play className="h-10 w-10 text-primary" />
                     </div>
-                    <p className="text-sm font-medium">Готово к импорту</p>
+                    <p className="text-sm font-medium">{'\u0413\u043e\u0442\u043e\u0432\u043e \u043a \u0438\u043c\u043f\u043e\u0440\u0442\u0443'}</p>
                     <p className="text-xs text-muted-foreground text-center max-w-sm">
-                      {previewRecords.length} записей будут импортированы в{' '}
-                      {target === 'knowledge_base' ? 'базу законодательства' : 'базу судебной практики'}
+                      {previewRecords.length} {'\u0437\u0430\u043f\u0438\u0441\u0435\u0439 \u0431\u0443\u0434\u0443\u0442 \u0438\u043c\u043f\u043e\u0440\u0442\u0438\u0440\u043e\u0432\u0430\u043d\u044b \u0432'}{' '}
+                      {target === 'knowledge_base' ? '\u0431\u0430\u0437\u0443 \u0437\u0430\u043a\u043e\u043d\u043e\u0434\u0430\u0442\u0435\u043b\u044c\u0441\u0442\u0432\u0430' : '\u0431\u0430\u0437\u0443 \u0441\u0443\u0434\u0435\u0431\u043d\u043e\u0439 \u043f\u0440\u0430\u043a\u0442\u0438\u043a\u0438'}
                     </p>
                     <Button onClick={handleImport} size="lg" className="mt-2">
                       <Upload className="mr-2 h-4 w-4" />
-                      Начать импорт
+                      {'\u041d\u0430\u0447\u0430\u0442\u044c \u0438\u043c\u043f\u043e\u0440\u0442'}
                     </Button>
-                  </>
+                  </div>
                 )}
               </div>
             )}
@@ -609,14 +692,17 @@ export function ImportWizard({ open, onOpenChange, onImport }: ImportWizardProps
           </div>
         )}
 
-        {step === 5 && !importing && (
+        {step === 5 && (
           <div className="flex items-center justify-between border-t pt-3">
-            <Button variant="outline" onClick={goBack} size="sm">
-              <ArrowLeft className="mr-1 h-3.5 w-3.5" />
-              Назад
-            </Button>
+            {!bulk.isRunning && (
+              <Button variant="outline" onClick={goBack} size="sm">
+                <ArrowLeft className="mr-1 h-3.5 w-3.5" />
+                {'\u041d\u0430\u0437\u0430\u0434'}
+              </Button>
+            )}
+            <div className="flex-1" />
             <Button variant="ghost" onClick={handleClose} size="sm">
-              Закрыть
+              {'\u0417\u0430\u043a\u0440\u044b\u0442\u044c'}
             </Button>
           </div>
         )}
