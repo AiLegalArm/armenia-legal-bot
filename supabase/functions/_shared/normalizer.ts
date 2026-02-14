@@ -6,6 +6,8 @@
  * IMPORTANT: No Armenian glyphs — all Unicode escapes \uXXXX.
  */
 
+import { preprocessText } from "./text-preprocessor.ts";
+
 // ─── ENUMS ──────────────────────────────────────────────────────────
 export const DOC_TYPES = [
   "law", "code", "court_decision", "constitutional_court",
@@ -256,11 +258,18 @@ export async function sha256Hex(text: string): Promise<string> {
 export async function normalize(input: NormalizerInput): Promise<LegalDocument> {
   const { fileName, rawText, sourceUrl } = input;
 
-  const docType = inferDocType(fileName, rawText);
-  const branch = inferBranch(rawText, docType);
-  const title = extractTitle(rawText, docType);
-  const dateAdopted = extractFirstDate(rawText.slice(0, 3000));
-  const actNumber = extractActNumber(rawText.slice(0, 3000));
+  // Hash raw text BEFORE preprocessing (for stable dedup)
+  const sourceHash = await sha256Hex(rawText);
+
+  // Preprocess: strip PDF/HTML noise while preserving legal structure
+  const isHtml = (input.mimeType || "").includes("html");
+  const { cleaned: contentText } = preprocessText(rawText, { isHtml });
+
+  const docType = inferDocType(fileName, contentText);
+  const branch = inferBranch(contentText, docType);
+  const title = extractTitle(contentText, docType);
+  const dateAdopted = extractFirstDate(contentText.slice(0, 3000));
+  const actNumber = extractActNumber(contentText.slice(0, 3000));
 
   const isCourtDecision = [
     "court_decision", "cassation_ruling", "appeal_ruling",
@@ -269,13 +278,13 @@ export async function normalize(input: NormalizerInput): Promise<LegalDocument> 
 
   let court: CourtMeta | null = null;
   if (isCourtDecision) {
-    const courtType = detectCourtType(rawText);
+    const courtType = detectCourtType(contentText);
     court = {
       court_type: courtType || "first_instance",
-      court_name: detectCourtName(rawText),
-      case_number: extractCaseNumber(rawText),
+      court_name: detectCourtName(contentText),
+      case_number: extractCaseNumber(contentText),
       judge_names: null,
-      outcome: detectOutcome(rawText),
+      outcome: detectOutcome(contentText),
     };
   }
 
@@ -287,15 +296,13 @@ export async function normalize(input: NormalizerInput): Promise<LegalDocument> 
           : null)
     : null;
 
-  const sourceHash = await sha256Hex(rawText);
-
   return {
     doc_type: docType,
     jurisdiction: "AM",
     branch,
     title,
     title_alt: null,
-    content_text: rawText,
+    content_text: contentText,
     document_number: actNumber,
     date_adopted: dateAdopted,
     date_effective: null,
