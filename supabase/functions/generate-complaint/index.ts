@@ -97,11 +97,11 @@ serve(async (req) => {
       legalPracticeContext = rag.practiceContext;
 
       // Build structured precedent list from practice results (max 6)
+      // SAFETY: only include precedents that have at least one usable quote
       retrievedPrecedents = (rag.practiceResults || []).slice(0, 6).map((r) => {
-        // Extract up to 2 short quotes (≤300 chars) from content
         const fullText = r.content_text || r.content_snippet || r.legal_reasoning_summary || "";
         const sentences = fullText
-          .split(/(?<=[.!?\u0589\u0964])\s+/)  // split on sentence boundaries (incl. Armenian ։)
+          .split(/(?<=[.!?\u0589\u0964])\s+/)
           .map((s: string) => s.trim())
           .filter((s: string) => s.length >= 30 && s.length <= 300);
         const quotes = sentences.slice(0, 2);
@@ -110,11 +110,11 @@ serve(async (req) => {
           id: r.id,
           court_type: r.court_type || "unknown",
           title: r.title,
-          decision_date: null, // not available in current schema as separate field on results
+          decision_date: null,
           source_name: null,
           quotes,
         };
-      });
+      }).filter((p) => p.quotes.length > 0); // exclude precedents with no extractable quotes
       
       log("generate-complaint", "RAG context", {
         kbLen: kbContext.length,
@@ -131,33 +131,40 @@ serve(async (req) => {
     let precedentGuardBlock: string;
     if (retrievedPrecedents.length > 0) {
       const entries = retrievedPrecedents.map((p, i) => {
-        const quotesBlock = p.quotes.length > 0
-          ? p.quotes.map((q, qi) => `  Quote ${qi + 1}: "${q}"`).join("\n")
-          : "  (no direct quotes available)";
+        const quotesBlock = p.quotes.map((q, qi) => `  Quote ${qi + 1}: "${q}"`).join("\n");
         return `${i + 1}. [ID: ${p.id}] ${p.title}\n   Court: ${p.court_type}\n${quotesBlock}`;
       }).join("\n\n");
 
       precedentGuardBlock = `
-=== PRECEDENT GUARD (MANDATORY) ===
+=== PRECEDENT GUARD (MANDATORY — SINGLE SOURCE OF TRUTH) ===
 RETRIEVED_PRECEDENTS (${retrievedPrecedents.length} found):
 
 ${entries}
 
 STRICT RULES:
-- You may ONLY cite precedents listed above under RETRIEVED_PRECEDENTS.
-- For each cited precedent include: title, court type, and 1-2 short quotes (<=300 chars) taken ONLY from the quotes listed above.
-- If a quote is not available for a precedent, you may paraphrase its title/reasoning but MUST mark it as "[paraphrase]".
-- Do NOT invent, fabricate, or hallucinate ANY case names, numbers, dates, or quotes not present above.
-- Maximum precedents to cite: 6. Maximum quotes per precedent: 2.
-- If RETRIEVED_PRECEDENTS is empty, output a "KB GAP NOTICE" section and do NOT cite any precedents.
+1. You may ONLY cite precedents listed above under RETRIEVED_PRECEDENTS.
+2. For each cited precedent you MUST include: title, court type, and 1-2 short quotes (<=300 chars) taken VERBATIM from the quotes listed above.
+3. PARAPHRASING IS FORBIDDEN. If you cannot use a verbatim quote from above, you MUST NOT cite that precedent.
+4. Do NOT invent, fabricate, or hallucinate ANY case names, numbers, dates, or quotes not present above.
+5. Maximum precedents to cite: 6. Maximum quotes per precedent: 2.
+6. The "ANALOGOUS COURT PRACTICE" section below (if present) is NON-CITABLE background context only. You MUST NOT extract case names, numbers, or quotes from it. Citations MUST come exclusively from RETRIEVED_PRECEDENTS above.
+7. At the END of your output, include a deterministic section:
+   --- PRECEDENTS CITED ---
+   [List only the IDs of precedents you actually cited, one per line, e.g.: "ID: <uuid>"]
+   If none cited, output: "NONE"
+   --- END PRECEDENTS CITED ---
 === END PRECEDENT GUARD ===`;
     } else {
       precedentGuardBlock = `
-=== PRECEDENT GUARD (MANDATORY) ===
+=== PRECEDENT GUARD (MANDATORY — SINGLE SOURCE OF TRUTH) ===
 RETRIEVED_PRECEDENTS: NONE FOUND.
 You MUST NOT cite any court precedents (Cassation or ECHR).
 Instead, include a "KB GAP NOTICE" section explaining that no relevant precedents were found in the knowledge base.
 Do NOT invent any case names, numbers, dates, or quotes.
+At the END of your output, include:
+--- PRECEDENTS CITED ---
+NONE
+--- END PRECEDENTS CITED ---
 === END PRECEDENT GUARD ===`;
     }
 
@@ -185,9 +192,11 @@ ${kbContext}
 
 ---` : 'No relevant sources found in Knowledge Base.'}
 
-${legalPracticeContext ? `ANALOGOUS COURT PRACTICE (KB REFERENCE - use for legal argumentation patterns):
+${legalPracticeContext ? `ANALOGOUS COURT PRACTICE (NON-CITABLE BACKGROUND — for argumentation patterns only, NOT for direct citation):
 
 ${legalPracticeContext}
+
+NOTE: The above section is supplementary context. Do NOT cite case names, numbers, or quotes from this section. All citations MUST come from the RETRIEVED_PRECEDENTS registry in the PRECEDENT GUARD block.
 
 ---` : ''}
 
@@ -197,7 +206,7 @@ Based on the above document content, legal sources, and analogous court practice
 
 Follow the strict template structure. If critical information is missing, state what is needed before drafting.
 Use the court practice examples above to strengthen legal argumentation with relevant precedents.
-REMINDER: Only cite precedents from the RETRIEVED_PRECEDENTS list above. Any citation not traceable to that list is a violation.`;
+REMINDER: Only cite precedents from the RETRIEVED_PRECEDENTS list above. Paraphrasing is forbidden — use verbatim quotes only. Any citation not traceable to that list is a violation. End your output with the "PRECEDENTS CITED" section.`;
 
     log("generate-complaint", "Generating complaint", { courtType: request.courtType, language: request.language, textLen: request.extractedText.length });
 
