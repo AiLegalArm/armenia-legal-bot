@@ -46,7 +46,7 @@ serve(async (req) => {
     // Handle file uploads (photo or document)
     if (message.photo || message.document) {
       await handleFileUpload(
-        supabase as any, 
+        supabase, 
         TELEGRAM_BOT_TOKEN, 
         chatId, 
         message.photo, 
@@ -252,7 +252,7 @@ serve(async (req) => {
 });
 
 async function handleFileUpload(
-  supabase: any,
+  supabase: ReturnType<typeof createClient>,
   botToken: string,
   chatId: number,
   photo: Array<{ file_id: string; file_size?: number; width: number; height: number }> | undefined,

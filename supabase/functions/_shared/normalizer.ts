@@ -318,15 +318,25 @@ export async function normalize(input: NormalizerInput): Promise<LegalDocument> 
 
 // ─── VALIDATION ─────────────────────────────────────────────────────
 
+function isValidDocType(v: string): v is DocType {
+  return (DOC_TYPES as readonly string[]).includes(v);
+}
+function isValidBranch(v: string): v is LegalBranch {
+  return (BRANCHES as readonly string[]).includes(v);
+}
+function isValidCourtType(v: string): v is CourtType {
+  return (COURT_TYPES as readonly string[]).includes(v);
+}
+
 export function validate(doc: LegalDocument): ValidationError[] {
   const errors: ValidationError[] = [];
-  if (!DOC_TYPES.includes(doc.doc_type as any)) {
+  if (!isValidDocType(doc.doc_type)) {
     errors.push({ field: "doc_type", message: `Invalid doc_type: ${doc.doc_type}` });
   }
   if (doc.jurisdiction !== "AM") {
     errors.push({ field: "jurisdiction", message: "Must be 'AM'" });
   }
-  if (!BRANCHES.includes(doc.branch as any)) {
+  if (!isValidBranch(doc.branch)) {
     errors.push({ field: "branch", message: `Invalid branch: ${doc.branch}` });
   }
   if (!doc.title || doc.title.length === 0) {
@@ -342,7 +352,7 @@ export function validate(doc: LegalDocument): ValidationError[] {
     errors.push({ field: "date_effective", message: "Must be YYYY-MM-DD" });
   }
   if (doc.court) {
-    if (!COURT_TYPES.includes(doc.court.court_type as any)) {
+    if (!isValidCourtType(doc.court.court_type)) {
       errors.push({ field: "court.court_type", message: `Invalid: ${doc.court.court_type}` });
     }
   }

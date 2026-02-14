@@ -2,6 +2,8 @@
 // RAG SEARCH FOR DOCUMENT GENERATION (HYBRID: VECTOR + KEYWORD)
 // =============================================================================
 
+import type { KBSearchResult, PracticeSearchResult, VectorSearchResponse } from "../_shared/rag-types.ts";
+
 // Helper: call vector-search edge function
 async function vectorSearch(
   query: string,
@@ -10,7 +12,7 @@ async function vectorSearch(
   supabaseKey: string,
   category?: string,
   limit = 5
-): Promise<{ kb: any[]; practice: any[] }> {
+): Promise<VectorSearchResponse> {
   try {
     const lovableApiKey = Deno.env.get("LOVABLE_API_KEY");
     if (!lovableApiKey) return { kb: [], practice: [] };
@@ -58,7 +60,7 @@ export async function searchKnowledgeBase(
 
     // Merge results
     const seen = new Set<string>();
-    const merged: any[] = [];
+    const merged: KBSearchResult[] = [];
 
     // Vector results first (better semantic match)
     for (const r of (vectorResults.kb || [])) {
@@ -70,7 +72,7 @@ export async function searchKnowledgeBase(
 
     // Then keyword results
     if (keywordResponse.ok) {
-      const kwResults = await keywordResponse.json();
+      const kwResults: KBSearchResult[] = await keywordResponse.json();
       for (const r of (kwResults || [])) {
         if (!seen.has(r.id)) {
           seen.add(r.id);
@@ -81,7 +83,7 @@ export async function searchKnowledgeBase(
 
     if (merged.length === 0) return '';
 
-    return merged.slice(0, 8).map((r: any) => 
+    return merged.slice(0, 8).map((r) => 
       `[\u0411\u0430\u0437\u0430 \u0437\u043D\u0430\u043D\u0438\u0439: ${r.category}] ${r.title}\n${(r.content_text || '').substring(0, 1500)}`
     ).join('\n\n---\n\n');
   } catch (error) {
@@ -116,7 +118,7 @@ export async function searchLegalPractice(
     ]);
 
     const seen = new Set<string>();
-    const merged: any[] = [];
+    const merged: PracticeSearchResult[] = [];
 
     for (const r of (vectorResults.practice || [])) {
       if (!seen.has(r.id)) {
@@ -126,7 +128,7 @@ export async function searchLegalPractice(
     }
 
     if (keywordResponse.ok) {
-      const kwResults = await keywordResponse.json();
+      const kwResults: PracticeSearchResult[] = await keywordResponse.json();
       for (const r of (kwResults || [])) {
         if (!seen.has(r.id)) {
           seen.add(r.id);
@@ -137,7 +139,7 @@ export async function searchLegalPractice(
 
     if (merged.length === 0) return '';
 
-    return merged.slice(0, 5).map((r: any) => 
+    return merged.slice(0, 5).map((r) => 
       `[\u0410\u043D\u0430\u043B\u043E\u0433 \u0434\u0430\u0442\u0430\u043A\u0430\u043D \u043F\u0440\u0430\u043A\u057F\u056B\u056F\u0561 (KB)] ${r.title}
 \u0422\u0438\u043F \u0441\u0443\u0434\u0430: ${r.court_type} | \u0418\u0441\u0445\u043E\u0434: ${r.outcome}
 ${r.legal_reasoning_summary || ''}

@@ -229,7 +229,7 @@ serve(async (req) => {
 
       if (!error && data) {
         // Score and rank results
-        searchResults = data.map((r: any) => {
+        searchResults = data.map((r: { id: string; title: string; content_text: string; category: string; source_name: string; source_url: string; article_number: string }) => {
           let score = 0;
           const titleLower = (r.title || "").toLowerCase();
           const contentLower = (r.content_text || "").toLowerCase();
@@ -240,7 +240,7 @@ serve(async (req) => {
             if (contentLower.includes(kwLower)) score += 1;
           }
           return { ...r, rank: score / (keywords.length * 4) };
-        }).sort((a: any, b: any) => b.rank - a.rank);
+        }).sort((a, b) => b.rank - a.rank);
       }
     }
 

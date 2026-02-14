@@ -884,7 +884,7 @@ serve(async (req) => {
     const tokensUsed = aiResponse.usage?.total_tokens || 0;
 
     // Parse JSON response
-    let parsedResult: any = {
+    let parsedResult: { summary: string; analysis: string; findings: unknown[]; evidenceItems: unknown[]; [key: string]: unknown } = {
       summary: "",
       analysis: content,
       findings: [],

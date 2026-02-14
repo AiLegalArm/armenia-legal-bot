@@ -114,7 +114,7 @@ serve(async (req) => {
       console.log(`Found ${reminders.length} reminders for ${minutesBefore}min window`);
 
       for (const reminder of reminders) {
-        const profile = reminder.profiles as any;
+        const profile = reminder.profiles as { telegram_chat_id: string | null; notification_preferences: { telegram?: boolean } | null } | null;
         if (!profile?.telegram_chat_id) continue;
 
         const prefs = profile.notification_preferences as { telegram?: boolean } | null;

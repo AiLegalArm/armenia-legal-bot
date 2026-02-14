@@ -51,7 +51,7 @@ async function requireAdmin(req: Request) {
   }
 
   const user = userData.user;
-  const role = (user.app_metadata as any)?.role;
+  const role = (user.app_metadata as Record<string, unknown> | undefined)?.role;
   if (role === "admin") return { token, user };
 
   const { data: isAdmin } = await supabaseAuth.rpc("has_role", { _user_id: user.id, _role: "admin" });
@@ -148,7 +148,7 @@ serve(async (req) => {
           .limit(50000);
         if (e2) throw { status: 500, code: "DB_ERROR", message: e2.message };
 
-        const existingSet = new Set((existing ?? []).map((x: any) => String(x.doc_id)));
+        const existingSet = new Set((existing ?? []).map((x: { doc_id: string }) => String(x.doc_id)));
         docs = docList.filter((d) => !existingSet.has(d.id));
       } else {
         docs = (data ?? []) as KbDoc[];
@@ -229,17 +229,18 @@ serve(async (req) => {
       totalRemaining: totalRemaining - docs.length,
       chunkSize,
       batchLimit,
-      totalChunksInserted: writeResults.reduce((s, r: any) => s + (r.inserted ?? 0), 0),
+      totalChunksInserted: writeResults.reduce((s, r: { inserted?: number }) => s + (r.inserted ?? 0), 0),
       results: writeResults,
       hint: totalRemaining > docs.length
         ? "More documents remain. Call again to process the next batch."
         : "All documents processed.",
     });
   } catch (e) {
-    const status = typeof (e as any)?.status === "number" ? (e as any).status : 500;
+    const edgeErr = e as { status?: number; code?: string; message?: string } | undefined;
+    const status = typeof edgeErr?.status === "number" ? edgeErr.status : 500;
     return json(status, {
-      error: (e as any)?.code ?? "INTERNAL_ERROR",
-      message: (e as any)?.message ?? String(e),
+      error: edgeErr?.code ?? "INTERNAL_ERROR",
+      message: edgeErr?.message ?? String(e),
     });
   }
 });

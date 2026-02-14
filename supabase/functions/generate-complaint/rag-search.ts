@@ -2,6 +2,8 @@
 // RAG SEARCH FOR LEGAL CONTEXT (HYBRID: VECTOR + KEYWORD)
 // =============================================================================
 
+import type { KBSearchResult, PracticeSearchResult, VectorSearchResponse } from "../_shared/rag-types.ts";
+
 // Helper: call vector-search edge function
 async function vectorSearch(
   query: string,
@@ -10,7 +12,7 @@ async function vectorSearch(
   supabaseKey: string,
   category?: string,
   limit = 5
-): Promise<{ kb: any[]; practice: any[] }> {
+): Promise<VectorSearchResponse> {
   try {
     const response = await fetch(`${supabaseUrl}/functions/v1/vector-search`, {
       method: "POST",
@@ -54,14 +56,14 @@ export async function searchKnowledgeBase(
     ]);
 
     const seen = new Set<string>();
-    const merged: any[] = [];
+    const merged: KBSearchResult[] = [];
 
     for (const r of (vectorResults.kb || [])) {
       if (!seen.has(r.id)) { seen.add(r.id); merged.push(r); }
     }
 
     if (keywordResponse.ok) {
-      const kwResults = await keywordResponse.json();
+      const kwResults: KBSearchResult[] = await keywordResponse.json();
       for (const r of (kwResults || [])) {
         if (!seen.has(r.id)) { seen.add(r.id); merged.push(r); }
       }
@@ -69,7 +71,7 @@ export async function searchKnowledgeBase(
 
     if (merged.length === 0) return '';
 
-    return merged.slice(0, 8).map((r: any) => 
+    return merged.slice(0, 8).map((r) => 
       `[${r.category}] ${r.title}\n${(r.content_text || '').substring(0, 1500)}`
     ).join('\n\n---\n\n');
   } catch (error) {
@@ -103,14 +105,14 @@ export async function searchLegalPractice(
     ]);
 
     const seen = new Set<string>();
-    const merged: any[] = [];
+    const merged: PracticeSearchResult[] = [];
 
     for (const r of (vectorResults.practice || [])) {
       if (!seen.has(r.id)) { seen.add(r.id); merged.push(r); }
     }
 
     if (keywordResponse.ok) {
-      const kwResults = await keywordResponse.json();
+      const kwResults: PracticeSearchResult[] = await keywordResponse.json();
       for (const r of (kwResults || [])) {
         if (!seen.has(r.id)) { seen.add(r.id); merged.push(r); }
       }
@@ -118,7 +120,7 @@ export async function searchLegalPractice(
 
     if (merged.length === 0) return '';
 
-    return merged.slice(0, 5).map((r: any) => 
+    return merged.slice(0, 5).map((r) => 
       `[\u0531\u0576\u0561\u056C\u0578\u0563 \u0564\u0561\u057F\u0561\u056F\u0561\u0576 \u057A\u0580\u0561\u056F\u057F\u056B\u056F\u0561 (KB)] ${r.title}
 \u054D\u0578\u0582\u0564: ${r.court_type} | \u0531\u0580\u0564\u0575\u0578\u0582\u0576\u0584: ${r.outcome}
 \u053B\u0580\u0561\u057E\u0561\u056F\u0561\u0576 \u0570\u056B\u0574\u0576\u0561\u057E\u0578\u0580\u0578\u0582\u0574: ${r.legal_reasoning_summary || ''}
