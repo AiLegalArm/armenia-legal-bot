@@ -1033,6 +1033,7 @@ export type Database = {
         Row: {
           article_number: string | null
           category: Database["public"]["Enums"]["kb_category"]
+          content_hash: string | null
           content_text: string
           created_at: string
           current_version: number | null
@@ -1056,6 +1057,7 @@ export type Database = {
         Insert: {
           article_number?: string | null
           category?: Database["public"]["Enums"]["kb_category"]
+          content_hash?: string | null
           content_text: string
           created_at?: string
           current_version?: number | null
@@ -1079,6 +1081,7 @@ export type Database = {
         Update: {
           article_number?: string | null
           category?: Database["public"]["Enums"]["kb_category"]
+          content_hash?: string | null
           content_text?: string
           created_at?: string
           current_version?: number | null
@@ -1255,6 +1258,7 @@ export type Database = {
           case_number_anonymized: string | null
           chunk_index_meta: Json | null
           content_chunks: string[] | null
+          content_hash: string | null
           content_text: string
           court_name: string | null
           court_type: Database["public"]["Enums"]["court_type"]
@@ -1287,6 +1291,7 @@ export type Database = {
           case_number_anonymized?: string | null
           chunk_index_meta?: Json | null
           content_chunks?: string[] | null
+          content_hash?: string | null
           content_text: string
           court_name?: string | null
           court_type: Database["public"]["Enums"]["court_type"]
@@ -1319,6 +1324,7 @@ export type Database = {
           case_number_anonymized?: string | null
           chunk_index_meta?: Json | null
           content_chunks?: string[] | null
+          content_hash?: string | null
           content_text?: string
           court_name?: string | null
           court_type?: Database["public"]["Enums"]["court_type"]
@@ -1858,6 +1864,7 @@ export type Database = {
           case_number_anonymized: string | null
           chunk_index_meta: Json | null
           content_chunks: string[] | null
+          content_hash: string | null
           content_text: string
           court_name: string | null
           court_type: Database["public"]["Enums"]["court_type"]

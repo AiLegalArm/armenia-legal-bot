@@ -58,6 +58,7 @@ export interface BulkImportOptions {
   sourceName: string;
   normalize: boolean;
   chunk: boolean;
+  dedupMode: 'skip' | 'upsert';
 }
 
 export interface ErrorReportEntry {
@@ -186,6 +187,7 @@ export function useBulkImport() {
             category: options.category,
             sourceName: options.sourceName,
             target: options.target,
+            dedupMode: options.dedupMode,
           },
         }
       );

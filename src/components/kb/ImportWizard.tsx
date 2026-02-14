@@ -42,6 +42,7 @@ import {
 import { kbCategoryOptions, type KbCategory } from '@/components/kb/kbCategories';
 import { useBulkImport } from '@/hooks/useBulkImport';
 import { BulkImportQueue } from '@/components/kb/BulkImportQueue';
+import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 
 // ── Types ────────────────────────────────────────────────────────────
 
@@ -130,6 +131,7 @@ export function ImportWizard({ open, onOpenChange, onImport }: ImportWizardProps
     category: 'other' as KbCategory,
     sourceName: '',
   });
+  const [dedupMode, setDedupMode] = useState<'skip' | 'upsert'>('skip');
 
   // Step 3: Metadata (sourceName is in options)
   // Step 4: Preview
@@ -324,6 +326,7 @@ export function ImportWizard({ open, onOpenChange, onImport }: ImportWizardProps
       sourceName: options.sourceName,
       normalize: options.normalize,
       chunk: options.chunk,
+      dedupMode,
     });
   }, [source, target, options, previewRecords, files, url, pastedText, jsonlRecords, onImport, bulk, parseUrls]);
 
@@ -546,6 +549,26 @@ export function ImportWizard({ open, onOpenChange, onImport }: ImportWizardProps
                   />
                 </div>
                 <div className="space-y-2">
+                  <Label>Дедупликация</Label>
+                  <RadioGroup value={dedupMode} onValueChange={(v) => setDedupMode(v as 'skip' | 'upsert')} className="flex gap-4">
+                    <div className="flex items-center gap-2">
+                      <RadioGroupItem value="skip" id="dedup-skip" />
+                      <Label htmlFor="dedup-skip" className="text-sm font-normal cursor-pointer">
+                        Пропустить дубли
+                      </Label>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <RadioGroupItem value="upsert" id="dedup-upsert" />
+                      <Label htmlFor="dedup-upsert" className="text-sm font-normal cursor-pointer">
+                        Обновить дубли
+                      </Label>
+                    </div>
+                  </RadioGroup>
+                  <p className="text-xs text-muted-foreground">
+                    {dedupMode === 'skip' ? 'Существующие документы с таким же хешем будут пропущены' : 'Существующие документы будут заменены новой версией'}
+                  </p>
+                </div>
+                <div className="space-y-2">
                   <Label>Категория</Label>
                   <Select
                     value={options.category}
@@ -638,6 +661,7 @@ export function ImportWizard({ open, onOpenChange, onImport }: ImportWizardProps
                       sourceName: options.sourceName,
                       normalize: options.normalize,
                       chunk: options.chunk,
+                      dedupMode,
                     })}
                     onAbort={bulk.abort}
                     onClearCompleted={bulk.clearCompleted}
