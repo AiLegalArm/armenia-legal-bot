@@ -84,7 +84,7 @@ export function ErrorLogs() {
     }
   };
 
-  const errorTypes = ["ocr", "ai_analyze", "document_generation", "embedding", "scrape", "other"];
+  const errorTypes = ["ocr", "ai_analyze", "document_generation", "embedding", "scrape", "ingest", "other"];
 
   return (
     <Card>

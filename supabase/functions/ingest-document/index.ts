@@ -103,6 +103,11 @@ serve(async (req) => {
 
     if (docErr) {
       console.error(JSON.stringify({ ts: new Date().toISOString(), lvl: "error", fn: "ingest-document", msg: docErr.message }));
+      await supabase.rpc("log_error", {
+        _error_type: "ingest",
+        _error_message: `Failed to insert document: ${docErr.message}`,
+        _error_details: JSON.stringify({ fileName, sourceHash }),
+      }).catch(() => {});
       return json({ error: "Failed to insert document", details: docErr.message }, 500);
     }
 
@@ -143,6 +148,11 @@ serve(async (req) => {
 
       if (chunkErr) {
         console.error(JSON.stringify({ ts: new Date().toISOString(), lvl: "error", fn: "ingest-document", msg: chunkErr.message, batch: i }));
+        await supabase.rpc("log_error", {
+          _error_type: "ingest",
+          _error_message: `Failed to insert chunks (batch ${i}): ${chunkErr.message}`,
+          _error_details: JSON.stringify({ fileName, docId, batchIndex: i }),
+        }).catch(() => {});
         // Cleanup: delete the document (CASCADE removes partial chunks)
         await supabase.from("legal_documents").delete().eq("id", docId);
         return json({
@@ -159,9 +169,20 @@ serve(async (req) => {
       deduplicated: false,
     }, 200);
   } catch (error) {
-    console.error(JSON.stringify({ ts: new Date().toISOString(), lvl: "error", fn: "ingest-document", msg: error instanceof Error ? error.message : "Unknown" }));
+    const msg = error instanceof Error ? error.message : "Unknown";
+    console.error(JSON.stringify({ ts: new Date().toISOString(), lvl: "error", fn: "ingest-document", msg }));
+    // Best-effort log to error_logs table
+    try {
+      const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
+      const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+      const sb = createClient(supabaseUrl, serviceKey);
+      await sb.rpc("log_error", {
+        _error_type: "ingest",
+        _error_message: `ingest-document exception: ${msg}`,
+      });
+    } catch (_) { /* ignore */ }
     return json({
-      error: error instanceof Error ? error.message : "Unknown error",
+      error: msg,
     }, 500);
   }
 });
