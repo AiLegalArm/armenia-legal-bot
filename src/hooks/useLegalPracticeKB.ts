@@ -85,7 +85,8 @@ export function useLegalPracticeKB() {
     setState((s) => ({ ...s, isSearching: true, searchError: null }));
 
     try {
-      const { data, error } = await supabase.functions.invoke("kb-search", {
+      // Run edge-function search + chunk-RPC search in parallel
+      const edgePromise = supabase.functions.invoke("kb-search", {
         body: {
           query,
           category: category || null,
@@ -94,11 +95,61 @@ export function useLegalPracticeKB() {
         },
       });
 
-      if (error) {
-        throw new Error(error.message || "Search failed");
+      const chunkPromise = supabase.rpc("search_legal_practice_kb", {
+        search_query: query,
+        category_filter: category || undefined,
+        limit_docs: 50,
+      }).then(
+        (res) => res,
+        () => ({ data: null, error: { message: "chunk search unavailable" } })
+      );
+
+      const [edgeResult, chunkResult] = await Promise.all([edgePromise, chunkPromise]);
+
+      if (edgeResult.error) {
+        throw new Error(edgeResult.error.message || "Search failed");
       }
 
-      const documents = data?.documents || [];
+      const edgeDocs: KBDocument[] = edgeResult.data?.documents || [];
+
+      // Merge chunk-RPC results (if any) with edge results
+      const seenIds = new Set(edgeDocs.map((d) => d.id));
+      if (chunkResult.data && Array.isArray(chunkResult.data)) {
+        for (const row of chunkResult.data) {
+          if (seenIds.has(row.id)) continue;
+          seenIds.add(row.id);
+
+          // Convert RPC shape to KBDocument
+          let appliedArticles: Array<{ code: string; articles: string[] }> = [];
+          try {
+            const aa = row.applied_articles as { sources?: Array<{ act: string; articles: Array<{ article: string }> }> } | null;
+            if (aa?.sources) {
+              appliedArticles = aa.sources.map((s: { act: string; articles: Array<{ article: string }> }) => ({
+                code: s.act,
+                articles: (s.articles || []).map((a: { article: string }) => a.article),
+              }));
+            }
+          } catch { /* ignore */ }
+
+          edgeDocs.push({
+            id: row.id,
+            title: row.title,
+            practice_category: row.practice_category as PracticeCategory,
+            court_type: row.court_type as CourtType,
+            outcome: row.outcome as Outcome,
+            applied_articles: appliedArticles,
+            key_violations: row.key_violations || [],
+            legal_reasoning_summary: row.legal_reasoning_summary || null,
+            decision_map: (row.decision_map as DecisionMap) || null,
+            key_paragraphs: Array.isArray(row.key_paragraphs) ? row.key_paragraphs as KeyParagraph[] : [],
+            top_chunks: [],
+            totalChunks: row.total_chunks || 0,
+          });
+        }
+      }
+
+      // Limit to top 20 merged results
+      const documents = edgeDocs.slice(0, 20);
 
       setState((s) => ({
         ...s,
