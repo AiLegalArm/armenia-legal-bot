@@ -10,6 +10,8 @@
  *   chunkDoc(doc, mode)    — chunk a normalized document
  *   buildJsonl(chunks, meta) — serialize chunks to JSONL lines
  *   validateJsonl(lines)   — validate JSONL lines against schema
+ *   mergeSources(a, b)     — merge TXT+PDF of same document
+ *   findMatchingPairs(sources) — batch-find matching documents
  *
  * IMPORTANT: No Armenian glyphs — all Unicode escapes \uXXXX.
  */
