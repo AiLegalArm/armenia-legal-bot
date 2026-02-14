@@ -182,33 +182,7 @@ const KnowledgeBasePage = () => {
                 </p>
               </div>
             </div>
-            {isAdmin && (
-              <Button onClick={() => setFormOpen(true)} size="sm" className="sm:hidden">
-                <Plus className="h-4 w-4" />
-              </Button>
-            )}
           </div>
-          {isAdmin && (
-            <div className="grid grid-cols-2 sm:flex sm:flex-wrap gap-2">
-              <Button variant="outline" size="sm" onClick={() => setMultiFileUploadOpen(true)} className="text-xs sm:text-sm">
-                <FileStack className="mr-1 sm:mr-2 h-4 w-4" />
-                <span className="hidden sm:inline">{'\u0536\u0561\u0576\u0563\u057E\u0561\u056E\u0561\u0575\u056B\u0576 \u0576\u0565\u0580\u0562\u0565\u057C\u0576\u0578\u0582\u0574'}</span>
-                <span className="sm:hidden">Bulk</span>
-              </Button>
-              <Button variant="outline" size="sm" onClick={() => setBulkImportOpen(true)} className="text-xs sm:text-sm">
-                <FileUp className="mr-1 sm:mr-2 h-4 w-4" />
-                TXT
-              </Button>
-              <Button variant="outline" size="sm" onClick={() => setPdfUploadOpen(true)} className="text-xs sm:text-sm">
-                <FileUp className="mr-1 sm:mr-2 h-4 w-4" />
-                PDF
-              </Button>
-              <Button onClick={() => setFormOpen(true)} size="sm" className="hidden sm:flex">
-                <Plus className="mr-2 h-4 w-4" />
-                {t('add_document')}
-              </Button>
-            </div>
-          )}
         </div>
 
         {/* Tabs: Legislation + Judicial Practice */}
