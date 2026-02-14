@@ -2,9 +2,9 @@
  * ingest-document
  *
  * Orchestrator edge function that:
- * 1) Normalizes raw text via shared normalizer logic
+ * 1) Parses & normalizes raw text via shared ingestion service
  * 2) Inserts canonical record into public.legal_documents (dedup by source_hash)
- * 3) Chunks via shared chunker logic
+ * 3) Chunks via shared ingestion service
  * 4) Inserts chunks into public.legal_chunks with doc_id FK
  *
  * Auth: requires x-internal-key header (fail-closed)
@@ -15,8 +15,11 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.49.4";
 import { handleCors, checkInternalAuth, checkInputSize } from "../_shared/edge-security.ts";
-import { normalize, validate } from "../_shared/normalizer.ts";
-import { chunkDocument } from "../_shared/chunker.ts";
+import {
+  normalizeText,
+  chunkDoc,
+  type LegalDocument,
+} from "../_shared/ingestion-service.ts";
 
 serve(async (req) => {
   const cors = handleCors(req);
@@ -51,15 +54,13 @@ serve(async (req) => {
     const sizeErr = checkInputSize(rawText, corsHeaders);
     if (sizeErr) return sizeErr;
 
-    // ── Step 1: Normalize (async for SHA-256) ───────────────────
-    const document = await normalize({
+    // ── Step 1: Normalize via ingestion service ─────────────────
+    const { document, validationErrors } = await normalizeText(rawText, {
       fileName,
       mimeType: mimeType || "text/plain",
-      rawText,
       sourceUrl,
     });
 
-    const validationErrors = validate(document);
     if (validationErrors.length > 0) {
       return json({ error: "Validation failed", details: validationErrors }, 422);
     }
@@ -90,43 +91,19 @@ serve(async (req) => {
 
     const { data: docRow, error: docErr } = await supabase
       .from("legal_documents")
-      .insert({
-        doc_type: document.doc_type,
-        jurisdiction: document.jurisdiction,
-        branch: document.branch,
-        title: document.title,
-        title_alt: document.title_alt,
-        content_text: document.content_text,
-        document_number: document.document_number,
-        date_adopted: document.date_adopted,
-        date_effective: document.date_effective,
-        source_url: document.source_url,
-        source_name: document.source_name,
-        source_hash: sourceHash,
-        court_meta: document.court ?? {},
-        applied_articles: document.applied_articles ?? [],
-        key_violations: document.key_violations,
-        legal_reasoning_summary: document.legal_reasoning_summary,
-        decision_map: document.decision_map ?? {},
-        ingestion_meta: document.ingestion,
-        is_active: document.is_active,
-      })
+      .insert(buildDocRow(document, sourceHash))
       .select("id")
       .single();
 
     if (docErr) {
-      err("ingest-document", "Failed to insert legal_document", undefined, { detail: docErr.message });
+      console.error(JSON.stringify({ ts: new Date().toISOString(), lvl: "error", fn: "ingest-document", msg: docErr.message }));
       return json({ error: "Failed to insert document", details: docErr.message }, 500);
     }
 
     const docId = docRow.id;
 
-    // ── Step 3: Chunk ───────────────────────────────────────────
-    const chunks = chunkDocument({
-      doc_type: document.doc_type,
-      content_text: document.content_text,
-      title: document.title,
-    });
+    // ── Step 3: Chunk via ingestion service ──────────────────────
+    const chunks = chunkDoc(document);
 
     if (chunks.length === 0) {
       return json({ document_id: docId, chunks_inserted: 0, deduplicated: false }, 200);
@@ -159,7 +136,7 @@ serve(async (req) => {
         .insert(batch);
 
       if (chunkErr) {
-        err("ingest-document", "Chunk batch insert failed", undefined, { batch: i, detail: chunkErr.message });
+        console.error(JSON.stringify({ ts: new Date().toISOString(), lvl: "error", fn: "ingest-document", msg: chunkErr.message, batch: i }));
         // Cleanup: delete the document (CASCADE removes partial chunks)
         await supabase.from("legal_documents").delete().eq("id", docId);
         return json({
@@ -176,9 +153,35 @@ serve(async (req) => {
       deduplicated: false,
     }, 200);
   } catch (error) {
-    err("ingest-document", "Unhandled error", error);
+    console.error(JSON.stringify({ ts: new Date().toISOString(), lvl: "error", fn: "ingest-document", msg: error instanceof Error ? error.message : "Unknown" }));
     return json({
       error: error instanceof Error ? error.message : "Unknown error",
     }, 500);
   }
 });
+
+// ── Helper: build DB row from LegalDocument ─────────────────────────
+
+function buildDocRow(document: LegalDocument, sourceHash: string | null) {
+  return {
+    doc_type: document.doc_type,
+    jurisdiction: document.jurisdiction,
+    branch: document.branch,
+    title: document.title,
+    title_alt: document.title_alt,
+    content_text: document.content_text,
+    document_number: document.document_number,
+    date_adopted: document.date_adopted,
+    date_effective: document.date_effective,
+    source_url: document.source_url,
+    source_name: document.source_name,
+    source_hash: sourceHash,
+    court_meta: document.court ?? {},
+    applied_articles: document.applied_articles ?? [],
+    key_violations: document.key_violations,
+    legal_reasoning_summary: document.legal_reasoning_summary,
+    decision_map: document.decision_map ?? {},
+    ingestion_meta: document.ingestion,
+    is_active: document.is_active,
+  };
+}
