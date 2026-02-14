@@ -180,5 +180,8 @@
   "lp_bi_recognize_error": "Ошибка распознавания",
   "judicial_practice": "Судебная практика",
   "show_full_article": "Показать полностью",
-  "collapse": "Свернуть"
+  "collapse": "Свернуть",
+  "kb_show_full": "Показать полностью",
+  "kb_collapse": "Свернуть",
+  "kb_loading": "Загрузка..."
 }
