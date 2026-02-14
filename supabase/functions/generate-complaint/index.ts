@@ -255,6 +255,45 @@ REMINDER: Only cite precedents from the RETRIEVED_PRECEDENTS list above. Paraphr
 
     log("generate-complaint", "Complaint generated", { len: generatedContent.length });
 
+    // === PRECEDENT GUARD: Runtime Validator ===
+    const allowedIds = new Set(retrievedPrecedents.map((p) => p.id));
+    const citedBlockMatch = generatedContent.match(
+      /---\s*PRECEDENTS CITED\s*---\s*([\s\S]*?)\s*---\s*END PRECEDENTS CITED\s*---/i
+    );
+
+    let citedIds: string[] = [];
+    if (citedBlockMatch) {
+      const blockContent = citedBlockMatch[1].trim();
+      if (blockContent.toUpperCase() !== "NONE") {
+        // Extract IDs — supports "ID: <uuid>" lines
+        citedIds = [...blockContent.matchAll(/ID:\s*([0-9a-f-]{36})/gi)].map((m) => m[1]);
+      }
+    }
+
+    // Validate: every cited ID must be in the allowed set, and count <= 6
+    const invalidIds = citedIds.filter((id) => !allowedIds.has(id));
+    if (invalidIds.length > 0 || citedIds.length > 6) {
+      err("generate-complaint", "PRECEDENT_GUARD_VIOLATION", undefined, {
+        citedIds,
+        invalidIds,
+        allowedIds: [...allowedIds],
+        count: citedIds.length,
+      });
+      return new Response(
+        JSON.stringify({
+          error: "PRECEDENT_GUARD_VIOLATION",
+          details: {
+            citedIds,
+            allowedIds: [...allowedIds],
+            invalidIds,
+            message: "AI output cited precedents not in the retrieved registry. Content withheld.",
+          },
+        }),
+        { status: 422, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+    // === END PRECEDENT GUARD VALIDATOR ===
+
     return new Response(
       JSON.stringify({ 
         content: generatedContent,
@@ -271,6 +310,7 @@ REMINDER: Only cite precedents from the RETRIEVED_PRECEDENTS list above. Paraphr
           quotes: p.quotes,
         })),
         precedentCount: retrievedPrecedents.length,
+        citedPrecedentIds: citedIds,
       }),
       { headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
