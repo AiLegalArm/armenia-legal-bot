@@ -296,11 +296,16 @@ export function KBDocumentCard({
           <Badge className={getCategoryColor(document.category as KbCategory)}>
             {t(`category_${document.category}`)}
           </Badge>
-          {rank !== undefined && (
-            <Badge variant="outline" className="text-xs">
-              {t('relevance')}: {(rank * 100).toFixed(0)}%
-            </Badge>
-          )}
+          {rank !== undefined && rank !== null && (() => {
+            const n = typeof rank === 'number' ? rank : Number(rank);
+            if (!Number.isFinite(n)) return null;
+            const pct = Math.round(Math.min(1, Math.max(0, n)) * 100);
+            return (
+              <Badge variant="outline" className="text-xs">
+                {t('relevance')}: {pct}%
+              </Badge>
+            );
+          })()}
         </div>
 
         <div className="mt-3 flex flex-wrap items-center gap-4 text-xs text-muted-foreground">
