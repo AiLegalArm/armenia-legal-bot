@@ -335,6 +335,7 @@ export function buildJsonl(
       collection,
       doc_type: meta.doc_type || null,
       title: meta.title || null,
+      block_type: chunk.chunk_type === "table" ? "table" : "text",
       source: {
         type: meta.source_url ? "url" : "file",
         uri: meta.source_url || null,
@@ -358,6 +359,15 @@ export function buildJsonl(
         chunk_hash: chunk.chunk_hash || null,
       },
     };
+
+    // Add table-specific fields for table chunks
+    if (chunk.chunk_type === "table") {
+      record.table = {
+        format: "markdown",
+        content: chunk.chunk_text,
+        quality: "medium", // default; source-merger or extractor can override
+      };
+    }
 
     const json = JSON.stringify(record);
     return { line: i + 1, json, data: record };
