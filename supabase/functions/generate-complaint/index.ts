@@ -65,6 +65,17 @@ serve(async (req) => {
     
     let kbContext = "";
     let legalPracticeContext = "";
+
+    // ─── Precedent Guard: structured precedent registry ───
+    interface RetrievedPrecedent {
+      id: string;
+      court_type: string;
+      title: string;
+      decision_date: string | null;
+      source_name: string | null;
+      quotes: string[];           // max 2, each ≤300 chars
+    }
+    let retrievedPrecedents: RetrievedPrecedent[] = [];
     
     if (SUPABASE_URL && SUPABASE_SERVICE_KEY) {
       const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY);
@@ -78,19 +89,77 @@ serve(async (req) => {
         query: searchTerms.join(' '),
         category: practiceCategory,
         kbLimit: 8,
-        practiceLimit: 5,
+        practiceLimit: 6,
         fullPracticeText: false,
       });
       
       kbContext = rag.kbContext;
       legalPracticeContext = rag.practiceContext;
+
+      // Build structured precedent list from practice results (max 6)
+      retrievedPrecedents = (rag.practiceResults || []).slice(0, 6).map((r) => {
+        // Extract up to 2 short quotes (≤300 chars) from content
+        const fullText = r.content_text || r.content_snippet || r.legal_reasoning_summary || "";
+        const sentences = fullText
+          .split(/(?<=[.!?\u0589\u0964])\s+/)  // split on sentence boundaries (incl. Armenian ։)
+          .map((s: string) => s.trim())
+          .filter((s: string) => s.length >= 30 && s.length <= 300);
+        const quotes = sentences.slice(0, 2);
+
+        return {
+          id: r.id,
+          court_type: r.court_type || "unknown",
+          title: r.title,
+          decision_date: null, // not available in current schema as separate field on results
+          source_name: null,
+          quotes,
+        };
+      });
       
-      log("generate-complaint", "RAG context", { kbLen: kbContext.length, practiceLen: legalPracticeContext.length });
+      log("generate-complaint", "RAG context", {
+        kbLen: kbContext.length,
+        practiceLen: legalPracticeContext.length,
+        precedentsFound: retrievedPrecedents.length,
+      });
     }
 
     // Compose the full prompt
     const courtInstruction = COURT_INSTRUCTIONS[request.courtType] || '';
     const languageInstruction = LANGUAGE_INSTRUCTIONS[request.language] || LANGUAGE_INSTRUCTIONS.hy;
+
+    // ─── Build Precedent Guard block ───
+    let precedentGuardBlock: string;
+    if (retrievedPrecedents.length > 0) {
+      const entries = retrievedPrecedents.map((p, i) => {
+        const quotesBlock = p.quotes.length > 0
+          ? p.quotes.map((q, qi) => `  Quote ${qi + 1}: "${q}"`).join("\n")
+          : "  (no direct quotes available)";
+        return `${i + 1}. [ID: ${p.id}] ${p.title}\n   Court: ${p.court_type}\n${quotesBlock}`;
+      }).join("\n\n");
+
+      precedentGuardBlock = `
+=== PRECEDENT GUARD (MANDATORY) ===
+RETRIEVED_PRECEDENTS (${retrievedPrecedents.length} found):
+
+${entries}
+
+STRICT RULES:
+- You may ONLY cite precedents listed above under RETRIEVED_PRECEDENTS.
+- For each cited precedent include: title, court type, and 1-2 short quotes (<=300 chars) taken ONLY from the quotes listed above.
+- If a quote is not available for a precedent, you may paraphrase its title/reasoning but MUST mark it as "[paraphrase]".
+- Do NOT invent, fabricate, or hallucinate ANY case names, numbers, dates, or quotes not present above.
+- Maximum precedents to cite: 6. Maximum quotes per precedent: 2.
+- If RETRIEVED_PRECEDENTS is empty, output a "KB GAP NOTICE" section and do NOT cite any precedents.
+=== END PRECEDENT GUARD ===`;
+    } else {
+      precedentGuardBlock = `
+=== PRECEDENT GUARD (MANDATORY) ===
+RETRIEVED_PRECEDENTS: NONE FOUND.
+You MUST NOT cite any court precedents (Cassation or ECHR).
+Instead, include a "KB GAP NOTICE" section explaining that no relevant precedents were found in the knowledge base.
+Do NOT invent any case names, numbers, dates, or quotes.
+=== END PRECEDENT GUARD ===`;
+    }
 
     const userPrompt = `${courtInstruction}
 
@@ -122,10 +191,13 @@ ${legalPracticeContext}
 
 ---` : ''}
 
+${precedentGuardBlock}
+
 Based on the above document content, legal sources, and analogous court practice, draft a complete judicial complaint ready for filing.
 
 Follow the strict template structure. If critical information is missing, state what is needed before drafting.
-Use the court practice examples above to strengthen legal argumentation with relevant precedents.`;
+Use the court practice examples above to strengthen legal argumentation with relevant precedents.
+REMINDER: Only cite precedents from the RETRIEVED_PRECEDENTS list above. Any citation not traceable to that list is a violation.`;
 
     log("generate-complaint", "Generating complaint", { courtType: request.courtType, language: request.language, textLen: request.extractedText.length });
 
@@ -182,7 +254,14 @@ Use the court practice examples above to strengthen legal argumentation with rel
         category: request.category,
         ragSourcesUsed: kbContext.length > 0 || legalPracticeContext.length > 0,
         legalPracticeUsed: legalPracticeContext.length > 0,
-        anonymized: anonymize
+        anonymized: anonymize,
+        retrievedPrecedents: retrievedPrecedents.map((p) => ({
+          id: p.id,
+          court_type: p.court_type,
+          title: p.title,
+          quotes: p.quotes,
+        })),
+        precedentCount: retrievedPrecedents.length,
       }),
       { headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
