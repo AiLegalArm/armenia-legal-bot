@@ -1884,6 +1884,10 @@ export type Database = {
           total_chunks: number
         }[]
       }
+      get_kb_chunk_full: {
+        Args: { p_chunk_index: number; p_kb_id: string }
+        Returns: Json
+      }
       get_led_team_ids: { Args: { _user_id: string }; Returns: string[] }
       get_monthly_usage: {
         Args: never
