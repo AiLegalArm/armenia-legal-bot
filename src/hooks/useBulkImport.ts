@@ -174,43 +174,38 @@ export function useBulkImport() {
         throw new Error('No text content extracted');
       }
 
-      // Stages 2-5: Delegate to ingest-document edge function
-      // which handles: normalize → chunk → insert
+      // Stage 2: Insert directly into knowledge_base table
       updateItem(item.id, { stage: 'normalized' });
-
-      // Small delay to let UI update
       await new Promise(r => setTimeout(r, 10));
 
-      const { data: ingestResult, error: ingestErr } = await supabase.functions.invoke(
-        'ingest-document',
-        {
-          body: {
-            fileName,
-            mimeType,
-            rawText,
-            sourceUrl: item.payload.url || undefined,
-            category: options.category,
-            sourceName: options.sourceName,
-            target: options.target,
-            dedupMode: options.dedupMode,
-          },
-        }
-      );
-
-      if (ingestErr) throw new Error(`Ingest: ${ingestErr.message}`);
-
-      // Update through remaining stages
       updateItem(item.id, { stage: 'chunked' });
       await new Promise(r => setTimeout(r, 10));
+
       updateItem(item.id, { stage: 'jsonl' });
       await new Promise(r => setTimeout(r, 10));
+
+      // Insert into knowledge_base (the table the KB UI reads from)
+      const { data: insertedRow, error: insertErr } = await supabase
+        .from('knowledge_base')
+        .insert({
+          title: fileName,
+          content_text: rawText,
+          category: (options.category || 'other') as any,
+          source_name: options.sourceName || undefined,
+          source_url: item.payload.url || undefined,
+          is_active: true,
+        })
+        .select('id')
+        .single();
+
+      if (insertErr) throw new Error(`Insert: ${insertErr.message}`);
 
       updateItem(item.id, {
         stage: 'inserted',
         result: {
-          documentId: ingestResult?.document_id,
-          chunksInserted: ingestResult?.chunks_inserted,
-          deduplicated: ingestResult?.deduplicated,
+          documentId: insertedRow?.id,
+          chunksInserted: 0,
+          deduplicated: false,
         },
       });
     } catch (err) {
