@@ -77,26 +77,40 @@ function sanitizeString(s: unknown): string {
 
 type AnyRow = Record<string, unknown>;
 
-/** Apply sanitizeString to specific fields of a row object */
-function sanitizeRow(row: AnyRow): AnyRow {
-  const STRING_FIELDS = [
-    "title", "content_text", "source_name", "court_name",
-    "case_number_anonymized", "legal_reasoning_summary", "description",
-    "import_ref", "visibility",
-  ];
-  const sanitized = { ...row };
-  for (const field of STRING_FIELDS) {
-    if (typeof sanitized[field] === "string") {
-      sanitized[field] = sanitizeString(sanitized[field]);
+/**
+ * Deep-sanitize any value: strings, arrays, plain objects — recursively.
+ * This ensures NO unsanitized string reaches PostgreSQL, regardless of field name.
+ */
+function deepSanitize(value: unknown): unknown {
+  if (typeof value === "string") return sanitizeString(value);
+  if (Array.isArray(value)) return value.map(deepSanitize);
+  if (value !== null && typeof value === "object") {
+    const out: Record<string, unknown> = {};
+    for (const [k, v] of Object.entries(value as Record<string, unknown>)) {
+      out[k] = deepSanitize(v);
     }
+    return out;
   }
-  // Sanitize key_violations array
-  if (Array.isArray(sanitized.key_violations)) {
-    sanitized.key_violations = (sanitized.key_violations as string[]).map((v) =>
-      typeof v === "string" ? sanitizeString(v) : v
-    );
-  }
-  return sanitized;
+  return value; // number, boolean, null — pass through
+}
+
+/** Apply deep sanitization to every field in a row */
+function sanitizeRow(row: AnyRow): AnyRow {
+  return deepSanitize(row) as AnyRow;
+}
+
+/**
+ * Nuclear safety net: sanitize the JSON wire representation itself.
+ * Removes \u0000 and lone surrogates from the serialized JSON string,
+ * guaranteeing PostgreSQL will never see them.
+ */
+function safeJsonRoundtrip<T>(data: T): T {
+  const json = JSON.stringify(data);
+  // Remove JSON-encoded NUL (\u0000) and lone surrogates (\uD800-\uDFFF)
+  const cleaned = json
+    .replace(/\\u0000/g, "")
+    .replace(/\\u[dD][89abAB][0-9a-fA-F]{2}/gi, "");
+  return JSON.parse(cleaned) as T;
 }
 
 // =======================================
@@ -712,17 +726,20 @@ serve(async (req) => {
             }
           }
 
+          const safeBatch = safeJsonRoundtrip(batch);
+
           const { error: insertErr, data: inserted } = await adminDb
             .from("legal_practice_kb")
-            .insert(batch)
+            .insert(safeBatch)
             .select("id, import_ref");
           if (insertErr) {
             console.error(`[bulk-import] job=${jobId} batch_error: ${insertErr.message} code=${insertErr.code ?? "?"}`);
             // Try inserting one-by-one to identify the problematic row
             for (const row of batch) {
+              const safeRow = safeJsonRoundtrip(row);
               const { error: singleErr } = await adminDb
                 .from("legal_practice_kb")
-                .insert(row)
+                .insert(safeRow)
                 .select("id");
               if (singleErr) {
                 const titleSnippet = String(row.title ?? "").substring(0, 60);
@@ -853,9 +870,7 @@ serve(async (req) => {
       }
     }
 
-    const { data: insertedDoc, error: insertError } = await adminDb
-      .from("legal_practice_kb")
-      .insert(sanitizeRow({
+    const rowToInsert = safeJsonRoundtrip(sanitizeRow({
         title: extractedData.title || 'Untitled',
         content_text: extractedData.content_text,
         practice_category: extractedData.practice_category || 'criminal',
@@ -871,7 +886,11 @@ serve(async (req) => {
         is_anonymized: false,
         visibility: 'ai_only',
         source_name: fileName || null,
-      }))
+      }));
+
+    const { data: insertedDoc, error: insertError } = await adminDb
+      .from("legal_practice_kb")
+      .insert(rowToInsert)
       .select()
       .single();
 
