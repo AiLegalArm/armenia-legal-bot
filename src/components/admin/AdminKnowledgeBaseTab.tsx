@@ -371,7 +371,7 @@ export function AdminKnowledgeBaseTab() {
                   }}
                   onDelete={(id) => setDeletingDocId(id)}
                   isAdmin={true}
-                  rank={"rank" in doc ? (doc.rank as number) : undefined}
+                  rank={"max_score" in doc ? (doc.max_score as number) : "rank" in doc ? (doc.rank as number) : undefined}
                 />
               ))}
             </div>
