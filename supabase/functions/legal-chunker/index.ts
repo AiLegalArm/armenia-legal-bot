@@ -61,7 +61,8 @@ serve(async (req) => {
       { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
   } catch (error) {
-    console.error("legal-chunker error:", error);
+    const { err: logErr } = await import("../_shared/safe-logger.ts");
+    logErr("legal-chunker", "Unhandled error", error);
     return new Response(
       JSON.stringify({ error: error instanceof Error ? error.message : "Unknown error" }),
       { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }

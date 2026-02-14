@@ -898,7 +898,7 @@ serve(async (req) => {
         parsedResult = { ...parsedResult, ...JSON.parse(jsonMatch[0]) };
       }
     } catch (e) {
-      console.error("Failed to parse JSON response:", e);
+      console.error(JSON.stringify({ ts: new Date().toISOString(), lvl: "error", fn: "multi-agent", msg: "JSON parse failed" }));
       // Use the raw content as analysis
       parsedResult.analysis = content;
     }
@@ -921,7 +921,7 @@ serve(async (req) => {
     });
 
   } catch (error) {
-    console.error("Multi-agent error:", error);
+    console.error(JSON.stringify({ ts: new Date().toISOString(), lvl: "error", fn: "multi-agent", msg: error instanceof Error ? error.message : "Agent failed" }));
     return new Response(JSON.stringify({ 
       error: error instanceof Error ? error.message : "Agent execution failed" 
     }), {

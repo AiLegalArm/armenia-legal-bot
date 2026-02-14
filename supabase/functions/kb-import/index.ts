@@ -149,7 +149,7 @@ serve(async (req) => {
     for (let i = 0; i < rows.length; i += batchSize) {
       const batch = rows.slice(i, i + batchSize);
       const { error } = await supabase.from("knowledge_base").insert(batch);
-      if (error) { console.error("Insert error:", error); throw error; }
+      if (error) { console.error(JSON.stringify({ ts: new Date().toISOString(), lvl: "error", fn: "kb-import", msg: "Insert error" })); throw error; }
       inserted += batch.length;
     }
 
@@ -159,7 +159,7 @@ serve(async (req) => {
     }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
 
   } catch (error) {
-    console.error("kb-import error:", error);
+    console.error(JSON.stringify({ ts: new Date().toISOString(), lvl: "error", fn: "kb-import", msg: error instanceof Error ? error.message : "Import failed" }));
     return new Response(JSON.stringify({
       error: error instanceof Error ? error.message : "Import failed",
     }), { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } });

@@ -1,5 +1,6 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { log, err } from "../_shared/safe-logger.ts";
 import { sandboxUserInput, secureSandbox, logInjectionAttempt, ANTI_INJECTION_RULES } from "../_shared/prompt-armor.ts";
 import { applyBudgets, logTokenUsage, type RankedContent } from "../_shared/token-budget.ts";
 import { DOCUMENT_GENERATION, buildModelParams } from "../_shared/model-config.ts";
@@ -103,7 +104,7 @@ serve(async (req) => {
       kbContext = budgeted.ragLegislation;
       legalPracticeContext = budgeted.ragPractice;
       
-      console.log(`RAG: KB context length: ${kbContext.length}, Legal practice length: ${legalPracticeContext.length}`);
+      log("generate-document", "RAG context", { kbLen: kbContext.length, practiceLen: legalPracticeContext.length });
     }
 
     // Select the most specific prompt available
@@ -186,15 +187,14 @@ Use the legal sources and court practice above to strengthen legal argumentation
       systemPrompt = composed.systemPrompt;
       userPrompt = composed.userPrompt;
       
-      console.log(`Role-aware generation: role=${request.role}, jurisdiction=${jurisdiction}`);
+      log("generate-document", "Role-aware generation", { role: request.role, jurisdiction });
     } else {
       // Legacy mode: use original system prompt without role layer
       systemPrompt = SYSTEM_PROMPTS[language] || SYSTEM_PROMPTS.hy;
       userPrompt = userContextBlock;
     }
 
-    console.log("Generating document with prompt length:", userPrompt.length);
-    console.log("System prompt length:", systemPrompt.length);
+    log("generate-document", "Generating", { promptLen: userPrompt.length, sysLen: systemPrompt.length });
 
     const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
       method: "POST",
@@ -225,14 +225,14 @@ Use the legal sources and court practice above to strengthen legal argumentation
         );
       }
       const errorText = await response.text();
-      console.error("AI gateway error:", response.status, errorText);
+      err("generate-document", "AI gateway error", undefined, { status: response.status });
       throw new Error(`AI gateway error: ${response.status}`);
     }
 
     const data = await response.json();
     const generatedContent = data.choices?.[0]?.message?.content || "";
 
-    console.log("Document generated, length:", generatedContent.length);
+    log("generate-document", "Document generated", { len: generatedContent.length });
 
     return new Response(
       JSON.stringify({ 
@@ -245,7 +245,7 @@ Use the legal sources and court practice above to strengthen legal argumentation
     );
 
   } catch (error) {
-    console.error("Document generation error:", error);
+    err("generate-document", "Unhandled error", error);
     return new Response(
       JSON.stringify({ error: error instanceof Error ? error.message : "Unknown error" }),
       { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }

@@ -124,7 +124,7 @@ serve(async (req) => {
       }, { onConflict: 'id' });
 
     if (profileError) {
-      console.error("Profile upsert error:", profileError);
+      console.error(JSON.stringify({ ts: new Date().toISOString(), lvl: "error", fn: "admin-create-user", msg: "Profile upsert error" }));
     }
 
     // Assign the role (use upsert to avoid duplicate key error)
@@ -136,7 +136,7 @@ serve(async (req) => {
       }, { onConflict: 'user_id,role', ignoreDuplicates: true });
 
     if (roleInsertError) {
-      console.error("Role assignment error:", roleInsertError);
+      console.error(JSON.stringify({ ts: new Date().toISOString(), lvl: "error", fn: "admin-create-user", msg: "Role assignment error" }));
       // Don't throw - user was created successfully
     }
 
@@ -156,7 +156,7 @@ serve(async (req) => {
       }
     );
   } catch (error) {
-    console.error("Error creating user:", error);
+    console.error(JSON.stringify({ ts: new Date().toISOString(), lvl: "error", fn: "admin-create-user", msg: error instanceof Error ? error.message : "User creation failed" }));
     return new Response(
       JSON.stringify({ error: error instanceof Error ? error.message : "User creation failed" }),
       {

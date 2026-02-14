@@ -4,6 +4,7 @@ import { sandboxUserInput, secureSandbox, logInjectionAttempt, sanitizeUserInput
 import { applyBudgets, logTokenUsage, type RankedContent } from "../_shared/token-budget.ts";
 import { LEGAL_CHAT, buildModelParams } from "../_shared/model-config.ts";
 import { redactForLog } from "../_shared/pii-redactor.ts";
+import { log, warn, err } from "../_shared/safe-logger.ts";
 
 // Type for knowledge base search results
 interface KBSearchResult {
@@ -190,6 +191,8 @@ const GREETING_MESSAGE = `\u0532\u0561\u0580\u0587 \u0541\u0565\u0566\u0589 \u05
 
 \u053B\u0576\u0579\u057A\u0565\u055E\u057D \u056F\u0561\u0580\u0578\u0572 \u0565\u0574 \u0585\u0563\u0576\u0565\u056C \u0541\u0565\u0566\u0589`;
 
+const FN = "legal-chat";
+
 serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
@@ -249,7 +252,7 @@ serve(async (req) => {
     // FIX C: Reuse user.id from auth guard above (removed duplicate authHeader/getUser)
     const userId = user.id;
 
-    console.log(`Legal chat request from user: ${userId}, message length: ${message.length}`);
+    log(FN, "Chat request", { userId, messageLen: message.length });
 
     // Search knowledge base for relevant context (RAG) — HYBRID: vector + keyword
     let kbContext = "";
@@ -262,7 +265,7 @@ serve(async (req) => {
         .slice(0, 8);
       
       const safeKeywords = keywords.map(sanitizeForPostgrest).filter((k: string) => k.length > 0);
-      console.log(`Searching KB with ${safeKeywords.length} keywords: ${redactForLog(safeKeywords.join(', '), 200)}`);
+      log(FN, "KB keyword search", { count: safeKeywords.length });
       
       // Determine reference date for temporal legislation filtering
       const referenceDate: string | null = (caseDate && typeof caseDate === "string") ? caseDate : null;
@@ -331,12 +334,12 @@ serve(async (req) => {
         );
         if (!searchError && searchResults && searchResults.length > 0) {
           topResults = searchResults.filter((r: KBSearchResult) => r.rank > 0.001).slice(0, 8);
-          console.log(`Fallback FTS found ${topResults.length} results`);
+          log(FN, "FTS fallback", { count: topResults.length });
         }
       }
 
       if (topResults.length > 0) {
-        console.log(`Final KB context: ${topResults.length} documents (hybrid search)`);
+        log(FN, "KB context ready", { docs: topResults.length });
         kbContext = topResults.map((r: KBSearchResult, i: number) => 
           `[${i + 1}] ${r.title} (${r.category}, ${r.source_name || "N/A"}):\n${r.content_text.substring(0, 4000)}`
         ).join("\n\n---\n\n");
@@ -348,10 +351,10 @@ serve(async (req) => {
           kbContext += `\n\n[TEMPORAL NOTE: Legislation filtered for versions effective as of ${referenceDate}.]`;
         }
       } else {
-        console.log("No KB results found for query");
+        log(FN, "No KB results found");
       }
     } catch (searchErr) {
-      console.error("Knowledge base search error:", searchErr);
+      err(FN, "KB search failed", searchErr);
     }
 
     // Search legal practice database — HYBRID: vector + keyword
@@ -363,7 +366,7 @@ serve(async (req) => {
         .slice(0, 8);
 
       const safePracticeKw = practiceKeywords.map(sanitizeForPostgrest).filter((k: string) => k.length > 0);
-      console.log(`Searching legal practice with ${safePracticeKw.length} keywords (hybrid)`);
+      log(FN, "Practice search", { keywords: safePracticeKw.length });
 
       // Parallel: vector + keyword search
       const vectorPracticePromise = fetch(`${supabaseUrl}/functions/v1/vector-search`, {
@@ -421,7 +424,7 @@ serve(async (req) => {
         });
 
         const topPractice = scored.sort((a, b) => b.score - a.score).slice(0, 5);
-        console.log(`Using ${topPractice.length} practice results (hybrid, scores: ${topPractice.map(s => s.score).join(', ')})`);
+        log(FN, "Practice results", { count: topPractice.length });
 
         practiceContext = topPractice.map((r, i) => {
           const articles = r.applied_articles ? JSON.stringify(r.applied_articles) : "\u0546/\u0531";
@@ -446,10 +449,10 @@ ${fullText}`;
             return `[\u054A\u0580\u0561\u056F\u057F\u056B\u056F\u0561 ${i + 1}] ${r.title}\n${r.court_type} | ${r.outcome}\n${r.legal_reasoning_summary || ''}\n${r.content_snippet || ''}`;
           }).join("\n\n---\n\n");
         }
-        console.log("No legal practice results found");
+        log(FN, "No practice results found");
       }
     } catch (practiceErr) {
-      console.error("Legal practice search error:", practiceErr);
+      err(FN, "Practice search failed", practiceErr);
     }
 
     // ====== TOKEN BUDGET LIMITER ======
@@ -510,7 +513,7 @@ ${fullText}`;
 
     if (!response.ok) {
       const errorText = await response.text();
-      console.error("AI Gateway error:", response.status, errorText);
+      err(FN, "AI Gateway error", undefined, { status: response.status });
 
       if (response.status === 429) {
         return new Response(
@@ -541,7 +544,7 @@ ${fullText}`;
         _metadata: { message_length: message.length, has_context: !!kbContext, has_practice: !!practiceContext }
       });
     } catch (logErr) {
-      console.error("Failed to log API usage:", logErr);
+      err(FN, "Failed to log API usage", logErr);
     }
 
     // Return streaming response
@@ -550,7 +553,7 @@ ${fullText}`;
     });
 
   } catch (error) {
-    console.error("Legal chat error:", error);
+    err(FN, "Unhandled error", error);
     return new Response(
       JSON.stringify({ error: error instanceof Error ? error.message : "Unknown error" }),
       { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }

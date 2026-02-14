@@ -11,6 +11,7 @@ import {
   mapCourtTypeToPracticeCategory 
 } from "./rag-search.ts";
 import { redactForLog } from "../_shared/pii-redactor.ts";
+import { log, err } from "../_shared/safe-logger.ts";
 
 // =============================================================================
 // CORS HEADERS
@@ -82,7 +83,7 @@ serve(async (req) => {
       kbContext = kbResults;
       legalPracticeContext = practiceResults;
       
-      console.log(`RAG: KB context length: ${kbContext.length}, Legal practice length: ${legalPracticeContext.length}`);
+      log("generate-complaint", "RAG context", { kbLen: kbContext.length, practiceLen: legalPracticeContext.length });
     }
 
     // Compose the full prompt
@@ -124,9 +125,7 @@ Based on the above document content, legal sources, and analogous court practice
 Follow the strict template structure. If critical information is missing, state what is needed before drafting.
 Use the court practice examples above to strengthen legal argumentation with relevant precedents.`;
 
-    console.log(`Generating ${request.courtType} complaint, language: ${request.language}`);
-    console.log(`Extracted text length: ${request.extractedText.length}`);
-    console.log(`KB context length: ${kbContext.length}, Legal practice: ${legalPracticeContext.length}`);
+    log("generate-complaint", "Generating complaint", { courtType: request.courtType, language: request.language, textLen: request.extractedText.length });
 
     const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
       method: "POST",
@@ -157,7 +156,7 @@ Use the court practice examples above to strengthen legal argumentation with rel
         );
       }
       const errorText = await response.text();
-      console.error("AI gateway error:", response.status, errorText);
+      err("generate-complaint", "AI gateway error", undefined, { status: response.status });
       throw new Error(`AI gateway error: ${response.status}`);
     }
 
@@ -168,10 +167,10 @@ Use the court practice examples above to strengthen legal argumentation with rel
     if (anonymize && generatedContent) {
       const { redactAIOutput } = await import("../_shared/pii-redactor.ts");
       generatedContent = redactAIOutput(generatedContent);
-      console.log("Anonymized complaint output");
+      log("generate-complaint", "Anonymized output");
     }
 
-    console.log("Complaint generated, length:", generatedContent.length);
+    log("generate-complaint", "Complaint generated", { len: generatedContent.length });
 
     return new Response(
       JSON.stringify({ 
@@ -187,7 +186,7 @@ Use the court practice examples above to strengthen legal argumentation with rel
     );
 
   } catch (error) {
-    console.error("Complaint generation error:", error);
+    err("generate-complaint", "Unhandled error", error);
     return new Response(
       JSON.stringify({ error: error instanceof Error ? error.message : "Unknown error" }),
       { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }

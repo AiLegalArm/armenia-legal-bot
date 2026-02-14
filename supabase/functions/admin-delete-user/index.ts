@@ -98,7 +98,7 @@ serve(async (req) => {
     const { error: deleteError } = await adminClient.auth.admin.deleteUser(user_id);
 
     if (deleteError) {
-      console.error("Delete user error:", deleteError);
+      console.error(JSON.stringify({ ts: new Date().toISOString(), lvl: "error", fn: "admin-delete-user", msg: "Delete failed" }));
       throw new Error("Failed to delete user: " + deleteError.message);
     }
 
@@ -113,7 +113,7 @@ serve(async (req) => {
       }
     );
   } catch (error) {
-    console.error("Error deleting user:", error);
+    console.error(JSON.stringify({ ts: new Date().toISOString(), lvl: "error", fn: "admin-delete-user", msg: error instanceof Error ? error.message : "Deletion failed" }));
     return new Response(
       JSON.stringify({ error: error instanceof Error ? error.message : "User deletion failed" }),
       {
