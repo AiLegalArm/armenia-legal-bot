@@ -16,6 +16,16 @@ import { useState, useCallback, useRef } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 
+/**
+ * Sanitize a string for PostgreSQL: remove NUL bytes, lone surrogates, control chars.
+ */
+function sanitizeString(s: string): string {
+  return s
+    .replace(/\x00/g, '')
+    .replace(/[\uD800-\uDFFF]/g, '')
+    .replace(/[\x01-\x08\x0B\x0C\x0E-\x1F\x7F]/g, '');
+}
+
 // ── Types ────────────────────────────────────────────────────────────
 
 export type ImportStage =
@@ -175,6 +185,10 @@ export function useBulkImport() {
       if (!rawText || rawText.trim().length === 0) {
         throw new Error('No text content extracted');
       }
+
+      // Sanitize text for PostgreSQL compatibility
+      rawText = sanitizeString(rawText);
+      fileName = sanitizeString(fileName);
 
       // Stage 2: Insert directly into knowledge_base table
       updateItem(item.id, { stage: 'normalized' });
