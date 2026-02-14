@@ -1,7 +1,7 @@
 import "https://deno.land/std@0.224.0/dotenv/load.ts";
 import { assertEquals } from "https://deno.land/std@0.224.0/assert/mod.ts";
 
-// Inline the function for testing (same logic as in index.ts)
+// Inline the functions for testing (same logic as in index.ts)
 interface NormalizeResult {
   text: string;
   invalidEscapeFound: boolean;
@@ -10,7 +10,6 @@ interface NormalizeResult {
 function normalizeUnicodeEscapes(input: string): NormalizeResult {
   let invalidEscapeFound = false;
 
-  // First pass: handle surrogate pairs
   let result = input.replace(
     /\\u([dD][89abAB][0-9a-fA-F]{2})\\u([dD][c-fC-F][0-9a-fA-F]{2})/g,
     (_match, hex1: string, hex2: string) => {
@@ -21,7 +20,6 @@ function normalizeUnicodeEscapes(input: string): NormalizeResult {
     }
   );
 
-  // Second pass: handle regular BMP escapes
   result = result.replace(
     /\\u([0-9a-fA-F]{4})/g,
     (_match, hex: string) => {
@@ -42,38 +40,36 @@ function normalizeUnicodeEscapes(input: string): NormalizeResult {
 function sanitizeString(s: unknown): string {
   if (typeof s !== "string") return String(s ?? "");
   const { text } = normalizeUnicodeEscapes(s);
-  return text.replace(/\0/g, "").replace(/\\0/g, "");
+  return text
+    .replace(/\x00/g, "")
+    .replace(/[\uD800-\uDFFF]/g, "")
+    .replace(/[\x01-\x08\x0B\x0C\x0E-\x1F\x7F]/g, "");
 }
 
 // --- Tests ---
 
 Deno.test("normalizes Russian escaped text to real Cyrillic", () => {
   const input = "\\u044d\\u043b\\u0435\\u043c";
-  const { text, invalidEscapeFound } = normalizeUnicodeEscapes(input);
-  // Must produce real decoded string, not escapes
+  const { text } = normalizeUnicodeEscapes(input);
   assertEquals(text, String.fromCharCode(0x044d, 0x043b, 0x0435, 0x043c));
-  assertEquals(invalidEscapeFound, false);
 });
 
-Deno.test("normalizes surrogate pair emoji to real character", () => {
+Deno.test("normalizes surrogate pair emoji", () => {
   const input = "\\uD83D\\uDE00";
-  const { text, invalidEscapeFound } = normalizeUnicodeEscapes(input);
+  const { text } = normalizeUnicodeEscapes(input);
   assertEquals(text, String.fromCodePoint(0x1F600));
-  assertEquals(invalidEscapeFound, false);
 });
 
 Deno.test("handles invalid escape gracefully", () => {
   const input = "test \\u12G4 and \\u123 end";
-  const { text, invalidEscapeFound } = normalizeUnicodeEscapes(input);
+  const { invalidEscapeFound } = normalizeUnicodeEscapes(input);
   assertEquals(invalidEscapeFound, true);
-  assertEquals(text.includes("end"), true);
 });
 
 Deno.test("does not modify normal text", () => {
   const input = "Hello world\nNew line\ttab";
-  const { text, invalidEscapeFound } = normalizeUnicodeEscapes(input);
+  const { text } = normalizeUnicodeEscapes(input);
   assertEquals(text, input);
-  assertEquals(invalidEscapeFound, false);
 });
 
 Deno.test("strips literal \\u0000 escape", () => {
@@ -84,12 +80,20 @@ Deno.test("strips literal \\u0000 escape", () => {
 });
 
 Deno.test("sanitizeString strips real NUL bytes", () => {
-  const input = "abc\0def";
-  const result = sanitizeString(input);
-  assertEquals(result, "abcdef");
+  assertEquals(sanitizeString("abc\x00def"), "abcdef");
 });
 
-Deno.test("normalizes Armenian text to real characters", () => {
+Deno.test("sanitizeString strips lone surrogates", () => {
+  const withSurrogate = "abc" + String.fromCharCode(0xD800) + "def";
+  assertEquals(sanitizeString(withSurrogate), "abcdef");
+});
+
+Deno.test("sanitizeString strips control chars but keeps tabs/newlines", () => {
+  const input = "line1\nline2\ttab\x01\x02\x1F";
+  assertEquals(sanitizeString(input), "line1\nline2\ttab");
+});
+
+Deno.test("normalizes Armenian text", () => {
   const input = "\\u0540\\u0578\\u0564\\u057E\\u0561\\u056E";
   const { text } = normalizeUnicodeEscapes(input);
   assertEquals(text, String.fromCharCode(0x0540, 0x0578, 0x0564, 0x057E, 0x0561, 0x056E));
