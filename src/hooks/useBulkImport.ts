@@ -13,6 +13,7 @@
  */
 
 import { useState, useCallback, useRef } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 
 // ── Types ────────────────────────────────────────────────────────────
@@ -82,6 +83,7 @@ export interface BulkImportState {
 // ── Hook ─────────────────────────────────────────────────────────────
 
 export function useBulkImport() {
+  const queryClient = useQueryClient();
   const [items, setItems] = useState<QueueItem[]>([]);
   const [isRunning, setIsRunning] = useState(false);
   const abortRef = useRef(false);
@@ -242,7 +244,10 @@ export function useBulkImport() {
     }
 
     setIsRunning(false);
-  }, [processItem, updateItem]);
+    // Invalidate KB queries so the list refreshes with new data
+    queryClient.invalidateQueries({ queryKey: ['kb-list'] });
+    queryClient.invalidateQueries({ queryKey: ['kb-search'] });
+  }, [processItem, updateItem, queryClient]);
 
   // ── Retry failed items only ────────────────────────────────────
 
@@ -266,7 +271,9 @@ export function useBulkImport() {
     }
 
     setIsRunning(false);
-  }, [processItem, updateItem]);
+    queryClient.invalidateQueries({ queryKey: ['kb-list'] });
+    queryClient.invalidateQueries({ queryKey: ['kb-search'] });
+  }, [processItem, updateItem, queryClient]);
 
   // ── Abort ──────────────────────────────────────────────────────
 
