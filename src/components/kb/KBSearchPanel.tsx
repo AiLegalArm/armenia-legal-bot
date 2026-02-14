@@ -475,30 +475,30 @@ function KBLawCard({ result, searchQuery, isExpanded, onToggle, onInsertReferenc
               // Determine what text to show
               let displayText: string;
               let showFull: boolean;
-              if (isManuallyCollapsed) {
-                displayText = chunk.excerpt;
-                showFull = false;
-              } else if (isRpcExpanded) {
+              if (isRpcExpanded) {
+                // Manually expanded via button or has inline full_text toggled on
                 displayText = expandedChunks.get(chunk.chunk_index)!;
                 showFull = true;
-              } else if (hasFullText) {
-                displayText = chunk.full_text!;
-                showFull = true;
+              } else if (isManuallyCollapsed) {
+                // Was full, user collapsed it back
+                displayText = chunk.excerpt;
+                showFull = false;
               } else {
+                // Default: always show excerpt first
                 displayText = chunk.excerpt;
                 showFull = false;
               }
 
               const handleToggle = (e: React.MouseEvent) => {
                 e.stopPropagation();
-                if (hasFullText) {
-                  // Toggle between full_text and excerpt via marker
-                  if (isManuallyCollapsed) {
-                    setExpandedChunks((prev) => { const m = new Map(prev); m.delete(chunk.chunk_index); return m; });
-                  } else {
-                    setExpandedChunks((prev) => new Map(prev).set(chunk.chunk_index, '__collapsed__'));
-                  }
+                if (showFull) {
+                  // Collapse back to excerpt
+                  setExpandedChunks((prev) => { const m = new Map(prev); m.delete(chunk.chunk_index); return m; });
+                } else if (hasFullText) {
+                  // Expand using inline full_text
+                  setExpandedChunks((prev) => new Map(prev).set(chunk.chunk_index, chunk.full_text!));
                 } else {
+                  // Expand via RPC
                   handleExpandChunk(chunk.chunk_index);
                 }
               };
@@ -517,18 +517,14 @@ function KBLawCard({ result, searchQuery, isExpanded, onToggle, onInsertReferenc
                       score: {(chunk.score * 100).toFixed(0)}%
                     </span>
                   </div>
-                  <div className="text-sm text-foreground/90 leading-relaxed whitespace-pre-wrap">
-                    {showFull ? (
-                      displayText
-                    ) : (
-                      highlightTerms(displayText, searchQuery).map((seg, i) =>
-                        seg.highlight ? (
-                          <mark key={i} className="bg-primary/20 text-foreground rounded px-0.5">
-                            {seg.text}
-                          </mark>
-                        ) : (
-                          <span key={i}>{seg.text}</span>
-                        )
+                  <div className={`text-sm text-foreground/90 leading-relaxed ${showFull ? 'whitespace-pre-wrap' : ''}`}>
+                    {highlightTerms(displayText, searchQuery).map((seg, i) =>
+                      seg.highlight ? (
+                        <mark key={i} className="bg-primary/20 text-foreground rounded px-0.5">
+                          {seg.text}
+                        </mark>
+                      ) : (
+                        <span key={i}>{seg.text}</span>
                       )
                     )}
                   </div>
