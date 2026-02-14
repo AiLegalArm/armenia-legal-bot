@@ -46,7 +46,7 @@ async function generateEmbedding(text: string, apiKey: string): Promise<number[]
       },
       body: JSON.stringify({
         model: EMBEDDING_GENERATION.model,
-        input: text.substring(0, 2000),
+        prompt: text.substring(0, 2000),
       }),
     });
 
