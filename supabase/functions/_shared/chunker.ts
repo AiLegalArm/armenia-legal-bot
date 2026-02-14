@@ -6,6 +6,8 @@
  * IMPORTANT: No Armenian glyphs — all Unicode escapes \uXXXX.
  */
 
+import { extractTables, type ExtractedTable } from "./table-extractor.ts";
+
 // ─── TYPES ──────────────────────────────────────────────────────────
 
 const CHUNK_TYPES = [
@@ -389,6 +391,49 @@ function splitOversized(chunks: LegalChunk[]): LegalChunk[] {
   return result;
 }
 
+// ─── TABLE CHUNK POST-PROCESSOR ────────────────────────────────────
+
+/**
+ * Extract tables from text and append as separate table-type chunks.
+ * Tables found within existing chunks are emitted as additional chunks
+ * with block_type="table" metadata.
+ */
+function appendTableChunks(
+  existingChunks: LegalChunk[],
+  fullText: string
+): LegalChunk[] {
+  const tables = extractTables(fullText);
+  if (tables.length === 0) return existingChunks;
+
+  let nextIndex = existingChunks.length;
+  const tableChunks: LegalChunk[] = [];
+
+  for (const table of tables) {
+    // Build chunk text with markdown table
+    const captionLine = table.caption ? `${table.caption}\n\n` : "";
+    const chunkText = `${captionLine}${table.markdown}`;
+
+    const locator: ChunkLocator = {
+      section_title: table.caption || `Table ${table.tableIndex + 1}`,
+    };
+
+    const chunk = makeChunk(
+      nextIndex++,
+      "table",
+      chunkText,
+      table.charStart,
+      table.caption || `Table ${table.tableIndex + 1}`,
+      locator
+    );
+
+    // Attach table-specific metadata via a convention in the label
+    // The JSONL builder will read chunk_type="table" for block_type
+    tableChunks.push(chunk);
+  }
+
+  return [...existingChunks, ...tableChunks];
+}
+
 // ─── MAIN CHUNKER ──────────────────────────────────────────────────
 
 const COURT_DOC_TYPES = new Set([
@@ -403,7 +448,19 @@ const LEGISLATION_DOC_TYPES = new Set([
 export function chunkDocument(document: LegalDocumentInput): LegalChunk[] {
   const text = document.content_text;
   if (!text || text.trim().length === 0) return [];
-  if (LEGISLATION_DOC_TYPES.has(document.doc_type)) return chunkLegislation(text);
-  if (COURT_DOC_TYPES.has(document.doc_type)) return chunkCourtDecision(text);
-  return chunkFixedWindow(text, "full_text");
+
+  let chunks: LegalChunk[];
+  if (LEGISLATION_DOC_TYPES.has(document.doc_type)) {
+    chunks = chunkLegislation(text);
+  } else if (COURT_DOC_TYPES.has(document.doc_type)) {
+    chunks = chunkCourtDecision(text);
+  } else {
+    chunks = chunkFixedWindow(text, "full_text");
+  }
+
+  // Post-process: extract and append table chunks
+  return appendTableChunks(chunks, text);
 }
+
+// Re-export for direct use
+export { extractTables, type ExtractedTable } from "./table-extractor.ts";
