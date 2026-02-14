@@ -107,6 +107,7 @@ interface KBSearchResult {
   article_number: string | null;
   source_url: string | null;
   max_score: number;
+  relevancePct: number;
   chunks: KBChunkResult[];
 }
 
@@ -169,10 +170,18 @@ export function KBSearchPanel({ onInsertReference }: KBSearchPanelProps) {
         chunksByDoc.set(chunk.doc_id, arr);
       }
 
-      const results: KBSearchResult[] = (parsed.documents || []).map((doc) => ({
-        ...doc,
-        chunks: chunksByDoc.get(doc.id) || [],
-      }));
+      const docs = parsed.documents || [];
+      const globalMax = docs.reduce((mx, d) => Math.max(mx, Number(d.max_score) || 0), 0);
+
+      const results: KBSearchResult[] = docs.map((doc) => {
+        const raw = Number(doc.max_score) || 0;
+        const relevancePct = globalMax > 0 ? Math.round((raw / globalMax) * 100) : 0;
+        return {
+          ...doc,
+          relevancePct,
+          chunks: chunksByDoc.get(doc.id) || [],
+        };
+      });
 
       setKbResults(results);
     } catch (err) {
@@ -436,6 +445,11 @@ function KBLawCard({ result, searchQuery, isExpanded, onToggle, onInsertReferenc
                 {chunks.length > 0 && (
                   <Badge variant="secondary" className="text-xs py-0">
                     {chunks.length} {chunks.length === 1 ? "fragment" : "fragments"}
+                  </Badge>
+                )}
+                {Number.isFinite(result.relevancePct) && result.relevancePct > 0 && (
+                  <Badge variant="outline" className="text-xs py-0">
+                    {t('relevance')}: {result.relevancePct}%
                   </Badge>
                 )}
               </div>
