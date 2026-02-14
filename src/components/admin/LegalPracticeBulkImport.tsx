@@ -221,23 +221,16 @@ export function LegalPracticeBulkImport({ open, onOpenChange }: LegalPracticeBul
     return 'granted';
   };
 
-  /** Check if a document with the same title already exists */
-  const isDuplicate = async (title: string): Promise<boolean> => {
-    const { count } = await supabase
-      .from('legal_practice_kb')
-      .select('id', { count: 'exact', head: true })
-      .eq('title', title)
-      .eq('is_active', true);
-    return (count ?? 0) > 0;
-  };
-
-  const processFile = async (fileItem: TxtFileItem): Promise<boolean> => {
+  const processFile = async (fileItem: TxtFileItem): Promise<{ inserted: number; skipped: number }> => {
     const { id, file } = fileItem;
     try {
       updateFile(id, { status: 'reading', progress: 30 });
       const textContent = await file.text();
 
       updateFile(id, { status: 'importing', progress: 60 });
+
+      // Build items array from file content
+      let items: Array<Record<string, unknown>> = [];
 
       if (file.name.endsWith('.json')) {
         let jsonData: unknown;
@@ -246,49 +239,43 @@ export function LegalPracticeBulkImport({ open, onOpenChange }: LegalPracticeBul
         } catch {
           throw new Error('Invalid JSON format');
         }
-        const items = Array.isArray(jsonData) ? jsonData : [jsonData];
+        const rawItems = Array.isArray(jsonData) ? jsonData : [jsonData];
         const fallbackTitle = file.name.replace(/\.json$/i, '').replace(/_/g, ' ');
-        const rows = items
-          .map((item: any) => {
-            const contentText = item.content_text || item.content || item.text || item.body || '';
-            const title = item.title || item.name || fallbackTitle;
-            if (!contentText) return null;
-            const extracted = extractMetadata(String(contentText));
-            return {
-              title: String(title),
-              content_text: String(contentText),
-              practice_category: item.practice_category || category,
-              court_type: item.court_type || courtType,
-              outcome: item.outcome || (autoDetectOutcome ? detectOutcome(String(contentText)) : manualOutcome),
-              is_active: true,
-              is_anonymized: item.is_anonymized ?? true,
-              visibility: item.visibility || 'ai_only',
-              source_name: item.source_name || file.name,
-              court_name: item.court_name || extracted.court_name,
-              case_number_anonymized: item.case_number_anonymized || extracted.case_number,
-              decision_date: item.decision_date || extracted.decision_date,
-              legal_reasoning_summary: item.legal_reasoning_summary || null,
-              key_violations: item.key_violations || null,
-              description: item.description || null,
-            };
-          })
-          .filter(Boolean);
 
-        if (rows.length === 0) {
+        for (const item of rawItems) {
+          const contentText = (item as any).content_text || (item as any).content || (item as any).text || (item as any).body || '';
+          const title = (item as any).title || (item as any).name || fallbackTitle;
+          if (!contentText && rawItems.length > 1) continue;
+
+          const extracted = extractMetadata(String(contentText || JSON.stringify(item, null, 2)));
+          items.push({
+            title: String(title),
+            content_text: String(contentText || JSON.stringify(item, null, 2)),
+            practice_category: (item as any).practice_category || category,
+            court_type: (item as any).court_type || courtType,
+            outcome: (item as any).outcome || (autoDetectOutcome ? detectOutcome(String(contentText)) : manualOutcome),
+            is_anonymized: (item as any).is_anonymized ?? true,
+            visibility: (item as any).visibility || 'ai_only',
+            source_name: (item as any).source_name || file.name,
+            court_name: (item as any).court_name || extracted.court_name,
+            case_number_anonymized: (item as any).case_number_anonymized || extracted.case_number,
+            decision_date: (item as any).decision_date || extracted.decision_date,
+            legal_reasoning_summary: (item as any).legal_reasoning_summary || null,
+            key_violations: (item as any).key_violations || null,
+            description: (item as any).description || null,
+          });
+        }
+
+        // If no items extracted from array, treat entire JSON as single doc
+        if (items.length === 0) {
           const fullContent = typeof jsonData === 'string' ? jsonData : JSON.stringify(jsonData, null, 2);
-          const titleCheck = fallbackTitle;
-          if (await isDuplicate(titleCheck)) {
-            updateFile(id, { status: 'success', progress: 100, error: 'skipped (duplicate)' });
-            return true;
-          }
           const extracted = extractMetadata(fullContent);
-          const { error } = await supabase.from('legal_practice_kb').insert({
+          items.push({
             title: fallbackTitle,
             content_text: fullContent,
             practice_category: category,
             court_type: courtType,
             outcome: autoDetectOutcome ? detectOutcome(fullContent) : manualOutcome,
-            is_active: true,
             is_anonymized: true,
             visibility: 'ai_only',
             source_name: file.name,
@@ -296,45 +283,19 @@ export function LegalPracticeBulkImport({ open, onOpenChange }: LegalPracticeBul
             case_number_anonymized: extracted.case_number,
             decision_date: extracted.decision_date,
           });
-          if (error) throw error;
-          updateFile(id, { status: 'success', progress: 100 });
-        } else {
-          // Filter out duplicates from batch
-          const uniqueRows = [];
-          let skipped = 0;
-          for (const row of rows) {
-            if (row && await isDuplicate((row as any).title)) {
-              skipped++;
-              continue;
-            }
-            uniqueRows.push(row);
-          }
-          if (uniqueRows.length > 0) {
-            const batchSize = 50;
-            for (let i = 0; i < uniqueRows.length; i += batchSize) {
-              const batch = uniqueRows.slice(i, i + batchSize);
-              const { error } = await supabase.from('legal_practice_kb').insert(batch);
-              if (error) throw error;
-            }
-          }
-          updateFile(id, { status: 'success', progress: 100, error: skipped > 0 ? `skipped ${skipped} duplicates` : undefined });
         }
       } else {
+        // TXT file
         const title = file.name.replace(/\.txt$/i, '').replace(/_/g, ' ');
-        if (await isDuplicate(title)) {
-          updateFile(id, { status: 'success', progress: 100, error: 'skipped (duplicate)' });
-          return true;
-        }
         const resolvedOutcome = autoDetectOutcome ? detectOutcome(textContent) : manualOutcome;
         const extracted = extractMetadata(textContent);
 
-        const { error } = await supabase.from('legal_practice_kb').insert({
+        items.push({
           title,
           content_text: textContent,
           practice_category: category,
           court_type: courtType,
           outcome: resolvedOutcome,
-          is_active: true,
           is_anonymized: true,
           visibility: 'ai_only',
           source_name: file.name,
@@ -342,18 +303,46 @@ export function LegalPracticeBulkImport({ open, onOpenChange }: LegalPracticeBul
           case_number_anonymized: extracted.case_number,
           decision_date: extracted.decision_date,
         });
-        if (error) throw error;
-        updateFile(id, { status: 'success', progress: 100 });
       }
 
-      return true;
+      // Send to Edge Function (service_role insert, no RLS issues)
+      const { data, error: fnError } = await supabase.functions.invoke('legal-practice-import', {
+        body: { bulkItems: items },
+      });
+
+      if (fnError) throw fnError;
+      if (data?.error) throw new Error(data.error);
+
+      const inserted = data?.inserted_practice ?? 0;
+      const skipped = data?.skipped ?? 0;
+      const errors = data?.errors ?? [];
+
+      if (inserted > 0) {
+        updateFile(id, {
+          status: 'success',
+          progress: 100,
+          error: skipped > 0 ? `+${inserted}, skipped ${skipped}` : undefined,
+        });
+      } else if (skipped > 0 && errors.length === 0) {
+        updateFile(id, {
+          status: 'success',
+          progress: 100,
+          error: `skipped ${skipped} (duplicates)`,
+        });
+      } else {
+        const errMsg = errors.length > 0 ? errors[0].error : 'No rows inserted';
+        updateFile(id, { status: 'error', progress: 100, error: errMsg });
+        return { inserted: 0, skipped };
+      }
+
+      return { inserted, skipped };
     } catch (error) {
       updateFile(id, {
         status: 'error',
         progress: 100,
         error: error instanceof Error ? error.message : 'Unknown error',
       });
-      return false;
+      return { inserted: 0, skipped: 0 };
     }
   };
 
@@ -442,24 +431,30 @@ export function LegalPracticeBulkImport({ open, onOpenChange }: LegalPracticeBul
     setIsProcessing(true);
     setChunkingStatus('idle');
     setEnrichmentStatus('idle');
-    let successCount = 0;
+    let totalInserted = 0;
+    let totalSkipped = 0;
     let errorCount = 0;
 
     for (const fileItem of pendingFiles) {
-      const success = await processFile(fileItem);
-      if (success) {
-        successCount++;
-      } else {
+      const result = await processFile(fileItem);
+      totalInserted += result.inserted;
+      totalSkipped += result.skipped;
+      if (result.inserted === 0 && result.skipped === 0) {
         errorCount++;
         if (!skipOnError) break;
       }
     }
 
     setIsProcessing(false);
-    if (successCount > 0) {
-      toast.success(t('lp_bi_imported', { count: successCount }));
+
+    if (totalInserted > 0) {
+      toast.success(t('lp_bi_imported', { count: totalInserted }));
       queryClient.invalidateQueries({ queryKey: ['legal-practice-kb'] });
       runChunking();
+    } else if (totalSkipped > 0 && errorCount === 0) {
+      toast.warning(`All ${totalSkipped} documents skipped (duplicates)`);
+    } else {
+      toast.error('Import failed: no rows were inserted');
     }
   };
 

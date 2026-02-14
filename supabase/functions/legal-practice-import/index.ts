@@ -419,7 +419,8 @@ serve(async (req) => {
     }
     // === END AUTH GUARD ===
 
-    const { textContent, fileName, enrichDocId } = await req.json();
+    const body = await req.json();
+    const { textContent, fileName, enrichDocId, bulkItems } = body;
 
     const lovableApiKey = Deno.env.get("LOVABLE_API_KEY");
     if (!lovableApiKey) {
@@ -507,6 +508,97 @@ serve(async (req) => {
       if (updateErr) throw updateErr;
 
       return new Response(JSON.stringify({ success: true, enriched: true, updated_fields: Object.keys(updatePayload) }), {
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
+    // === BULK IMPORT MODE ===
+    if (Array.isArray(bulkItems) && bulkItems.length > 0) {
+      const jobId = crypto.randomUUID().slice(0, 8);
+      console.log(`[bulk-import] job=${jobId} items=${bulkItems.length}`);
+
+      let insertedPractice = 0;
+      let skipped = 0;
+      const errors: Array<{ index: number; title: string; error: string }> = [];
+
+      // Validate and prepare rows
+      const validRows: Array<Record<string, unknown>> = [];
+      for (let i = 0; i < bulkItems.length; i++) {
+        const item = bulkItems[i];
+        try {
+          const contentText = String(item.content_text || "").trim();
+          const title = String(item.title || `Untitled_${i}`).trim();
+          if (!contentText) {
+            errors.push({ index: i, title, error: "Empty content_text" });
+            continue;
+          }
+
+          // Duplicate check by title
+          const { count } = await adminDb
+            .from("legal_practice_kb")
+            .select("id", { count: "exact", head: true })
+            .eq("title", title)
+            .eq("is_active", true);
+          if ((count ?? 0) > 0) {
+            skipped++;
+            continue;
+          }
+
+          // Validate enums
+          const practiceCategory = PRACTICE.has(item.practice_category) ? item.practice_category : "criminal";
+          const courtType = COURT.has(item.court_type) ? item.court_type : "cassation";
+          const outcome = OUTCOME.has(item.outcome) ? item.outcome : "granted";
+
+          validRows.push({
+            title,
+            content_text: contentText,
+            practice_category: practiceCategory,
+            court_type: courtType,
+            outcome,
+            is_active: true,
+            is_anonymized: item.is_anonymized ?? true,
+            visibility: item.visibility || "ai_only",
+            source_name: item.source_name || null,
+            court_name: item.court_name || null,
+            case_number_anonymized: item.case_number_anonymized || null,
+            decision_date: isISODateOrNull(item.decision_date) ? item.decision_date : null,
+            legal_reasoning_summary: item.legal_reasoning_summary || null,
+            key_violations: Array.isArray(item.key_violations) ? item.key_violations : null,
+            description: item.description || null,
+          });
+        } catch (e) {
+          errors.push({ index: i, title: item?.title || `item_${i}`, error: e instanceof Error ? e.message : "Unknown" });
+        }
+      }
+
+      // Batch insert (50 at a time)
+      if (validRows.length > 0) {
+        const batchSize = 50;
+        for (let i = 0; i < validRows.length; i += batchSize) {
+          const batch = validRows.slice(i, i + batchSize);
+          const { error: insertErr, data: inserted } = await adminDb
+            .from("legal_practice_kb")
+            .insert(batch)
+            .select("id");
+          if (insertErr) {
+            console.error(`[bulk-import] job=${jobId} batch_error:`, insertErr.message);
+            for (const row of batch) {
+              errors.push({ index: -1, title: String(row.title), error: insertErr.message });
+            }
+          } else {
+            insertedPractice += inserted?.length ?? batch.length;
+          }
+        }
+      }
+
+      console.log(`[bulk-import] job=${jobId} inserted=${insertedPractice} skipped=${skipped} errors=${errors.length}`);
+
+      return new Response(JSON.stringify({
+        ok: true,
+        inserted_practice: insertedPractice,
+        skipped,
+        errors: errors.slice(0, 20), // limit error output
+      }), {
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
