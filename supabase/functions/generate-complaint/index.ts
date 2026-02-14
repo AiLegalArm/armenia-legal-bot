@@ -4,12 +4,8 @@ import { COMPLAINT_GENERATION, buildModelParams } from "../_shared/model-config.
 
 import { SYSTEM_PROMPT, COURT_INSTRUCTIONS, LANGUAGE_INSTRUCTIONS } from "./prompts/index.ts";
 import { validateRequest } from "./validators.ts";
-import { 
-  searchKnowledgeBase, 
-  searchLegalPractice, 
-  buildSearchQuery,
-  mapCourtTypeToPracticeCategory 
-} from "./rag-search.ts";
+import { dualSearch } from "../_shared/rag-search.ts";
+import { buildSearchQuery, mapCourtTypeToPracticeCategory } from "./rag-search.ts";
 import { redactForLog } from "../_shared/pii-redactor.ts";
 import { log, err } from "../_shared/safe-logger.ts";
 
@@ -71,17 +67,23 @@ serve(async (req) => {
     let legalPracticeContext = "";
     
     if (SUPABASE_URL && SUPABASE_SERVICE_KEY) {
+      const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY);
       const searchTerms = buildSearchQuery(request.courtType, request.category);
       const practiceCategory = mapCourtTypeToPracticeCategory(request.courtType);
       
-      // Parallel search in both databases
-      const [kbResults, practiceResults] = await Promise.all([
-        searchKnowledgeBase(searchTerms.join(' '), SUPABASE_URL, SUPABASE_SERVICE_KEY),
-        searchLegalPractice(searchTerms.join(' '), SUPABASE_URL, SUPABASE_SERVICE_KEY, practiceCategory)
-      ]);
+      const rag = await dualSearch({
+        supabase,
+        supabaseUrl: SUPABASE_URL,
+        supabaseKey: SUPABASE_SERVICE_KEY,
+        query: searchTerms.join(' '),
+        category: practiceCategory,
+        kbLimit: 8,
+        practiceLimit: 5,
+        fullPracticeText: false,
+      });
       
-      kbContext = kbResults;
-      legalPracticeContext = practiceResults;
+      kbContext = rag.kbContext;
+      legalPracticeContext = rag.practiceContext;
       
       log("generate-complaint", "RAG context", { kbLen: kbContext.length, practiceLen: legalPracticeContext.length });
     }

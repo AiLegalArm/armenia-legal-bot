@@ -19,12 +19,8 @@ import {
   validateComposedPrompt 
 } from "./prompt-composer.ts";
 import { getRolePrompt, ROLE_CONFIGS, LegalRole } from "./prompts/role-prompts.ts";
-import { 
-  searchKnowledgeBase, 
-  searchLegalPractice, 
-  buildSearchQuery,
-  mapCategoryToPracticeCategory 
-} from "./rag-search.ts";
+import { dualSearch } from "../_shared/rag-search.ts";
+import { buildSearchQuery, mapCategoryToPracticeCategory } from "./rag-search.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -85,14 +81,19 @@ serve(async (req) => {
       const searchTerms = buildSearchQuery(request.category, request.templateName);
       const practiceCategory = mapCategoryToPracticeCategory(request.category);
       
-      // Parallel search in both databases
-      const [kbResults, practiceResults] = await Promise.all([
-        searchKnowledgeBase(searchTerms.join(' '), SUPABASE_URL, SUPABASE_SERVICE_KEY),
-        searchLegalPractice(searchTerms.join(' '), SUPABASE_URL, SUPABASE_SERVICE_KEY, practiceCategory)
-      ]);
+      const rag = await dualSearch({
+        supabase,
+        supabaseUrl: SUPABASE_URL,
+        supabaseKey: SUPABASE_SERVICE_KEY,
+        query: searchTerms.join(' '),
+        category: practiceCategory,
+        kbLimit: 8,
+        practiceLimit: 5,
+        fullPracticeText: false,
+      });
       
-      kbContext = kbResults;
-      legalPracticeContext = practiceResults;
+      kbContext = rag.kbContext;
+      legalPracticeContext = rag.practiceContext;
       
       // Apply token budgets to RAG contexts
       const budgeted = applyBudgets({
