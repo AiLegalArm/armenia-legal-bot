@@ -50,3 +50,9 @@ verify_jwt = false
 
 [functions.norm-ref-extractor]
 verify_jwt = false
+
+[functions.kb-table-screenshots]
+verify_jwt = false
+
+[functions.ingest-document]
+verify_jwt = false
