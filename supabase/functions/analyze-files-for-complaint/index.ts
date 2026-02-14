@@ -62,14 +62,14 @@ serve(async (req) => {
     console.log(`Analyzing ${files.length} files for ${documentType} in ${language}`);
 
     // Build messages array for multimodal AI
-    const messages: Array<{ role: string; content: any }> = [];
+    const messages: Array<{ role: string; content: string | Array<{ type: string; text?: string; image_url?: { url: string } }> }> = [];
 
     // System prompt for document analysis
     const systemPrompt = getSystemPrompt(language, documentType);
     messages.push({ role: "system", content: systemPrompt });
 
     // User message with all files
-    const userContent: any[] = [];
+    const userContent: Array<{ type: string; text?: string; image_url?: { url: string } }> = [];
     
     // Add case context if available
     if (caseData) {
@@ -249,7 +249,7 @@ YOUR TASKS:
 RESPOND ONLY IN ENGLISH.`;
 }
 
-function buildCaseContext(caseData: any, language: string): string {
+function buildCaseContext(caseData: { title?: string; case_number?: string; case_type?: string; court?: string; facts?: string; description?: string }, language: string): string {
   if (language === 'ru') {
     return `\u0414\u0410\u041D\u041D\u042B\u0415 \u0414\u0415\u041B\u0410:
 \u041D\u0430\u0437\u0432\u0430\u043D\u0438\u0435: ${caseData.title || '\u043D\u0435 \u0443\u043A\u0430\u0437\u0430\u043D\u043E'}

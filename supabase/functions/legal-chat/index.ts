@@ -307,7 +307,7 @@ serve(async (req) => {
       }
 
       if (keywordResults.length > 0) {
-        const scored = keywordResults.map((r: any) => {
+        const scored = keywordResults.map((r: KBSearchResult) => {
           let score = 0;
           const titleLower = (r.title || '').toLowerCase();
           const contentLower = (r.content_text || '').toLowerCase();
@@ -445,7 +445,7 @@ ${fullText}`;
           search_query: message, result_limit: 5
         });
         if (!practiceError && practiceResults && practiceResults.length > 0) {
-          practiceContext = practiceResults.slice(0, 5).map((r: any, i: number) => {
+          practiceContext = practiceResults.slice(0, 5).map((r: { title: string; court_type?: string; outcome?: string; legal_reasoning_summary?: string; content_snippet?: string }, i: number) => {
             return `[\u054A\u0580\u0561\u056F\u057F\u056B\u056F\u0561 ${i + 1}] ${r.title}\n${r.court_type} | ${r.outcome}\n${r.legal_reasoning_summary || ''}\n${r.content_snippet || ''}`;
           }).join("\n\n---\n\n");
         }

@@ -151,7 +151,7 @@ async function keywordSearchPractice(
   const results = new Map<string, { id: string; title: string; content_text: string; similarity: number }>();
 
   // 1. Try RPC with full query
-  const rpcParams: any = { search_query: query, result_limit: limit };
+  const rpcParams: Record<string, unknown> = { search_query: query, result_limit: limit };
   if (category) rpcParams.category_filter = category;
   const { data: rpcData } = await supabase.rpc("search_legal_practice", rpcParams);
   for (const r of rpcData || []) {
@@ -166,7 +166,7 @@ async function keywordSearchPractice(
   const words = query.split(/\s+/).filter(w => w.length >= 2);
   for (const word of words.slice(0, 5)) {
     if (results.size >= limit) break;
-    const wParams: any = { search_query: word, result_limit: Math.min(10, limit) };
+    const wParams: Record<string, unknown> = { search_query: word, result_limit: Math.min(10, limit) };
     if (category) wParams.category_filter = category;
     const { data: wordData } = await supabase.rpc("search_legal_practice", wParams);
     for (const r of wordData || []) {

@@ -307,7 +307,7 @@ serve(async (req) => {
       const [vectorKb, keywordKb] = await Promise.all([vectorKbPromise, keywordKbPromise]);
 
       const seenKb = new Set<string>();
-      const mergedKb: any[] = [];
+      const mergedKb: Array<Record<string, unknown> & { id: string; title: string; category?: string; source_name?: string; content_text?: string; score?: number }> = [];
 
       for (const r of (vectorKb.kb || [])) {
         if (!seenKb.has(r.id)) { seenKb.add(r.id); mergedKb.push(r); }
@@ -330,7 +330,7 @@ serve(async (req) => {
       if (mergedKb.length > 0) {
         const topResults = mergedKb.slice(0, 8);
         ragContext = "\n\n## Relevant Legal Sources from RA Knowledge Base:\n\n";
-        topResults.forEach((doc: any, index: number) => {
+        topResults.forEach((doc, index: number) => {
           ragContext += `### ${index + 1}. ${doc.title} (${doc.category})\n`;
           ragContext += `Source: ${doc.source_name || "RA Legal Database"}\n`;
           ragContext += `${(doc.content_text || '').substring(0, 4000)}\n\n`;
@@ -402,7 +402,7 @@ serve(async (req) => {
       const [vectorPractice, keywordPractice] = await Promise.all([vectorPracticePromise, keywordPracticePromise]);
 
       const seenPractice = new Set<string>();
-      const mergedPractice: any[] = [];
+      const mergedPractice: Array<Record<string, unknown> & { id: string; title: string; content_text?: string; content_snippet?: string; practice_category?: string; court_type?: string; outcome?: string; legal_reasoning_summary?: string; applied_articles?: unknown; key_violations?: string[]; score?: number }> = [];
 
       for (const r of (vectorPractice.practice || [])) {
         if (!seenPractice.has(r.id)) { seenPractice.add(r.id); mergedPractice.push({ ...r, content_text: r.content_snippet || '' }); }
@@ -789,13 +789,13 @@ Please provide your professional legal analysis from your designated role perspe
     }
 
     // Build message content with vision support for images
-    let messageContent: any;
+    let messageContent: string | Array<{ type: string; text?: string; image_url?: { url: string } }>;
 
     if (fileContentsForVision.length > 0) {
       // Use multimodal message format with images
       console.log(`Including ${fileContentsForVision.length} images for Vision analysis`);
 
-      const contentParts: any[] = [{ type: "text", text: userMessage }];
+      const contentParts: Array<{ type: string; text?: string; image_url?: { url: string } }> = [{ type: "text", text: userMessage }];
 
       // Add images (limit to 5 to avoid token overflow)
       const imagesToInclude = fileContentsForVision.slice(0, 5);

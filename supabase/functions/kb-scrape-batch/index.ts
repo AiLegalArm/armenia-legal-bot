@@ -236,7 +236,7 @@ Deno.serve(async (req) => {
       });
       const searchData = await searchResponse.json();
       if (searchResponse.ok && searchData.data) {
-        urlsToProcess = searchData.data.map((r: any) => r.url).filter(Boolean);
+        urlsToProcess = searchData.data.map((r: { url?: string }) => r.url).filter(Boolean);
         console.log(`Found ${urlsToProcess.length} URLs from search`);
       }
     }
