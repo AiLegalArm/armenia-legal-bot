@@ -4,6 +4,7 @@ import { useTranslation } from 'react-i18next';
 import type { Database } from '@/integrations/supabase/types';
 import { LanguageSwitcher } from '@/components/LanguageSwitcher';
 import { KBSearchFilters } from '@/components/kb/KBSearchFilters';
+import { allowedCategories } from '@/components/kb/kbCategories';
 import { KBDocumentCard } from '@/components/kb/KBDocumentCard';
 import { KBDocumentForm } from '@/components/kb/KBDocumentForm';
 import { KBPagination } from '@/components/kb/KBPagination';
@@ -75,9 +76,13 @@ const KnowledgeBasePage = () => {
     deleteDocument 
   } = useKnowledgeBase(filters);
 
-  // Group documents by category
+  // Group documents by category, showing all allowed categories
   const groupedDocuments = useMemo(() => {
     const groups = new Map<string, Array<(typeof documents)[number]>>();
+    // Initialize all allowed categories
+    for (const cat of allowedCategories) {
+      groups.set(cat, []);
+    }
     for (const doc of documents) {
       const cat = ('category' in doc && doc.category) ? String(doc.category) : 'other';
       if (!groups.has(cat)) groups.set(cat, []);
