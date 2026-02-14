@@ -5,30 +5,24 @@ import type { Database } from '@/integrations/supabase/types';
 import { LanguageSwitcher } from '@/components/LanguageSwitcher';
 import { KBSearchFilters } from '@/components/kb/KBSearchFilters';
 import { allowedCategories } from '@/components/kb/kbCategories';
+import { KBCategoryFolder } from '@/components/kb/KBCategoryFolder';
 import { KBDocumentCard } from '@/components/kb/KBDocumentCard';
 import { KBDocumentForm } from '@/components/kb/KBDocumentForm';
-import { KBPagination } from '@/components/kb/KBPagination';
 import { KBPdfUpload } from '@/components/kb/KBPdfUpload';
 import { KBBulkImport } from '@/components/kb/KBBulkImport';
 import { KBMultiFileUpload } from '@/components/kb/KBMultiFileUpload';
 import { KBSearchPanel } from '@/components/kb/KBSearchPanel';
 import { Button } from '@/components/ui/button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
+import { useKBCategoryCounts } from '@/hooks/useKBCategoryCounts';
 import { useKnowledgeBase, type KBFilters } from '@/hooks/useKnowledgeBase';
 import { useAuth } from '@/hooks/useAuth';
 import { 
   Scale, 
-  Plus, 
   Loader2,
   LogOut,
   BookOpen,
   ArrowLeft,
-  FileUp,
-  FileStack,
-  Folder,
-  FolderOpen,
-  ChevronRight,
   Gavel,
 } from 'lucide-react';
 import {
@@ -43,15 +37,6 @@ import {
 } from '@/components/ui/alert-dialog';
 
 type KnowledgeBase = Database['public']['Tables']['knowledge_base']['Row'];
-type KBSearchResult = {
-  id: string;
-  title: string;
-  content_text: string;
-  category: Database['public']['Enums']['kb_category'];
-  source_name: string | null;
-  version_date: string | null;
-  rank: number;
-};
 
 const KnowledgeBasePage = () => {
   const { t } = useTranslation(['kb', 'common', 'disclaimer']);
@@ -65,44 +50,36 @@ const KnowledgeBasePage = () => {
   const [multiFileUploadOpen, setMultiFileUploadOpen] = useState(false);
   const [editingDoc, setEditingDoc] = useState<KnowledgeBase | null>(null);
   const [deletingDocId, setDeletingDocId] = useState<string | null>(null);
-  const [openFolders, setOpenFolders] = useState<Set<string>>(new Set());
 
+  const { data: categoryCounts, isLoading: isCountsLoading } = useKBCategoryCounts();
+
+  // Search results (only used when searching)
   const { 
-    documents, 
-    pagination, 
-    isLoading, 
+    documents: searchResults, 
+    isLoading: isSearching, 
     createDocument, 
     updateDocument, 
     deleteDocument 
   } = useKnowledgeBase(filters);
 
-  // Group documents by category, showing all allowed categories
-  const groupedDocuments = useMemo(() => {
-    const groups = new Map<string, Array<(typeof documents)[number]>>();
-    // Initialize all allowed categories
-    for (const cat of allowedCategories) {
-      groups.set(cat, []);
-    }
-    for (const doc of documents) {
-      const cat = ('category' in doc && doc.category) ? String(doc.category) : 'other';
-      if (!groups.has(cat)) groups.set(cat, []);
-      groups.get(cat)!.push(doc);
-    }
-    return Array.from(groups.entries()).sort((a, b) => {
-      const labelA = t(`category_${a[0]}`, a[0]);
-      const labelB = t(`category_${b[0]}`, b[0]);
+  const isSearchMode = !!filters.search && filters.search.length >= 2;
+
+  // Sort categories by translated label
+  const sortedCategories = useMemo(() => {
+    return [...allowedCategories].sort((a, b) => {
+      const labelA = t(`category_${a}`, a);
+      const labelB = t(`category_${b}`, b);
       return labelA.localeCompare(labelB);
     });
-  }, [documents, t]);
+  }, [t]);
 
-  const toggleFolder = (name: string) => {
-    setOpenFolders(prev => {
-      const next = new Set(prev);
-      if (next.has(name)) next.delete(name);
-      else next.add(name);
-      return next;
-    });
-  };
+  // Total document count
+  const totalDocs = useMemo(() => {
+    if (!categoryCounts) return 0;
+    let sum = 0;
+    categoryCounts.forEach((v) => { sum += v; });
+    return sum;
+  }, [categoryCounts]);
 
   const handleCreate = (data: Database['public']['Tables']['knowledge_base']['Insert']) => {
     createDocument.mutate(data, {
@@ -138,10 +115,6 @@ const KnowledgeBasePage = () => {
       deleteDocument.mutate(deletingDocId);
       setDeletingDocId(null);
     }
-  };
-
-  const handlePageChange = (page: number) => {
-    setFilters({ ...filters, page });
   };
 
   return (
@@ -186,6 +159,7 @@ const KnowledgeBasePage = () => {
                 <h2 className="text-xl sm:text-2xl font-bold">{t('knowledge_base')}</h2>
                 <p className="text-xs sm:text-sm text-muted-foreground">
                   {t('common:legal_documents', 'Legal documents and articles')}
+                  {totalDocs > 0 && ` \u2014 ${totalDocs}`}
                 </p>
               </div>
             </div>
@@ -212,80 +186,60 @@ const KnowledgeBasePage = () => {
               <KBSearchFilters filters={filters} onFiltersChange={setFilters} />
             </div>
 
-            {/* Results info */}
-            {filters.search && filters.search.length >= 2 && documents.length > 0 && (
-              <p className="mb-4 text-sm text-muted-foreground">
-                {t('results_found', { count: documents.length })}
-              </p>
-            )}
-
-            {/* Documents Grid */}
-            {isLoading ? (
-              <div className="flex items-center justify-center py-16">
-                <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
-              </div>
-            ) : documents.length === 0 ? (
-              <div className="flex flex-col items-center justify-center rounded-lg border border-dashed py-16">
-                <BookOpen className="h-12 w-12 text-muted-foreground/50" />
-                <p className="mt-4 text-lg font-medium text-muted-foreground">
-                  {t('no_results')}
-                </p>
-              </div>
+            {isSearchMode ? (
+              /* Search Results */
+              isSearching ? (
+                <div className="flex items-center justify-center py-16">
+                  <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+                </div>
+              ) : searchResults.length === 0 ? (
+                <div className="flex flex-col items-center justify-center rounded-lg border border-dashed py-16">
+                  <BookOpen className="h-12 w-12 text-muted-foreground/50" />
+                  <p className="mt-4 text-lg font-medium text-muted-foreground">
+                    {t('no_results')}
+                  </p>
+                </div>
+              ) : (
+                <>
+                  <p className="mb-4 text-sm text-muted-foreground">
+                    {t('results_found', { count: searchResults.length })}
+                  </p>
+                  <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+                    {searchResults.map((doc) => (
+                      <KBDocumentCard
+                        key={doc.id}
+                        document={doc}
+                        onView={(id) => navigate(`/kb/${id}`)}
+                        isAdmin={isAdmin}
+                        rank={'rank' in doc ? (doc.rank as number) : undefined}
+                      />
+                    ))}
+                  </div>
+                </>
+              )
             ) : (
-              <>
+              /* Category Folders */
+              isCountsLoading ? (
+                <div className="flex items-center justify-center py-16">
+                  <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+                </div>
+              ) : (
                 <div className="space-y-3">
-                  {groupedDocuments.map(([categoryKey, docs]) => {
-                    const isOpen = openFolders.has(categoryKey);
-                    const folderLabel = t(`category_${categoryKey}`, categoryKey);
+                  {sortedCategories.map((cat) => {
+                    const count = categoryCounts?.get(cat) || 0;
                     return (
-                      <Collapsible key={categoryKey} open={isOpen} onOpenChange={() => toggleFolder(categoryKey)}>
-                        <CollapsibleTrigger asChild>
-                          <button className="flex w-full items-center gap-2 rounded-lg border bg-card px-4 py-3 text-left transition-colors hover:bg-muted/50">
-                            <ChevronRight className={`h-4 w-4 text-muted-foreground transition-transform ${isOpen ? 'rotate-90' : ''}`} />
-                            {isOpen ? (
-                              <FolderOpen className="h-5 w-5 text-primary" />
-                            ) : (
-                              <Folder className="h-5 w-5 text-primary" />
-                            )}
-                            <span className="flex-1 font-medium">{folderLabel}</span>
-                            <span className="text-sm text-muted-foreground">{docs.length}</span>
-                          </button>
-                        </CollapsibleTrigger>
-                        <CollapsibleContent>
-                          <div className="mt-2 grid gap-4 pl-6 sm:grid-cols-2 lg:grid-cols-3">
-                            {docs.map((doc) => (
-                              <KBDocumentCard
-                                key={doc.id}
-                                document={doc}
-                                onView={(id) => navigate(`/kb/${id}`)}
-                                onEdit={isAdmin ? (id) => {
-                                  const docToEdit = documents.find((d) => d.id === id);
-                                  if (docToEdit && 'is_active' in docToEdit) setEditingDoc(docToEdit as KnowledgeBase);
-                                } : undefined}
-                                onDelete={isAdmin ? (id) => setDeletingDocId(id) : undefined}
-                                isAdmin={isAdmin}
-                                rank={'rank' in doc ? (doc.rank as number) : undefined}
-                              />
-                            ))}
-                          </div>
-                        </CollapsibleContent>
-                      </Collapsible>
+                      <KBCategoryFolder
+                        key={cat}
+                        categoryKey={cat}
+                        count={count}
+                        isAdmin={isAdmin}
+                        onEdit={(doc) => setEditingDoc(doc)}
+                        onDelete={(id) => setDeletingDocId(id)}
+                      />
                     );
                   })}
                 </div>
-
-                {/* Pagination */}
-                {pagination && (
-                  <div className="mt-6">
-                    <KBPagination 
-                      page={pagination.page}
-                      totalPages={pagination.totalPages}
-                      total={pagination.total}
-                      onPageChange={handlePageChange}
-                    />
-                  </div>
-                )}
-              </>
+              )
             )}
           </TabsContent>
 
@@ -298,7 +252,7 @@ const KnowledgeBasePage = () => {
         {/* Legal Disclaimer */}
         <div className="mt-8 rounded-lg border border-amber-500/50 bg-amber-500/10 p-3 sm:p-4">
           <p className="text-xs sm:text-sm text-amber-700 dark:text-amber-400">
-            ⚠️ {t('disclaimer:main')}
+            {'\u26A0\uFE0F'} {t('disclaimer:main')}
           </p>
         </div>
       </main>
@@ -330,7 +284,6 @@ const KnowledgeBasePage = () => {
         onOpenChange={setBulkImportOpen}
         onSuccess={() => {
           setBulkImportOpen(false);
-          // Refresh the list
           setFilters({ ...filters });
         }}
       />
@@ -341,7 +294,6 @@ const KnowledgeBasePage = () => {
         onOpenChange={setMultiFileUploadOpen}
         onSuccess={() => {
           setMultiFileUploadOpen(false);
-          // Refresh the list
           setFilters({ ...filters });
         }}
       />
