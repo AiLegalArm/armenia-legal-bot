@@ -5,29 +5,11 @@ import { applyBudgets, logTokenUsage, type RankedContent } from "../_shared/toke
 import { LEGAL_CHAT, buildModelParams } from "../_shared/model-config.ts";
 import { redactForLog } from "../_shared/pii-redactor.ts";
 import { log, warn, err } from "../_shared/safe-logger.ts";
+import { searchKB, searchPractice, formatKBContext, formatPracticeContext as formatPracticeCtx, temporalDisclaimer } from "../_shared/rag-search.ts";
+import type { KBSearchResult, PracticeSearchResult } from "../_shared/rag-types.ts";
 
-// Type for knowledge base search results
-interface KBSearchResult {
-  id: string;
-  title: string;
-  content_text: string;
-  category: string;
-  source_name: string | null;
-  rank: number;
-}
-
-// Type for legal practice search results
-interface LegalPracticeResult {
-  id: string;
-  title: string;
-  content_text: string;
-  practice_category: string;
-  court_type: string;
-  outcome: string;
-  legal_reasoning_summary: string | null;
-  applied_articles: unknown;
-  key_violations: string[] | null;
-}
+// Types now imported from _shared/rag-types.ts
+type LegalPracticeResult = PracticeSearchResult;
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -254,102 +236,22 @@ serve(async (req) => {
 
     log(FN, "Chat request", { userId, messageLen: message.length });
 
-    // Search knowledge base for relevant context (RAG) — HYBRID: vector + keyword
+    // Search knowledge base + legal practice (RAG) — via shared module
+    const referenceDate: string | null = (caseDate && typeof caseDate === "string") ? caseDate : null;
+    const dateAssumed = !referenceDate;
     let kbContext = "";
+    let practiceContext = "";
+
     try {
-      let topResults: KBSearchResult[] = [];
-      
-      const keywords = message
-        .split(/\s+/)
-        .filter((w: string) => w.length > 2 && !/^[0-9]+$/.test(w))
-        .slice(0, 8);
-      
-      const safeKeywords = keywords.map(sanitizeForPostgrest).filter((k: string) => k.length > 0);
-      log(FN, "KB keyword search", { count: safeKeywords.length });
-      
-      // Determine reference date for temporal legislation filtering
-      const referenceDate: string | null = (caseDate && typeof caseDate === "string") ? caseDate : null;
-      const dateAssumed = !referenceDate;
+      const kbResult = await searchKB({
+        supabase, supabaseUrl, supabaseKey: supabaseServiceKey,
+        query: message, referenceDate, limit: 8, snippetLength: 4000,
+      });
 
-      // Parallel: vector search + keyword ILIKE search
-      const vectorSearchPromise = fetch(`${supabaseUrl}/functions/v1/vector-search`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${supabaseServiceKey}`,
-        },
-        body: JSON.stringify({ query: message, tables: "kb", limit: 10, threshold: 0.3, reference_date: referenceDate }),
-      }).then(r => r.ok ? r.json() : { kb: [] }).catch(() => ({ kb: [] }));
-
-      const keywordSearchPromise = (async () => {
-        if (safeKeywords.length === 0) return [];
-        const orConditions = safeKeywords
-          .map((k: string) => `title.ilike.%${k}%,content_text.ilike.%${k}%`)
-          .join(',');
-        
-        const { data, error } = await supabase
-          .from("knowledge_base")
-          .select("id, title, content_text, category, source_name")
-          .eq("is_active", true)
-          .or(orConditions)
-          .limit(50);
-        return (!error && data) ? data : [];
-      })();
-
-      const [vectorResults, keywordResults] = await Promise.all([vectorSearchPromise, keywordSearchPromise]);
-
-      // Merge: vector results first (semantic), then keyword results
-      const seen = new Set<string>();
-      const merged: KBSearchResult[] = [];
-
-      for (const r of (vectorResults.kb || [])) {
-        if (!seen.has(r.id)) { seen.add(r.id); merged.push({ ...r, rank: (r.similarity || 0) * 10 }); }
-      }
-
-      if (keywordResults.length > 0) {
-        const scored = keywordResults.map((r: KBSearchResult) => {
-          let score = 0;
-          const titleLower = (r.title || '').toLowerCase();
-          const contentLower = (r.content_text || '').toLowerCase();
-          for (const kw of keywords) {
-            const kwLower = kw.toLowerCase();
-            if (titleLower.includes(kwLower)) score += 3;
-            if (contentLower.includes(kwLower)) score += 1;
-          }
-          return { ...r, rank: score };
-        });
-        for (const r of scored) {
-          if (!seen.has(r.id)) { seen.add(r.id); merged.push(r); }
-        }
-      }
-
-      topResults = merged.sort((a, b) => b.rank - a.rank).slice(0, 8);
-      
-      // Fallback: full-text search if nothing found
-      if (topResults.length === 0) {
-        const ftsParams: Record<string, unknown> = { search_query: message, result_limit: 20 };
-        if (referenceDate) ftsParams.reference_date = referenceDate;
-        const { data: searchResults, error: searchError } = await supabase.rpc(
-          "search_knowledge_base", ftsParams
-        );
-        if (!searchError && searchResults && searchResults.length > 0) {
-          topResults = searchResults.filter((r: KBSearchResult) => r.rank > 0.001).slice(0, 8);
-          log(FN, "FTS fallback", { count: topResults.length });
-        }
-      }
-
-      if (topResults.length > 0) {
-        log(FN, "KB context ready", { docs: topResults.length });
-        kbContext = topResults.map((r: KBSearchResult, i: number) => 
-          `[${i + 1}] ${r.title} (${r.category}, ${r.source_name || "N/A"}):\n${r.content_text.substring(0, 4000)}`
-        ).join("\n\n---\n\n");
-
-        // Add temporal versioning notice
-        if (dateAssumed) {
-          kbContext += "\n\n[TEMPORAL NOTE: No case date provided. Legislation shown is the currently effective version. If events occurred on a different date, applicable law may differ. State this assumption explicitly.]";
-        } else {
-          kbContext += `\n\n[TEMPORAL NOTE: Legislation filtered for versions effective as of ${referenceDate}.]`;
-        }
+      if (kbResult.results.length > 0) {
+        log(FN, "KB context ready", { docs: kbResult.results.length });
+        kbContext = formatKBContext(kbResult.results, 4000);
+        kbContext += temporalDisclaimer(referenceDate, dateAssumed);
       } else {
         log(FN, "No KB results found");
       }
@@ -357,98 +259,16 @@ serve(async (req) => {
       err(FN, "KB search failed", searchErr);
     }
 
-    // Search legal practice database — HYBRID: vector + keyword
-    let practiceContext = "";
     try {
-      const practiceKeywords = message
-        .split(/\s+/)
-        .filter((w: string) => w.length > 2 && !/^[0-9]+$/.test(w))
-        .slice(0, 8);
+      const practiceResult = await searchPractice({
+        supabase, supabaseUrl, supabaseKey: supabaseServiceKey,
+        query: message, limit: 5,
+      });
 
-      const safePracticeKw = practiceKeywords.map(sanitizeForPostgrest).filter((k: string) => k.length > 0);
-      log(FN, "Practice search", { keywords: safePracticeKw.length });
-
-      // Parallel: vector + keyword search
-      const vectorPracticePromise = fetch(`${supabaseUrl}/functions/v1/vector-search`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${supabaseServiceKey}`,
-        },
-        body: JSON.stringify({ query: message, tables: "practice", limit: 10, threshold: 0.3 }),
-      }).then(r => r.ok ? r.json() : { practice: [] }).catch(() => ({ practice: [] }));
-
-      const keywordPracticePromise = (async () => {
-        if (safePracticeKw.length === 0) return [];
-        const orConditions = safePracticeKw
-          .map((k: string) => `title.ilike.%${k}%,legal_reasoning_summary.ilike.%${k}%`)
-          .join(',');
-
-        const { data, error } = await supabase
-          .from("legal_practice_kb")
-          .select("id, title, content_text, practice_category, court_type, outcome, legal_reasoning_summary, applied_articles, key_violations")
-          .eq("is_active", true)
-          .or(orConditions)
-          .limit(30);
-        return (!error && data) ? data : [];
-      })();
-
-      const [vectorPractice, keywordPractice] = await Promise.all([vectorPracticePromise, keywordPracticePromise]);
-
-      const seen = new Set<string>();
-      const merged: LegalPracticeResult[] = [];
-
-      for (const r of (vectorPractice.practice || [])) {
-        if (!seen.has(r.id)) { seen.add(r.id); merged.push({ ...r, content_text: r.content_snippet || '' }); }
-      }
-
-      for (const r of keywordPractice) {
-        if (!seen.has(r.id)) { seen.add(r.id); merged.push(r); }
-      }
-
-      // Score by keyword relevance
-      if (merged.length > 0) {
-        const scored = merged.map((r: LegalPracticeResult) => {
-          let score = 0;
-          const titleLower = (r.title || '').toLowerCase();
-          const reasoningLower = (r.legal_reasoning_summary || '').toLowerCase();
-          const contentLower = (r.content_text || '').toLowerCase();
-
-          for (const kw of practiceKeywords) {
-            const kwLower = kw.toLowerCase();
-            if (titleLower.includes(kwLower)) score += 3;
-            if (reasoningLower.includes(kwLower)) score += 2;
-            if (contentLower.includes(kwLower)) score += 1;
-          }
-          return { ...r, score };
-        });
-
-        const topPractice = scored.sort((a, b) => b.score - a.score).slice(0, 5);
-        log(FN, "Practice results", { count: topPractice.length });
-
-        practiceContext = topPractice.map((r, i) => {
-          const articles = r.applied_articles ? JSON.stringify(r.applied_articles) : "\u0546/\u0531";
-          const violations = r.key_violations?.join(", ") || "\u0546/\u0531";
-          const fullText = r.content_text || '';
-          return `[\u054A\u0580\u0561\u056F\u057F\u056B\u056F\u0561 ${i + 1}] ${r.title}
-\u0534\u0561\u057F\u0561\u0580\u0561\u0576: ${r.court_type} | \u053F\u0561\u057F\u0565\u0563\u0578\u0580\u056B\u0561: ${r.practice_category} | \u0535\u056C\u0584: ${r.outcome}
-\u053F\u056B\u0580\u0561\u057C\u057E\u0561\u056E \u0570\u0578\u0564\u057E\u0561\u056E\u0576\u0565\u0580: ${articles}
-\u0540\u056B\u0574\u0576\u0561\u056F\u0561\u0576 \u056D\u0561\u056D\u057F\u0578\u0582\u0574\u0576\u0565\u0580: ${violations}
-\u053B\u0580\u0561\u057E\u0561\u056F\u0561\u0576 \u0570\u056B\u0574\u0576\u0561\u057E\u0578\u0580\u0578\u0582\u0574: ${r.legal_reasoning_summary || "\u0546/\u0531"}
-
-**\u0548\u0550\u0548\u0547\u0544\u0531\u0546 \u053C\u053B\u0531\u0550\u053a\u0531\u053f\u0531\u0546 \u054f\u0535\u053f\u054d\u054f:**
-${fullText}`;
-        }).join("\n\n---\n\n");
+      if (practiceResult.results.length > 0) {
+        log(FN, "Practice results", { count: practiceResult.results.length });
+        practiceContext = formatPracticeCtx(practiceResult.results, true);
       } else {
-        // Fallback RPC
-        const { data: practiceResults, error: practiceError } = await supabase.rpc("search_legal_practice", {
-          search_query: message, result_limit: 5
-        });
-        if (!practiceError && practiceResults && practiceResults.length > 0) {
-          practiceContext = practiceResults.slice(0, 5).map((r: { title: string; court_type?: string; outcome?: string; legal_reasoning_summary?: string; content_snippet?: string }, i: number) => {
-            return `[\u054A\u0580\u0561\u056F\u057F\u056B\u056F\u0561 ${i + 1}] ${r.title}\n${r.court_type} | ${r.outcome}\n${r.legal_reasoning_summary || ''}\n${r.content_snippet || ''}`;
-          }).join("\n\n---\n\n");
-        }
         log(FN, "No practice results found");
       }
     } catch (practiceErr) {
@@ -561,14 +381,4 @@ ${fullText}`;
   }
 });
 
-/**
- * Sanitize user input for safe use in PostgREST .or()/.ilike() filters.
- */
-function sanitizeForPostgrest(input: string): string {
-  return input
-    .replace(/[%_]/g, "")
-    .replace(/[(),.*\\]/g, "")
-    .replace(/\s+/g, " ")
-    .trim()
-    .substring(0, 200);
-}
+// sanitizeForPostgrest moved to _shared/rag-search.ts

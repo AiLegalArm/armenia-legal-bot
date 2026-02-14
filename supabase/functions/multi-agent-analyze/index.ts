@@ -2,6 +2,7 @@ import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.91.1";
 import { MULTI_AGENT_ANALYSIS, buildModelParams } from "../_shared/model-config.ts";
 import { redactForLog } from "../_shared/pii-redactor.ts";
+import { searchKB, searchPractice, formatKBContext, formatPracticeContext as formatPracticeCtx } from "../_shared/rag-search.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -771,72 +772,34 @@ serve(async (req) => {
       }
     }
 
-    // RAG: Search Knowledge Base for relevant legal context
+    // RAG: Search Knowledge Base for relevant legal context (via shared module)
     const searchQuery = `${caseData.facts || ""} ${caseData.legal_question || ""}`.trim();
     
     if (searchQuery) {
       const referenceDate = caseData.court_date || null;
-      const rpcParams: Record<string, unknown> = { search_query: searchQuery, result_limit: 5 };
-      if (referenceDate) rpcParams.reference_date = referenceDate;
+      const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
+      const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 
-      // Search main Knowledge Base (date-aware)
-      const { data: kbResults } = await supabase
-        .rpc("search_knowledge_base", rpcParams);
+      const [kbResult, practiceResult] = await Promise.all([
+        searchKB({
+          supabase, supabaseUrl, supabaseKey: supabaseServiceKey,
+          query: searchQuery, referenceDate, limit: 3, snippetLength: 2000,
+        }),
+        searchPractice({
+          supabase, supabaseUrl, supabaseKey: supabaseServiceKey,
+          query: searchQuery, limit: 3,
+        }),
+      ]);
 
-      if (kbResults && kbResults.length > 0) {
+      if (kbResult.results.length > 0) {
         contextParts.push("\n\u053b\u0550\u0531\u054e\u0531\u053f\u0531\u0546 \u0532\u0531\u0536\u0531 (KB):");
-        const topResults = kbResults.slice(0, 3);
-        for (const doc of topResults) {
-          contextParts.push(`\n### ${doc.title} (${doc.category})`);
-          contextParts.push(`\u0531\u0572\u0562\u0575\u0578\u0582\u0580: ${doc.source_name || "RA Legal Database"}`);
-          contextParts.push(doc.content_text.substring(0, 2000));
-        }
+        contextParts.push(formatKBContext(kbResult.results, 2000));
       }
 
-      // Search Legal Practice KB for analogous court cases
-      const { data: practiceResults } = await supabase
-        .rpc("search_legal_practice", { 
-          search_query: searchQuery,
-          result_limit: 5
-        });
-
-      if (practiceResults && practiceResults.length > 0) {
-        const topPractice = practiceResults.slice(0, 3);
-        
+      if (practiceResult.results.length > 0) {
         contextParts.push("\n\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501");
         contextParts.push("\u053b\u0550\u0531\u054e\u0531\u053f\u0531\u0546 \u054a\u0550\u0531\u053f\u054f\u053b\u053f\u0531\u0545\u053b \u0540\u0535\u0546\u0531\u053f\u0531\u0545\u053b\u0546 \u0546\u0545\u0548\u0552\u053f (KB REFERENCE ONLY)");
-        contextParts.push("\u0540\u053b\u0547\u0535\u0551\u0546\u0535\u0554: \u054d\u0561 \u0579\u0567 \u0561\u057a\u0561\u0581\u0578\u0582\u0575\u0581, \u057d\u0561 \u0574\u056b\u0561\u0575\u0576 \u0561\u0576\u0561\u056c\u0578\u0563\u0576\u0565\u0580\u056b \u0570\u0561\u0574\u0561\u0580 \u0567:");
-        contextParts.push("\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501");
-        
-        const outcomeLabels: Record<string, string> = {
-          granted: '\u0532\u0561\u057e\u0561\u0580\u0561\u0580\u057e\u0565\u056c',
-          rejected: '\u0544\u0565\u0580\u056a\u057e\u0565\u056c',
-          partial: '\u0544\u0561\u057d\u0576\u0561\u056f\u056b',
-          remanded: '\u054e\u0565\u0580\u0561\u0564\u0561\u0580\u0571\u057e\u0565\u056c',
-          discontinued: '\u053f\u0561\u0580\u0573\u057e\u0565\u056c'
-        };
-        
-        const courtLabels: Record<string, string> = {
-          first_instance: '\u0531\u057c\u0561\u057b\u056b\u0576 \u0561\u057f\u0575\u0561\u0576',
-          appeal: '\u054e\u0565\u0580\u0561\u0584\u0576\u0576\u056b\u0579',
-          cassation: '\u054e\u0573\u057c\u0561\u0562\u0565\u056f',
-          constitutional: '\u054d\u0561\u0570\u0574\u0561\u0576\u0561\u0564\u0580\u0561\u056f\u0561\u0576',
-          echr: '\u0535\u054d\u054a\u053f'
-        };
-        
-        for (const doc of topPractice) {
-          contextParts.push(`\n### \u0531\u0576\u0561\u056c\u0578\u0563 \u0564\u0561\u057f\u0561\u056f\u0561\u0576 \u057a\u0580\u0561\u056f\u057f\u056b\u056f\u0561 (KB): ${doc.title}`);
-          contextParts.push(`- \u0531\u057f\u0575\u0561\u0576: ${courtLabels[doc.court_type] || doc.court_type}`);
-          contextParts.push(`- \u0531\u0580\u0564\u0575\u0578\u0582\u0576\u0584: ${outcomeLabels[doc.outcome] || doc.outcome}`);
-          if (doc.key_violations && doc.key_violations.length > 0) {
-            contextParts.push(`- \u053d\u0561\u056d\u057f\u0578\u0582\u0574\u0576\u0565\u0580: ${doc.key_violations.join(', ')}`);
-          }
-          if (doc.legal_reasoning_summary) {
-            contextParts.push(`- \u053b\u0580\u0561\u057e\u0561\u056f\u0561\u0576 \u0570\u056b\u0574\u0576\u0561\u057e\u0578\u0580\u0578\u0582\u0574: ${doc.legal_reasoning_summary}`);
-          }
-          contextParts.push(`\u054f\u0565\u0584\u057d\u057f: ${doc.content_snippet}`);
-        }
-        
+        contextParts.push(formatPracticeCtx(practiceResult.results, true));
         contextParts.push("\n\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501");
         contextParts.push("KB \u0540\u0535\u0546\u0531\u053f\u0531\u0545\u053b\u0546 \u0532\u0531\u0536\u0531\u0545\u053b \u0531\u054e\u0531\u0550\u054f");
         contextParts.push("\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501");
