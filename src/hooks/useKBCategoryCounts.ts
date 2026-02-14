@@ -13,18 +13,32 @@ export function useKBCategoryCounts() {
   return useQuery({
     queryKey: ['kb-category-counts'],
     queryFn: async () => {
-      // Fetch all categories and their counts in one query
-      const { data, error } = await supabase
-        .from('knowledge_base')
-        .select('category')
-        .eq('is_active', true);
-
-      if (error) throw error;
-
+      // Use a raw count query per category to avoid the 1000-row limit
+      // Fetch all rows but only the category column, paginating to get everything
       const counts = new Map<string, number>();
-      for (const row of data || []) {
-        const cat = row.category || 'other';
-        counts.set(cat, (counts.get(cat) || 0) + 1);
+      const pageSize = 1000;
+      let from = 0;
+      let hasMore = true;
+
+      while (hasMore) {
+        const { data, error } = await supabase
+          .from('knowledge_base')
+          .select('category', { count: 'exact', head: false })
+          .eq('is_active', true)
+          .range(from, from + pageSize - 1);
+
+        if (error) throw error;
+
+        for (const row of data || []) {
+          const cat = row.category || 'other';
+          counts.set(cat, (counts.get(cat) || 0) + 1);
+        }
+
+        if (!data || data.length < pageSize) {
+          hasMore = false;
+        } else {
+          from += pageSize;
+        }
       }
 
       return counts;
