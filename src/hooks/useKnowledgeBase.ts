@@ -58,7 +58,7 @@ export function useKnowledgeBase(filters: KBFilters = {}) {
 
   // Chunk-level search using PostgreSQL RPC
   const { data: searchResults, isLoading: isSearching } = useQuery({
-    queryKey: ['kb-search', filters.search],
+    queryKey: ['kb-search', filters.search, filters.category],
     queryFn: async () => {
       if (!filters.search || filters.search.length < 2) return null;
       
@@ -96,9 +96,10 @@ export function useKnowledgeBase(filters: KBFilters = {}) {
       
       return (parsed.documents || []).map((doc): KBChunkSearchResult => {
         const docChunks = chunksByDoc.get(doc.id) || [];
+        const excerpt = docChunks[0]?.excerpt || '';
         return {
           ...doc,
-          content_text: docChunks[0]?.excerpt || '',
+          content_text: excerpt.substring(0, 500),
           chunks: docChunks,
         };
       });

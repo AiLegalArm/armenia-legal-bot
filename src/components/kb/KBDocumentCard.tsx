@@ -287,7 +287,8 @@ export function KBDocumentCard({
           </div>
         ) : (
           <p className="mb-3 line-clamp-3 text-sm text-muted-foreground">
-            {document.content_text.substring(0, 200)}...
+            {document.content_text ? document.content_text.substring(0, 500) : t('no_chunks_found', 'Фрагменты не найдены')}
+            {document.content_text && document.content_text.length > 500 ? '...' : ''}
           </p>
         )}
         
