@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, useCallback } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
@@ -26,6 +26,21 @@ export function EmbeddingManager() {
   const [practiceStats, setPracticeStats] = useState<TableStats>(emptyStats());
   const [errors, setErrors] = useState<string[]>([]);
   const abortRef = useRef<AbortController | null>(null);
+  const mountedRef = useRef(true);
+
+  useEffect(() => {
+    return () => { mountedRef.current = false; };
+  }, []);
+
+  const safeSetKb = useCallback((fn: (prev: TableStats) => TableStats) => {
+    if (mountedRef.current) setKbStats(fn);
+  }, []);
+  const safeSetPractice = useCallback((fn: (prev: TableStats) => TableStats) => {
+    if (mountedRef.current) setPracticeStats(fn);
+  }, []);
+  const safeSetErrors = useCallback((fn: (prev: string[]) => string[]) => {
+    if (mountedRef.current) setErrors(fn);
+  }, []);
 
   const loadStats = async () => {
     const tables = ["knowledge_base", "legal_practice_kb"] as const;
@@ -39,7 +54,8 @@ export function EmbeddingManager() {
         supabase.from(t).select("id", { count: "exact", head: true }).eq("is_active", true).eq("embedding_status", "failed").lt("embedding_attempts", 5),
         supabase.from(t).select("id", { count: "exact", head: true }).eq("is_active", true).eq("embedding_status", "failed").gte("embedding_attempts", 5),
       ]);
-      setters[i](prev => ({
+      const setter = i === 0 ? safeSetKb : safeSetPractice;
+      setter(prev => ({
         ...prev,
         success: successRes.count || 0,
         pending: pendingRes.count || 0,
@@ -52,9 +68,9 @@ export function EmbeddingManager() {
   useEffect(() => { loadStats(); }, []);
 
   const runEmbeddings = async (table: "knowledge_base" | "legal_practice_kb") => {
-    const setStats = table === "knowledge_base" ? setKbStats : setPracticeStats;
+    const setStats = table === "knowledge_base" ? safeSetKb : safeSetPractice;
     setStats(p => ({ ...p, running: true, processed: 0 }));
-    setErrors([]);
+    safeSetErrors(() => []);
 
     abortRef.current = new AbortController();
 
@@ -71,7 +87,7 @@ export function EmbeddingManager() {
             deadLetter: p.deadLetterCount || prev.deadLetter,
             running: true,
           }));
-          if (p.errors) setErrors(prev => [...new Set([...prev, ...p.errors!])]);
+          if (p.errors) safeSetErrors(prev => [...new Set([...prev, ...p.errors!])]);
         },
       });
 
@@ -102,8 +118,8 @@ export function EmbeddingManager() {
 
   const stop = () => {
     abortRef.current?.abort();
-    setKbStats(p => ({ ...p, running: false }));
-    setPracticeStats(p => ({ ...p, running: false }));
+    safeSetKb(p => ({ ...p, running: false }));
+    safeSetPractice(p => ({ ...p, running: false }));
   };
 
   const isRunning = kbStats.running || practiceStats.running;
