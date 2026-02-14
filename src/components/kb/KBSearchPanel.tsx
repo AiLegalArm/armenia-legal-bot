@@ -1,4 +1,4 @@
-import { useState, useCallback, useMemo } from "react";
+import { useState, useCallback } from "react";
 import { useTranslation } from "react-i18next";
 import { Search, FileText, ChevronDown, ChevronRight, Loader2, Scale, AlertTriangle, BookOpen, Gavel } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -11,7 +11,7 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { useLegalPracticeKB, type KBDocument, type PracticeCategory } from "@/hooks/useLegalPracticeKB";
 import { supabase } from "@/integrations/supabase/client";
-import { extractRelevantSnippets, highlightTerms } from "@/lib/snippet-extractor";
+import { highlightTerms } from "@/lib/snippet-extractor";
 
 const CATEGORY_LABELS: Record<PracticeCategory, string> = {
   criminal: "\u0554\u0580\u0565\u0561\u056F\u0561\u0576",
@@ -88,14 +88,25 @@ function cleanJsonArtifacts(text: string): string {
   return cleaned;
 }
 
+interface KBChunkResult {
+  doc_id: string;
+  chunk_index: number;
+  chunk_type: string;
+  label: string | null;
+  char_start: number;
+  excerpt: string;
+  score: number;
+}
+
 interface KBSearchResult {
   id: string;
   title: string;
-  content_text: string;
   category: string;
   source_name: string | null;
-  version_date: string | null;
-  rank: number;
+  article_number: string | null;
+  source_url: string | null;
+  max_score: number;
+  chunks: KBChunkResult[];
 }
 
 interface KBSearchPanelProps {
@@ -130,41 +141,41 @@ export function KBSearchPanel({ onInsertReference }: KBSearchPanelProps) {
   const searchKBLegislation = useCallback(async (searchQuery: string) => {
     setIsSearchingKB(true);
     try {
-      const words = searchQuery.trim().split(/\s+/).filter(w => w.length >= 2).slice(0, 5);
-      if (words.length === 0) { setIsSearchingKB(false); return; }
+      const trimmed = searchQuery.trim();
+      if (trimmed.length < 2) { setIsSearchingKB(false); return; }
 
-      const results = new Map<string, KBSearchResult>();
+      const { data, error } = await supabase.rpc("search_kb_chunks", {
+        p_query: trimmed,
+        p_category: null,
+        p_limit_chunks: 50,
+        p_limit_docs: 10,
+        p_chunks_per_doc: 3,
+      });
 
-      for (const word of words) {
-        if (results.size >= 10) break;
-        const sanitized = word.replace(/[%_(),.*\\]/g, "").substring(0, 200);
-        if (sanitized.length < 2) continue;
+      if (error) throw error;
 
-        const { data } = await supabase
-          .from("knowledge_base")
-          .select("id, title, content_text, category, source_name, version_date")
-          .eq("is_active", true)
-          .or(`title.ilike.%${sanitized}%,content_text.ilike.%${sanitized}%`)
-          .limit(10);
+      const parsed = data as unknown as { documents: Array<{
+        id: string; title: string; category: string;
+        source_name: string | null; article_number: string | null;
+        source_url: string | null; max_score: number;
+      }>; chunks: KBChunkResult[] };
 
-        for (const r of data || []) {
-          if (!results.has(r.id)) {
-            results.set(r.id, {
-              id: r.id,
-              title: r.title,
-              content_text: r.content_text,
-              category: r.category,
-              source_name: r.source_name,
-              version_date: r.version_date,
-              rank: 1,
-            });
-          }
-        }
+      // Group chunks by doc_id
+      const chunksByDoc = new Map<string, KBChunkResult[]>();
+      for (const chunk of parsed.chunks || []) {
+        const arr = chunksByDoc.get(chunk.doc_id) || [];
+        arr.push(chunk);
+        chunksByDoc.set(chunk.doc_id, arr);
       }
 
-      setKbResults(Array.from(results.values()).slice(0, 10));
+      const results: KBSearchResult[] = (parsed.documents || []).map((doc) => ({
+        ...doc,
+        chunks: chunksByDoc.get(doc.id) || [],
+      }));
+
+      setKbResults(results);
     } catch (err) {
-      console.error("KB legislation search error:", err);
+      console.error("KB chunk search error:", err);
       setKbResults([]);
     } finally {
       setIsSearchingKB(false);
@@ -355,10 +366,7 @@ interface KBLawCardProps {
 }
 
 function KBLawCard({ result, searchQuery, isExpanded, onToggle, onInsertReference }: KBLawCardProps) {
-  const snippets = useMemo(
-    () => extractRelevantSnippets(result.content_text, searchQuery, 3, 200),
-    [result.content_text, searchQuery],
-  );
+  const chunks = result.chunks;
 
   return (
     <div className="border rounded-lg p-3 space-y-2 bg-card">
@@ -384,16 +392,17 @@ function KBLawCard({ result, searchQuery, isExpanded, onToggle, onInsertReferenc
                     {result.source_name}
                   </Badge>
                 )}
-                {snippets.length > 0 && (
+                {chunks.length > 0 && (
                   <Badge variant="secondary" className="text-xs py-0">
-                    {snippets.length} {snippets.length === 1 ? "fragment" : "fragments"}
+                    {chunks.length} {chunks.length === 1 ? "fragment" : "fragments"}
                   </Badge>
                 )}
               </div>
-              {/* Show first snippet as preview even when collapsed */}
-              {!isExpanded && snippets.length > 0 && (
+              {/* Show first chunk excerpt as preview when collapsed */}
+              {!isExpanded && chunks.length > 0 && (
                 <p className="mt-1.5 text-xs text-muted-foreground line-clamp-2">
-                  {snippets[0].text}
+                  {chunks[0].label && <span className="font-medium">{chunks[0].label}: </span>}
+                  {chunks[0].excerpt}
                 </p>
               )}
             </div>
@@ -401,8 +410,8 @@ function KBLawCard({ result, searchQuery, isExpanded, onToggle, onInsertReferenc
         </CollapsibleTrigger>
 
         <CollapsibleContent className="mt-3 space-y-2">
-          {snippets.length > 0 ? (
-            snippets.map((snippet, idx) => (
+          {chunks.length > 0 ? (
+            chunks.map((chunk, idx) => (
               <div
                 key={idx}
                 className="border rounded-lg p-3 bg-secondary/20 space-y-2"
@@ -410,14 +419,14 @@ function KBLawCard({ result, searchQuery, isExpanded, onToggle, onInsertReferenc
                 <div className="flex items-center justify-between text-xs">
                   <span className="font-semibold text-primary flex items-center gap-1.5">
                     <BookOpen className="h-3 w-3" />
-                    {"\u0540\u0561\u057F\u057E\u0561\u056E"} {idx + 1}
+                    {chunk.label || `${chunk.chunk_type} #${chunk.chunk_index}`}
                   </span>
                   <span className="text-muted-foreground">
-                    pos: {snippet.position}
+                    score: {(chunk.score * 100).toFixed(0)}%
                   </span>
                 </div>
                 <div className="text-sm text-foreground/90 leading-relaxed">
-                  {highlightTerms(snippet.text, searchQuery).map((seg, i) =>
+                  {highlightTerms(chunk.excerpt, searchQuery).map((seg, i) =>
                     seg.highlight ? (
                       <mark key={i} className="bg-primary/20 text-foreground rounded px-0.5">
                         {seg.text}
@@ -435,7 +444,7 @@ function KBLawCard({ result, searchQuery, isExpanded, onToggle, onInsertReferenc
                       className="h-7 text-xs px-3 text-primary"
                       onClick={(e) => {
                         e.stopPropagation();
-                        onInsertReference(result.id, snippet.chunkIndex, snippet.text);
+                        onInsertReference(result.id, chunk.chunk_index, chunk.excerpt);
                       }}
                     >
                       {"\u054f\u0565\u0572\u0561\u0564\u0580\u0565\u056c \u0578\u0580\u057a\u0565\u057d KB \u0570\u0572\u0578\u0582\u0574"}
@@ -446,8 +455,8 @@ function KBLawCard({ result, searchQuery, isExpanded, onToggle, onInsertReferenc
             ))
           ) : (
             <div className="border rounded-lg p-3 bg-secondary/20">
-              <p className="text-sm text-muted-foreground">
-                {result.content_text.substring(0, 400)}...
+              <p className="text-sm text-muted-foreground italic">
+                {"\u0549\u0561\u0576\u056f\u0565\u0580 \u0579\u0565\u0576 \u0563\u057f\u0576\u057e\u0565\u056c"}
               </p>
             </div>
           )}

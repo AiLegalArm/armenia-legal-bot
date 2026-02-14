@@ -26,6 +26,26 @@ export interface KBSearchResult {
   rank: number | null;
 }
 
+export interface KBChunkSearchResult {
+  id: string;
+  title: string;
+  category: string;
+  source_name: string | null;
+  article_number: string | null;
+  source_url: string | null;
+  max_score: number;
+  content_text: string; // first chunk excerpt as fallback
+  chunks: Array<{
+    doc_id: string;
+    chunk_index: number;
+    chunk_type: string;
+    label: string | null;
+    char_start: number;
+    excerpt: string;
+    score: number;
+  }>;
+}
+
 export function useKnowledgeBase(filters: KBFilters = {}) {
   const { toast } = useToast();
   const { t } = useTranslation('kb');
@@ -35,20 +55,51 @@ export function useKnowledgeBase(filters: KBFilters = {}) {
   const pageSize = filters.pageSize || 20;
   const offset = (page - 1) * pageSize;
 
-  // Full-text search using PostgreSQL function
+  // Chunk-level search using PostgreSQL RPC
   const { data: searchResults, isLoading: isSearching } = useQuery({
     queryKey: ['kb-search', filters.search],
     queryFn: async () => {
       if (!filters.search || filters.search.length < 2) return null;
       
       const { data, error } = await supabase
-        .rpc('search_knowledge_base', {
-          search_query: filters.search,
-          result_limit: 50,
+        .rpc('search_kb_chunks', {
+          p_query: filters.search,
+          p_category: filters.category && filters.category !== 'all' ? filters.category : null,
+          p_limit_chunks: 50,
+          p_limit_docs: 10,
+          p_chunks_per_doc: 3,
         });
       
       if (error) throw error;
-      return data as KBSearchResult[];
+      
+      const parsed = data as unknown as {
+        documents: Array<{
+          id: string; title: string; category: string;
+          source_name: string | null; article_number: string | null;
+          source_url: string | null; max_score: number;
+        }>;
+        chunks: Array<{
+          doc_id: string; chunk_index: number; chunk_type: string;
+          label: string | null; char_start: number; excerpt: string; score: number;
+        }>;
+      };
+      
+      // Group chunks by doc_id
+      const chunksByDoc = new Map<string, typeof parsed.chunks>();
+      for (const chunk of parsed.chunks || []) {
+        const arr = chunksByDoc.get(chunk.doc_id) || [];
+        arr.push(chunk);
+        chunksByDoc.set(chunk.doc_id, arr);
+      }
+      
+      return (parsed.documents || []).map((doc): KBChunkSearchResult => {
+        const docChunks = chunksByDoc.get(doc.id) || [];
+        return {
+          ...doc,
+          content_text: docChunks[0]?.excerpt || '',
+          chunks: docChunks,
+        };
+      });
     },
     enabled: !!filters.search && filters.search.length >= 2,
   });
