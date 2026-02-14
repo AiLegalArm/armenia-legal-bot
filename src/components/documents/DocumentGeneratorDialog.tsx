@@ -43,7 +43,6 @@ export function DocumentGeneratorDialog({
         <DocumentGenerator 
           caseData={caseData}
           preselectedType={preselectedType}
-          onClose={() => onOpenChange(false)} 
         />
       </DialogContent>
     </Dialog>

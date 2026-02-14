@@ -30,11 +30,9 @@ interface DocumentGeneratorProps {
     notes?: string;
   };
   preselectedType?: 'appeal' | 'cassation' | null;
-  onClose?: () => void;
 }
 
-// eslint-disable-next-line @typescript-eslint/no-unused-vars
-export function DocumentGenerator({ caseData, preselectedType, onClose }: DocumentGeneratorProps) {
+export function DocumentGenerator({ caseData, preselectedType }: DocumentGeneratorProps) {
   const { t, i18n } = useTranslation(["cases", "common"]);
 
   const {
