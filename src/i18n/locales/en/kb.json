@@ -168,5 +168,10 @@
   "lp_bi_import": "Import",
   "lp_bi_imported": "Imported: {{count}} files",
   "lp_bi_recognize_error": "Recognition error",
-  "judicial_practice": "Judicial Practice"
+  "judicial_practice": "Judicial Practice",
+  "kb_show_full": "Show full article",
+  "kb_collapse": "Collapse",
+  "kb_loading": "Loading...",
+  "show_full_article": "Show full article",
+  "collapse": "Collapse"
 }

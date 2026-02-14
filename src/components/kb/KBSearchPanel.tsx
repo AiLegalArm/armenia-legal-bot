@@ -366,6 +366,7 @@ interface KBLawCardProps {
 }
 
 function KBLawCard({ result, searchQuery, isExpanded, onToggle, onInsertReference }: KBLawCardProps) {
+  const { t } = useTranslation("kb");
   const chunks = result.chunks;
   // Track which chunks have been expanded to full text
   const [expandedChunks, setExpandedChunks] = useState<Map<number, string>>(new Map());
@@ -389,8 +390,13 @@ function KBLawCard({ result, searchQuery, isExpanded, onToggle, onInsertReferenc
         p_chunk_index: chunkIndex,
       });
       if (error) throw error;
-      const parsed = data as unknown as { chunk_text: string };
-      setExpandedChunks((prev) => new Map(prev).set(chunkIndex, parsed.chunk_text));
+      // Robust: handle array or single object
+      const row = Array.isArray(data) ? data[0] : data;
+      const text = typeof row === "object" && row !== null && "chunk_text" in row
+        ? String((row as Record<string, unknown>).chunk_text)
+        : typeof row === "string" ? row : "";
+      if (!text) throw new Error("chunk_text missing from RPC response");
+      setExpandedChunks((prev) => new Map(prev).set(chunkIndex, text));
     } catch (err) {
       console.error("Failed to load full chunk:", err);
     } finally {
@@ -499,7 +505,7 @@ function KBLawCard({ result, searchQuery, isExpanded, onToggle, onInsertReferenc
                       ) : (
                         <Maximize2 className="h-3 w-3 mr-1" />
                       )}
-                      {isChunkExpanded ? "\u053f\u0580\u0573\u0565\u056c" : "\u0551\u0578\u0582\u0575\u0581 \u057f\u0561\u056c \u0561\u0574\u0562\u0578\u0572\u057b\u0568"}
+                      {isChunkLoading ? t("kb_loading") : isChunkExpanded ? t("kb_collapse") : t("kb_show_full")}
                     </Button>
                     {onInsertReference && (
                       <Button
