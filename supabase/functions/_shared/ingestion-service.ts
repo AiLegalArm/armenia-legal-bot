@@ -345,7 +345,7 @@ export function buildJsonl(
       chunk: {
         index: chunk.chunk_index,
         total,
-        strategy,
+        strategy: chunk.chunk_type === "article" ? "article" : strategy,
         type: chunk.chunk_type,
         text: chunk.chunk_text,
         char_start: chunk.char_start,
@@ -357,6 +357,10 @@ export function buildJsonl(
         doc_id: meta.doc_id || null,
         category: meta.category || null,
         chunk_hash: chunk.chunk_hash || null,
+        // Include article_number for article-type chunks
+        ...(chunk.chunk_type === "article" && chunk.locator?.article
+          ? { article_number: chunk.locator.article }
+          : {}),
       },
     };
 

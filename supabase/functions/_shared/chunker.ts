@@ -46,7 +46,11 @@ const MIN_CHUNK_SIZE = 200;
 
 // ─── REGEX PATTERNS (Unicode-escaped Armenian) ──────────────────────
 
-const ARTICLE_HEADER_RE = /\u0540\u0578\u0564\u057e\u0561\u056e\s+(\d+(?:[.-]\d+)?)\s*[.\u0589]/g;
+// Matches: "\u0540\u0578\u0564\u057e\u0561\u056e 85." and "\u0540\u0578\u0564\u057e\u0561\u056e\n85." and "\u0540\u0578\u0564\u057e\u0561\u056e 345.2\u0589"
+// Captures article number including sub-articles (e.g. 60.3, 345.2, 1100)
+const ARTICLE_HEADER_RE = /\u0540\u0578\u0564\u057e\u0561\u056e\s+(\d+(?:[.-]\d+)*)\s*[.\u0589]/g;
+// Variant with linebreak between "\u0540\u0578\u0564\u057e\u0561\u056e" and number (common in OCR/arlis TXT)
+const ARTICLE_HEADER_NEWLINE_RE = /\u0540\u0578\u0564\u057e\u0561\u056e\n(\d+(?:[.-]\d+)*)\s*[.\u0589]/g;
 
 const PART_RE = /^(\d+)\s*[.)]\s+/gm;
 
@@ -163,30 +167,44 @@ function makeChunk(
 function chunkLegislation(text: string): LegalChunk[] {
   const chunks: LegalChunk[] = [];
   const articleMatches: { index: number; number: string; fullMatch: string }[] = [];
-  const re = new RegExp(ARTICLE_HEADER_RE.source, "g");
-  let m: RegExpExecArray | null;
-  while ((m = re.exec(text)) !== null) {
-    articleMatches.push({ index: m.index, number: m[1], fullMatch: m[0] });
+
+  // Scan with both patterns (same-line and newline variants)
+  for (const pattern of [ARTICLE_HEADER_RE, ARTICLE_HEADER_NEWLINE_RE]) {
+    const re = new RegExp(pattern.source, "g");
+    let m: RegExpExecArray | null;
+    while ((m = re.exec(text)) !== null) {
+      articleMatches.push({ index: m.index, number: m[1], fullMatch: m[0] });
+    }
   }
 
-  if (articleMatches.length === 0) {
+  // Deduplicate by position (both patterns may match same article)
+  articleMatches.sort((a, b) => a.index - b.index);
+  const deduped: typeof articleMatches = [];
+  for (const am of articleMatches) {
+    const last = deduped[deduped.length - 1];
+    if (!last || am.index - last.index > 5) {
+      deduped.push(am);
+    }
+  }
+
+  if (deduped.length === 0) {
     return chunkFixedWindow(text, "article");
   }
 
   let chunkIdx = 0;
 
-  if (articleMatches[0].index > MIN_CHUNK_SIZE) {
-    const preambleText = text.slice(0, articleMatches[0].index).trim();
+  if (deduped[0].index > MIN_CHUNK_SIZE) {
+    const preambleText = text.slice(0, deduped[0].index).trim();
     if (preambleText.length > 0) {
       chunks.push(makeChunk(chunkIdx++, "preamble", preambleText, 0, null, null));
     }
   }
 
-  for (let i = 0; i < articleMatches.length; i++) {
-    const start = articleMatches[i].index;
-    const end = i + 1 < articleMatches.length ? articleMatches[i + 1].index : text.length;
+  for (let i = 0; i < deduped.length; i++) {
+    const start = deduped[i].index;
+    const end = i + 1 < deduped.length ? deduped[i + 1].index : text.length;
     const articleText = text.slice(start, end).trim();
-    const articleNum = articleMatches[i].number;
+    const articleNum = deduped[i].number;
 
     if (articleText.length === 0) continue;
 

@@ -121,8 +121,8 @@ Deno.test("buildJsonl: serializes chunks to JSONL", () => {
   for (const line of jsonl) {
     assertExists(line.json);
     const parsed = JSON.parse(line.json);
-    assertEquals(parsed.doc_id, "test-id");
-    assertExists(parsed.chunk_text);
+    assertEquals(parsed.metadata.doc_id, "test-id");
+    assertExists(parsed.chunk.text);
   }
 });
 
