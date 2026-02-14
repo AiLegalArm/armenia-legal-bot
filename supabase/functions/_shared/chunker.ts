@@ -48,6 +48,7 @@ export interface ChunkResult {
 
 // ─── CONSTANTS ──────────────────────────────────────────────────────
 const MAX_CHUNK_SIZE = 8000;
+const MAX_ARTICLE_CHUNK_SIZE = 50000;
 const MIN_CHUNK_SIZE = 200;
 
 // ─── REGEX PATTERNS (Unicode-escaped Armenian) ──────────────────────
@@ -57,6 +58,9 @@ const MIN_CHUNK_SIZE = 200;
 const ARTICLE_HEADER_RE = /\u0540\u0578\u0564\u057e\u0561\u056e\s+(\d+(?:[.-]\d+)*)\s*[.\u0589]/g;
 // Variant with linebreak between "\u0540\u0578\u0564\u057e\u0561\u056e" and number (common in OCR/arlis TXT)
 const ARTICLE_HEADER_NEWLINE_RE = /\u0540\u0578\u0564\u057e\u0561\u056e\n(\d+(?:[.-]\d+)*)\s*[.\u0589]/g;
+// Split-line variant: "\u0540\u0578\u0564\u057e\u0561\u056e <title text>\n<number>." (EAEU Customs Code format)
+// The number is on the NEXT line after article title
+const ARTICLE_HEADER_SPLIT_RE = /\u0540\u0578\u0564\u057e\u0561\u056e\s+[^\n]+\n(\d+(?:[.-]\d+)*)\.\s/g;
 
 // ─── CASE NUMBER PATTERNS ──────────────────────────────────────────
 // Armenian court decisions: "\u0533\u0578\u0580\u056e \u0569\u056b\u057e XX-XXXX-XX-XXXX" or variants
@@ -199,8 +203,8 @@ function chunkLegislation(text: string): LegalChunk[] {
   const chunks: LegalChunk[] = [];
   const articleMatches: { index: number; number: string; fullMatch: string }[] = [];
 
-  // Scan with both patterns (same-line and newline variants)
-  for (const pattern of [ARTICLE_HEADER_RE, ARTICLE_HEADER_NEWLINE_RE]) {
+  // Scan with all three patterns (same-line, newline, and split-line variants)
+  for (const pattern of [ARTICLE_HEADER_RE, ARTICLE_HEADER_NEWLINE_RE, ARTICLE_HEADER_SPLIT_RE]) {
     const re = new RegExp(pattern.source, "g");
     let m: RegExpExecArray | null;
     while ((m = re.exec(text)) !== null) {
@@ -208,7 +212,7 @@ function chunkLegislation(text: string): LegalChunk[] {
     }
   }
 
-  // Deduplicate by position (both patterns may match same article)
+  // Deduplicate by position (patterns may match same article)
   articleMatches.sort((a, b) => a.index - b.index);
   const deduped: typeof articleMatches = [];
   for (const am of articleMatches) {
@@ -239,18 +243,35 @@ function chunkLegislation(text: string): LegalChunk[] {
 
     if (articleText.length === 0) continue;
 
-    const locator: ChunkLocator = {
-      article: articleNum,
-      section_title: "\u0540\u0578\u0564\u057e\u0561\u056e " + articleNum,
-    };
-    chunks.push(makeChunk(
-      chunkIdx++,
-      "article",
-      articleText,
-      start,
-      "\u0540\u0578\u0564\u057e\u0561\u056e " + articleNum,
-      locator
-    ));
+    // Safety guard: if article chunk exceeds MAX_ARTICLE_CHUNK_SIZE, split by fixed windows
+    if (articleText.length > MAX_ARTICLE_CHUNK_SIZE) {
+      const windowSize = MAX_ARTICLE_CHUNK_SIZE;
+      for (let offset = 0; offset < articleText.length; offset += windowSize) {
+        const slice = articleText.slice(offset, offset + windowSize).trim();
+        if (slice.length === 0) continue;
+        const partLabel = offset === 0
+          ? "\u0540\u0578\u0564\u057e\u0561\u056e " + articleNum
+          : "\u0540\u0578\u0564\u057e\u0561\u056e " + articleNum + " (" + (Math.floor(offset / windowSize) + 1) + ")";
+        const locator: ChunkLocator = {
+          article: articleNum,
+          section_title: "\u0540\u0578\u0564\u057e\u0561\u056e " + articleNum,
+        };
+        chunks.push(makeChunk(chunkIdx++, "article", slice, start + offset, partLabel, locator));
+      }
+    } else {
+      const locator: ChunkLocator = {
+        article: articleNum,
+        section_title: "\u0540\u0578\u0564\u057e\u0561\u056e " + articleNum,
+      };
+      chunks.push(makeChunk(
+        chunkIdx++,
+        "article",
+        articleText,
+        start,
+        "\u0540\u0578\u0564\u057e\u0561\u056e " + articleNum,
+        locator
+      ));
+    }
   }
 
   return chunks;
