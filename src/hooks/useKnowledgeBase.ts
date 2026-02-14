@@ -94,15 +94,20 @@ export function useKnowledgeBase(filters: KBFilters = {}) {
         chunksByDoc.set(chunk.doc_id, arr);
       }
       
-      return (parsed.documents || []).map((doc): KBChunkSearchResult => {
-        const docChunks = chunksByDoc.get(doc.id) || [];
-        const excerpt = docChunks[0]?.excerpt || '';
-        return {
-          ...doc,
-          content_text: excerpt.substring(0, 500),
-          chunks: docChunks,
-        };
-      });
+      return (parsed.documents || [])
+        .filter((doc) => {
+          const score = Number(doc.max_score);
+          return Number.isFinite(score) && Math.round(score * 100) >= 50;
+        })
+        .map((doc): KBChunkSearchResult => {
+          const docChunks = chunksByDoc.get(doc.id) || [];
+          const excerpt = docChunks[0]?.excerpt || '';
+          return {
+            ...doc,
+            content_text: excerpt.substring(0, 500),
+            chunks: docChunks,
+          };
+        });
     },
     enabled: !!filters.search && filters.search.length >= 2,
   });
