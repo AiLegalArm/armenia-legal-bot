@@ -192,22 +192,16 @@ export function KBDocumentCard({
           <div className="mb-3 space-y-2">
             {serverChunks.map((chunk, idx) => {
               const hasFullText = chunk.chunk_type === 'article' && !!chunk.full_text;
-              const isManuallyCollapsed = expandedChunks.get(chunk.chunk_index) === '__collapsed__';
-              const isExpanded = expandedChunks.has(chunk.chunk_index) && !isManuallyCollapsed;
+              const isExpanded = expandedChunks.has(chunk.chunk_index);
               const isLoading = loadingChunks.has(chunk.chunk_index);
 
               let displayText: string;
               let showFull: boolean;
-              if (isManuallyCollapsed) {
-                displayText = chunk.excerpt;
-                showFull = false;
-              } else if (isExpanded) {
+              if (isExpanded) {
                 displayText = expandedChunks.get(chunk.chunk_index)!;
                 showFull = true;
-              } else if (hasFullText) {
-                displayText = chunk.full_text!;
-                showFull = true;
               } else {
+                // Default: always show excerpt first (collapsed)
                 displayText = chunk.excerpt;
                 showFull = false;
               }
@@ -241,13 +235,14 @@ export function KBDocumentCard({
                       size="icon"
                       className="h-5 w-5 shrink-0 mt-0.5"
                       onClick={() => {
-                        if (hasFullText) {
-                          if (isManuallyCollapsed) {
-                            setExpandedChunks(prev => { const m = new Map(prev); m.delete(chunk.chunk_index); return m; });
-                          } else {
-                            setExpandedChunks(prev => new Map(prev).set(chunk.chunk_index, '__collapsed__'));
-                          }
+                        if (showFull) {
+                          // Collapse back to excerpt
+                          setExpandedChunks(prev => { const m = new Map(prev); m.delete(chunk.chunk_index); return m; });
+                        } else if (hasFullText) {
+                          // Expand using inline full_text
+                          setExpandedChunks(prev => new Map(prev).set(chunk.chunk_index, chunk.full_text!));
                         } else {
+                          // Expand via RPC
                           handleExpandChunk(chunk.chunk_index);
                         }
                       }}
