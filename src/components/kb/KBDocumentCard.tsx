@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -9,8 +10,12 @@ import {
   Trash2,
   Calendar,
   FileText,
-  ExternalLink
+  ExternalLink,
+  Maximize2,
+  Minimize2,
+  Loader2,
 } from 'lucide-react';
+import { supabase } from '@/integrations/supabase/client';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -103,11 +108,37 @@ export function KBDocumentCard({
 }: KBDocumentCardProps) {
   const { t } = useTranslation('kb');
 
+  const [expandedChunks, setExpandedChunks] = useState<Map<number, string>>(new Map());
+  const [loadingChunks, setLoadingChunks] = useState<Set<number>>(new Set());
+
   // Use server-returned chunks if available, otherwise fallback to client-side extraction
   const serverChunks = document.chunks || [];
   const clientSnippets = serverChunks.length === 0 && searchQuery
     ? extractRelevantSnippets(document.content_text, searchQuery, 3, 200)
     : [];
+
+  const handleExpandChunk = async (chunkIndex: number) => {
+    if (expandedChunks.has(chunkIndex)) {
+      setExpandedChunks(prev => { const m = new Map(prev); m.delete(chunkIndex); return m; });
+      return;
+    }
+    setLoadingChunks(prev => new Set(prev).add(chunkIndex));
+    try {
+      const { data } = await supabase.rpc('get_kb_chunk_full', {
+        p_kb_id: document.id,
+        p_chunk_index: chunkIndex,
+      });
+      if (data) {
+        const row = Array.isArray(data) ? data[0] : data;
+        const text = typeof row === 'object' && row !== null && 'chunk_text' in row
+          ? String((row as Record<string, unknown>).chunk_text)
+          : String(row);
+        setExpandedChunks(prev => new Map(prev).set(chunkIndex, text));
+      }
+    } finally {
+      setLoadingChunks(prev => { const s = new Set(prev); s.delete(chunkIndex); return s; });
+    }
+  };
 
   return (
     <Card className="transition-shadow hover:shadow-md">
@@ -158,27 +189,54 @@ export function KBDocumentCard({
       <CardContent>
         {serverChunks.length > 0 ? (
           <div className="mb-3 space-y-2">
-            {serverChunks.map((chunk, idx) => (
-              <div
-                key={idx}
-                className="rounded border-l-2 border-primary/40 bg-muted/40 px-2.5 py-1.5 text-xs leading-relaxed text-foreground/80"
-              >
-                {chunk.label && (
-                  <span className="font-semibold text-primary text-[10px] block mb-0.5">
-                    {chunk.label}
-                  </span>
-                )}
-                {searchQuery ? highlightTerms(chunk.excerpt, searchQuery).map((seg, i) =>
-                  seg.highlight ? (
-                    <mark key={i} className="bg-primary/20 text-foreground rounded px-0.5">
-                      {seg.text}
-                    </mark>
-                  ) : (
-                    <span key={i}>{seg.text}</span>
-                  )
-                ) : chunk.excerpt}
-              </div>
-            ))}
+            {serverChunks.map((chunk, idx) => {
+              const isExpanded = expandedChunks.has(chunk.chunk_index);
+              const isLoading = loadingChunks.has(chunk.chunk_index);
+              const displayText = isExpanded ? expandedChunks.get(chunk.chunk_index)! : chunk.excerpt;
+
+              return (
+                <div
+                  key={idx}
+                  className="rounded border-l-2 border-primary/40 bg-muted/40 px-2.5 py-1.5 text-xs leading-relaxed text-foreground/80"
+                >
+                  <div className="flex items-start justify-between gap-1">
+                    <div className="flex-1">
+                      {chunk.label && (
+                        <span className="font-semibold text-primary text-[10px] block mb-0.5">
+                          {chunk.label}
+                        </span>
+                      )}
+                      <span className={isExpanded ? 'whitespace-pre-wrap' : ''}>
+                        {searchQuery && !isExpanded
+                          ? highlightTerms(displayText, searchQuery).map((seg, i) =>
+                              seg.highlight ? (
+                                <mark key={i} className="bg-primary/20 text-foreground rounded px-0.5">{seg.text}</mark>
+                              ) : (
+                                <span key={i}>{seg.text}</span>
+                              )
+                            )
+                          : displayText}
+                      </span>
+                    </div>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-5 w-5 shrink-0 mt-0.5"
+                      onClick={() => handleExpandChunk(chunk.chunk_index)}
+                      title={isExpanded ? t('collapse', 'Collapse') : t('show_full_article', 'Show full article')}
+                    >
+                      {isLoading ? (
+                        <Loader2 className="h-3 w-3 animate-spin" />
+                      ) : isExpanded ? (
+                        <Minimize2 className="h-3 w-3" />
+                      ) : (
+                        <Maximize2 className="h-3 w-3" />
+                      )}
+                    </Button>
+                  </div>
+                </div>
+              );
+            })}
           </div>
         ) : clientSnippets.length > 0 ? (
           <div className="mb-3 space-y-2">
