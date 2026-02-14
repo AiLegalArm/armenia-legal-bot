@@ -602,43 +602,51 @@ serve(async (req) => {
       }
 
       // Batch insert (50 at a time), collect inserted IDs for chunking
-      const insertedIds: Array<{ id: string; title: string; content_text: string }> = [];
+      // Use positional index to map back content_text (safe even with duplicate titles)
+      const insertedDocs: Array<{ id: string; title: string; content_text: string }> = [];
       if (validRows.length > 0) {
         const batchSize = 50;
-        for (let i = 0; i < validRows.length; i += batchSize) {
-          const batch = validRows.slice(i, i + batchSize);
+        for (let batchStart = 0; batchStart < validRows.length; batchStart += batchSize) {
+          const batch = validRows.slice(batchStart, batchStart + batchSize);
           const { error: insertErr, data: inserted } = await adminDb
             .from("legal_practice_kb")
             .insert(batch)
-            .select("id, title");
+            .select("id");
           if (insertErr) {
             console.error(`[bulk-import] job=${jobId} batch_error:`, insertErr.message);
             for (const row of batch) {
               errors.push({ index: -1, title: String(row.title), error: insertErr.message });
             }
           } else {
-            insertedPractice += inserted?.length ?? batch.length;
-            // Map back content_text for chunking
-            for (const ins of (inserted ?? [])) {
-              const matchingRow = batch.find(r => r.title === ins.title);
-              insertedIds.push({
-                id: ins.id,
-                title: ins.title ?? "",
-                content_text: String(matchingRow?.content_text ?? ""),
+            const ids = inserted ?? [];
+            insertedPractice += ids.length;
+            // Positional mapping: Supabase returns rows in insertion order
+            for (let k = 0; k < ids.length; k++) {
+              insertedDocs.push({
+                id: ids[k].id,
+                title: String(batch[k]?.title ?? ""),
+                content_text: String(batch[k]?.content_text ?? ""),
               });
             }
           }
         }
       }
 
-      // Generate and insert chunks for each inserted practice row
+      // Generate and insert chunks for each inserted practice row (idempotent)
       let insertedChunks = 0;
       const CHUNK_SIZE = 8000;
       const CHUNK_OVERLAP = 200;
 
-      for (const doc of insertedIds) {
+      for (const doc of insertedDocs) {
         const text = (doc.content_text ?? "").trim();
         if (!text) continue;
+
+        // Idempotency: skip if chunks already exist for this doc_id
+        const { count: existingCount } = await adminDb
+          .from("legal_practice_kb_chunks")
+          .select("id", { count: "exact", head: true })
+          .eq("doc_id", doc.id);
+        if (existingCount && existingCount > 0) continue;
 
         const chunks = splitIntoChunks(text, CHUNK_SIZE, CHUNK_OVERLAP);
         if (chunks.length === 0) continue;
