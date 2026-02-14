@@ -9,7 +9,7 @@
 // ─── TYPES ──────────────────────────────────────────────────────────
 
 const CHUNK_TYPES = [
-  "header", "operative", "reasoning", "facts", "dissent",
+  "header", "operative", "resolution", "reasoning", "facts", "dissent",
   "article", "preamble", "table", "reference_list", "full_text", "other",
 ] as const;
 export type ChunkType = typeof CHUNK_TYPES[number];
@@ -55,6 +55,7 @@ interface SectionPattern {
 }
 
 const COURT_SECTION_PATTERNS: SectionPattern[] = [
+  // ── Armenian patterns ──
   {
     re: /\u057a\u0561\u057f\u0573\u0561\u057c\u0561\u056f\u0561\u0576\s+\u0574\u0561\u057d/i,
     type: "reasoning",
@@ -67,12 +68,12 @@ const COURT_SECTION_PATTERNS: SectionPattern[] = [
   },
   {
     re: /\u057a\u0561\u0570\u0561\u0576\u057b\u0561\u057f\u057e\u0561\u056f\u0561\u0576/i,
-    type: "operative",
+    type: "resolution",
     label: "\u057a\u0561\u0570\u0561\u0576\u057b\u0561\u057f\u057e\u0561\u056f\u0561\u0576",
   },
   {
     re: /\u0565\u0566\u0580\u0561\u056f\u0561\u0581\u0578\u0582\u0569\u0575\u0578\u0582\u0576/i,
-    type: "operative",
+    type: "resolution",
     label: "\u0565\u0566\u0580\u0561\u056f\u0561\u0581\u0578\u0582\u0569\u0575\u0578\u0582\u0576",
   },
   {
@@ -87,8 +88,39 @@ const COURT_SECTION_PATTERNS: SectionPattern[] = [
   },
   {
     re: /\u057e\u0573\u056b\u057c\u0565\u0581/i,
-    type: "operative",
+    type: "resolution",
     label: "\u057e\u0573\u056b\u057c\u0565\u0581",
+  },
+  // ── Russian-language patterns (bilingual documents) ──
+  {
+    re: /\u0444\u0430\u043a\u0442\u0438\u0447\u0435\u0441\u043a\u0438\u0435?\s+\u043e\u0431\u0441\u0442\u043e\u044f\u0442\u0435\u043b\u044c\u0441\u0442\u0432/i,
+    type: "facts",
+    label: "\u0444\u0430\u043a\u0442\u0438\u0447\u0435\u0441\u043a\u0438\u0435 \u043e\u0431\u0441\u0442\u043e\u044f\u0442\u0435\u043b\u044c\u0441\u0442\u0432\u0430",
+  },
+  {
+    re: /\u043c\u043e\u0442\u0438\u0432\u0438\u0440\u043e\u0432\u043e\u0447\u043d\u0430\u044f\s+\u0447\u0430\u0441\u0442\u044c/i,
+    type: "reasoning",
+    label: "\u043c\u043e\u0442\u0438\u0432\u0438\u0440\u043e\u0432\u043e\u0447\u043d\u0430\u044f \u0447\u0430\u0441\u0442\u044c",
+  },
+  {
+    re: /\u0440\u0435\u0437\u043e\u043b\u044e\u0442\u0438\u0432\u043d\u0430\u044f\s+\u0447\u0430\u0441\u0442\u044c/i,
+    type: "resolution",
+    label: "\u0440\u0435\u0437\u043e\u043b\u044e\u0442\u0438\u0432\u043d\u0430\u044f \u0447\u0430\u0441\u0442\u044c",
+  },
+  {
+    re: /\u043f\u043e\u0441\u0442\u0430\u043d\u043e\u0432\u0438\u043b/i,
+    type: "resolution",
+    label: "\u043f\u043e\u0441\u0442\u0430\u043d\u043e\u0432\u0438\u043b",
+  },
+  {
+    re: /\u0440\u0435\u0448\u0438\u043b/i,
+    type: "resolution",
+    label: "\u0440\u0435\u0448\u0438\u043b",
+  },
+  {
+    re: /\u043e\u0441\u043e\u0431\u043e\u0435\s+\u043c\u043d\u0435\u043d\u0438\u0435/i,
+    type: "dissent",
+    label: "\u043e\u0441\u043e\u0431\u043e\u0435 \u043c\u043d\u0435\u043d\u0438\u0435",
   },
 ];
 

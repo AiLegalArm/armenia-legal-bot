@@ -111,7 +111,7 @@ Deno.test("chunkDocument: court decision splits by sections", () => {
   const types = new Set(chunks.map((c) => c.chunk_type));
   assert(types.has("facts"), "Should detect facts section");
   assert(types.has("reasoning"), "Should detect reasoning section");
-  assert(types.has("operative"), "Should detect operative section");
+  assert(types.has("resolution") || types.has("operative"), "Should detect resolution/operative section");
 
   // Each chunk has label
   const sectionChunks = chunks.filter((c) => c.chunk_type !== "header");
