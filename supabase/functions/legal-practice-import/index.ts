@@ -8,6 +8,36 @@ const corsHeaders = {
 };
 
 // =======================================
+// Chunking utilities (mirrors kb-backfill-chunks)
+// =======================================
+
+function splitIntoChunks(text: string, chunkSize: number, overlap = 200): { idx: number; text: string }[] {
+  const t = text.replace(/\r\n/g, "\n");
+  const chunks: { idx: number; text: string }[] = [];
+  let start = 0;
+  let i = 0;
+
+  while (start < t.length) {
+    const end = Math.min(start + chunkSize, t.length);
+    const slice = t.slice(start, end);
+    const chunkText = slice.trim();
+    if (chunkText.length > 0) chunks.push({ idx: i++, text: chunkText });
+    if (end === t.length) break;
+    start = Math.max(0, end - overlap);
+  }
+  return chunks;
+}
+
+function computeChunkHash(s: string): string {
+  let h = 2166136261;
+  for (let i = 0; i < s.length; i++) {
+    h ^= s.charCodeAt(i);
+    h = Math.imul(h, 16777619);
+  }
+  return (h >>> 0).toString(16);
+}
+
+// =======================================
 // Types
 // =======================================
 
@@ -571,7 +601,8 @@ serve(async (req) => {
         }
       }
 
-      // Batch insert (50 at a time)
+      // Batch insert (50 at a time), collect inserted IDs for chunking
+      const insertedIds: Array<{ id: string; title: string; content_text: string }> = [];
       if (validRows.length > 0) {
         const batchSize = 50;
         for (let i = 0; i < validRows.length; i += batchSize) {
@@ -579,7 +610,7 @@ serve(async (req) => {
           const { error: insertErr, data: inserted } = await adminDb
             .from("legal_practice_kb")
             .insert(batch)
-            .select("id");
+            .select("id, title");
           if (insertErr) {
             console.error(`[bulk-import] job=${jobId} batch_error:`, insertErr.message);
             for (const row of batch) {
@@ -587,17 +618,61 @@ serve(async (req) => {
             }
           } else {
             insertedPractice += inserted?.length ?? batch.length;
+            // Map back content_text for chunking
+            for (const ins of (inserted ?? [])) {
+              const matchingRow = batch.find(r => r.title === ins.title);
+              insertedIds.push({
+                id: ins.id,
+                title: ins.title ?? "",
+                content_text: String(matchingRow?.content_text ?? ""),
+              });
+            }
           }
         }
       }
 
-      console.log(`[bulk-import] job=${jobId} inserted=${insertedPractice} skipped=${skipped} errors=${errors.length}`);
+      // Generate and insert chunks for each inserted practice row
+      let insertedChunks = 0;
+      const CHUNK_SIZE = 8000;
+      const CHUNK_OVERLAP = 200;
+
+      for (const doc of insertedIds) {
+        const text = (doc.content_text ?? "").trim();
+        if (!text) continue;
+
+        const chunks = splitIntoChunks(text, CHUNK_SIZE, CHUNK_OVERLAP);
+        if (chunks.length === 0) continue;
+
+        const chunkRows = chunks.map((c) => ({
+          doc_id: doc.id,
+          chunk_index: c.idx,
+          chunk_text: c.text,
+          chunk_hash: computeChunkHash(c.text),
+          title: doc.title,
+        }));
+
+        const chunkBatchSize = 200;
+        for (let i = 0; i < chunkRows.length; i += chunkBatchSize) {
+          const batch = chunkRows.slice(i, i + chunkBatchSize);
+          const { error: chunkErr } = await adminDb
+            .from("legal_practice_kb_chunks")
+            .insert(batch);
+          if (chunkErr) {
+            console.error(`[bulk-import] job=${jobId} chunk_error doc=${doc.id}:`, chunkErr.message);
+          } else {
+            insertedChunks += batch.length;
+          }
+        }
+      }
+
+      console.log(`[bulk-import] job=${jobId} inserted=${insertedPractice} chunks=${insertedChunks} skipped=${skipped} errors=${errors.length}`);
 
       return new Response(JSON.stringify({
         ok: true,
         inserted_practice: insertedPractice,
+        inserted_chunks: insertedChunks,
         skipped,
-        errors: errors.slice(0, 20), // limit error output
+        errors: errors.slice(0, 20),
       }), {
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
