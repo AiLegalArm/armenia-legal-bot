@@ -95,6 +95,7 @@ interface KBChunkResult {
   label: string | null;
   char_start: number;
   excerpt: string;
+  full_text: string | null;
   score: number;
 }
 
@@ -452,11 +453,41 @@ function KBLawCard({ result, searchQuery, isExpanded, onToggle, onInsertReferenc
         <CollapsibleContent className="mt-3 space-y-2">
           {chunks.length > 0 ? (
             chunks.map((chunk, idx) => {
-              const isChunkExpanded = expandedChunks.has(chunk.chunk_index);
+              const hasFullText = chunk.chunk_type === 'article' && !!chunk.full_text;
+              const isManuallyCollapsed = expandedChunks.get(chunk.chunk_index) === '__collapsed__';
+              const isRpcExpanded = expandedChunks.has(chunk.chunk_index) && !isManuallyCollapsed;
               const isChunkLoading = loadingChunks.has(chunk.chunk_index);
-              const displayText = isChunkExpanded
-                ? expandedChunks.get(chunk.chunk_index)!
-                : chunk.excerpt;
+
+              // Determine what text to show
+              let displayText: string;
+              let showFull: boolean;
+              if (isManuallyCollapsed) {
+                displayText = chunk.excerpt;
+                showFull = false;
+              } else if (isRpcExpanded) {
+                displayText = expandedChunks.get(chunk.chunk_index)!;
+                showFull = true;
+              } else if (hasFullText) {
+                displayText = chunk.full_text!;
+                showFull = true;
+              } else {
+                displayText = chunk.excerpt;
+                showFull = false;
+              }
+
+              const handleToggle = (e: React.MouseEvent) => {
+                e.stopPropagation();
+                if (hasFullText) {
+                  // Toggle between full_text and excerpt via marker
+                  if (isManuallyCollapsed) {
+                    setExpandedChunks((prev) => { const m = new Map(prev); m.delete(chunk.chunk_index); return m; });
+                  } else {
+                    setExpandedChunks((prev) => new Map(prev).set(chunk.chunk_index, '__collapsed__'));
+                  }
+                } else {
+                  handleExpandChunk(chunk.chunk_index);
+                }
+              };
 
               return (
                 <div
@@ -473,7 +504,7 @@ function KBLawCard({ result, searchQuery, isExpanded, onToggle, onInsertReferenc
                     </span>
                   </div>
                   <div className="text-sm text-foreground/90 leading-relaxed whitespace-pre-wrap">
-                    {isChunkExpanded ? (
+                    {showFull ? (
                       displayText
                     ) : (
                       highlightTerms(displayText, searchQuery).map((seg, i) =>
@@ -493,19 +524,16 @@ function KBLawCard({ result, searchQuery, isExpanded, onToggle, onInsertReferenc
                       size="sm"
                       className="h-7 text-xs px-3"
                       disabled={isChunkLoading}
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        handleExpandChunk(chunk.chunk_index);
-                      }}
+                      onClick={handleToggle}
                     >
                       {isChunkLoading ? (
                         <Loader2 className="h-3 w-3 animate-spin mr-1" />
-                      ) : isChunkExpanded ? (
+                      ) : showFull ? (
                         <Minimize2 className="h-3 w-3 mr-1" />
                       ) : (
                         <Maximize2 className="h-3 w-3 mr-1" />
                       )}
-                      {isChunkLoading ? t("kb_loading") : isChunkExpanded ? t("kb_collapse") : t("kb_show_full")}
+                      {isChunkLoading ? t("kb_loading") : showFull ? t("kb_collapse") : t("kb_show_full")}
                     </Button>
                     {onInsertReference && (
                       <Button

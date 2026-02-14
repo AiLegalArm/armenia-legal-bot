@@ -46,6 +46,7 @@ type KBDocumentType = {
     label: string | null;
     char_start: number;
     excerpt: string;
+    full_text: string | null;
     score: number;
   }>;
 };
@@ -190,9 +191,26 @@ export function KBDocumentCard({
         {serverChunks.length > 0 ? (
           <div className="mb-3 space-y-2">
             {serverChunks.map((chunk, idx) => {
-              const isExpanded = expandedChunks.has(chunk.chunk_index);
+              const hasFullText = chunk.chunk_type === 'article' && !!chunk.full_text;
+              const isManuallyCollapsed = expandedChunks.get(chunk.chunk_index) === '__collapsed__';
+              const isExpanded = expandedChunks.has(chunk.chunk_index) && !isManuallyCollapsed;
               const isLoading = loadingChunks.has(chunk.chunk_index);
-              const displayText = isExpanded ? expandedChunks.get(chunk.chunk_index)! : chunk.excerpt;
+
+              let displayText: string;
+              let showFull: boolean;
+              if (isManuallyCollapsed) {
+                displayText = chunk.excerpt;
+                showFull = false;
+              } else if (isExpanded) {
+                displayText = expandedChunks.get(chunk.chunk_index)!;
+                showFull = true;
+              } else if (hasFullText) {
+                displayText = chunk.full_text!;
+                showFull = true;
+              } else {
+                displayText = chunk.excerpt;
+                showFull = false;
+              }
 
               return (
                 <div
@@ -206,8 +224,8 @@ export function KBDocumentCard({
                           {chunk.label}
                         </span>
                       )}
-                      <span className={isExpanded ? 'whitespace-pre-wrap' : ''}>
-                        {searchQuery && !isExpanded
+                      <span className={showFull ? 'whitespace-pre-wrap' : ''}>
+                        {searchQuery && !showFull
                           ? highlightTerms(displayText, searchQuery).map((seg, i) =>
                               seg.highlight ? (
                                 <mark key={i} className="bg-primary/20 text-foreground rounded px-0.5">{seg.text}</mark>
@@ -222,12 +240,22 @@ export function KBDocumentCard({
                       variant="ghost"
                       size="icon"
                       className="h-5 w-5 shrink-0 mt-0.5"
-                      onClick={() => handleExpandChunk(chunk.chunk_index)}
-                      title={isExpanded ? t('collapse', 'Collapse') : t('show_full_article', 'Show full article')}
+                      onClick={() => {
+                        if (hasFullText) {
+                          if (isManuallyCollapsed) {
+                            setExpandedChunks(prev => { const m = new Map(prev); m.delete(chunk.chunk_index); return m; });
+                          } else {
+                            setExpandedChunks(prev => new Map(prev).set(chunk.chunk_index, '__collapsed__'));
+                          }
+                        } else {
+                          handleExpandChunk(chunk.chunk_index);
+                        }
+                      }}
+                      title={showFull ? t('collapse') : t('show_full_article')}
                     >
                       {isLoading ? (
                         <Loader2 className="h-3 w-3 animate-spin" />
-                      ) : isExpanded ? (
+                      ) : showFull ? (
                         <Minimize2 className="h-3 w-3" />
                       ) : (
                         <Maximize2 className="h-3 w-3" />
