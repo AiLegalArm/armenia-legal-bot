@@ -298,11 +298,10 @@ export function KBDocumentCard({
           </Badge>
           {rank !== undefined && rank !== null && (() => {
             const n = typeof rank === 'number' ? rank : Number(rank);
-            if (!Number.isFinite(n)) return null;
-            const pct = Math.round(Math.min(1, Math.max(0, n)) * 100);
+            if (!Number.isFinite(n) || n <= 0) return null;
             return (
               <Badge variant="outline" className="text-xs">
-                {t('relevance')}: {pct}%
+                {t('relevance')}: {n}%
               </Badge>
             );
           })()}

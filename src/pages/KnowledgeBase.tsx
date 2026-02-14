@@ -211,7 +211,7 @@ const KnowledgeBasePage = () => {
                         document={doc}
                         onView={(id) => navigate(`/kb/${id}`)}
                         isAdmin={isAdmin}
-                        rank={'max_score' in doc ? (doc.max_score as number) : 'rank' in doc ? (doc.rank as number) : undefined}
+                        rank={'relevancePct' in doc ? (doc.relevancePct as number) : 'rank' in doc ? (doc.rank as number) : undefined}
                         searchQuery={filters.search}
                       />
                     ))}

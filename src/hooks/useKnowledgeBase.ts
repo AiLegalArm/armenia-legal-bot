@@ -24,6 +24,7 @@ export interface KBSearchResult {
   source_name: string | null;
   version_date: string | null;
   rank: number | null;
+  relevancePct?: number;
 }
 
 export interface KBChunkSearchResult {
@@ -34,6 +35,7 @@ export interface KBChunkSearchResult {
   article_number: string | null;
   source_url: string | null;
   max_score: number;
+  relevancePct: number;
   content_text: string; // first chunk excerpt as fallback
   chunks: Array<{
     doc_id: string;
@@ -94,22 +96,28 @@ export function useKnowledgeBase(filters: KBFilters = {}) {
         chunksByDoc.set(chunk.doc_id, arr);
       }
       
-      const isArticleQuery = /(?:\u0540\u0578\u0564\u057E\u0561\u056E|\u0421\u0442\u0430\u0442\u044C\u044F|Article)\s*\d+/i.test(filters.search || '');
+      const q = (filters.search || '').trim();
+      const isArticleQuery = /^(?:\u0540\u0578\u0564\u057E\u0561\u056E|\u0540\u0578\u0564\.?|\u0421\u0442\u0430\u0442\u044C\u044F|\u0441\u0442\.?|Article|Art\.?)\s*\d+/i.test(q);
 
-      return (parsed.documents || [])
-        .filter((doc) => {
-          if (isArticleQuery) return true;
-          const score = Number(doc.max_score);
-          return Number.isFinite(score) && Math.round(score * 100) >= 50;
-        })
-        .map((doc): KBChunkSearchResult => {
+      const docs = parsed.documents || [];
+      const globalMax = docs.reduce((mx, d) => Math.max(mx, Number(d.max_score) || 0), 0);
+
+      return docs
+        .map((doc) => {
+          const raw = Number(doc.max_score) || 0;
+          const relevancePct = globalMax > 0 ? Math.round((raw / globalMax) * 100) : 0;
           const docChunks = chunksByDoc.get(doc.id) || [];
           const excerpt = docChunks[0]?.excerpt || '';
           return {
             ...doc,
+            relevancePct,
             content_text: excerpt.substring(0, 500),
             chunks: docChunks,
-          };
+          } satisfies KBChunkSearchResult;
+        })
+        .filter((doc) => {
+          if (isArticleQuery) return true;
+          return doc.relevancePct >= 50;
         });
     },
     enabled: !!filters.search && filters.search.length >= 2,
