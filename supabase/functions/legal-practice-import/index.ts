@@ -8,6 +8,83 @@ const corsHeaders = {
 };
 
 // =======================================
+// Unicode escape normalizer
+// =======================================
+
+interface NormalizeResult {
+  text: string;
+  invalidEscapeFound: boolean;
+}
+
+/**
+ * Convert literal \uXXXX sequences in a string to actual Unicode characters.
+ * Handles surrogate pairs (\uD800-\uDBFF followed by \uDC00-\uDFFF).
+ * Does NOT touch \n, \t, \\, or other standard escapes.
+ * Invalid sequences (e.g. \u12G4, \u123) are left as-is.
+ */
+function normalizeUnicodeEscapes(input: string): NormalizeResult {
+  let invalidEscapeFound = false;
+
+  // First pass: handle surrogate pairs
+  let result = input.replace(
+    /\\u([dD][89abAB][0-9a-fA-F]{2})\\u([dD][c-fC-F][0-9a-fA-F]{2})/g,
+    (_match, hex1: string, hex2: string) => {
+      const cp1 = parseInt(hex1, 16);
+      const cp2 = parseInt(hex2, 16);
+      const codePoint = ((cp1 - 0xD800) * 0x400) + (cp2 - 0xDC00) + 0x10000;
+      return String.fromCodePoint(codePoint);
+    }
+  );
+
+  // Second pass: handle regular BMP escapes
+  result = result.replace(
+    /\\u([0-9a-fA-F]{4})/g,
+    (_match, hex: string) => {
+      const cp = parseInt(hex, 16);
+      if (cp === 0) { invalidEscapeFound = true; return ""; }
+      // Lone surrogate — leave as-is
+      if (cp >= 0xD800 && cp <= 0xDFFF) { invalidEscapeFound = true; return _match; }
+      return String.fromCharCode(cp);
+    }
+  );
+
+  // Check for incomplete sequences like \u123 or \u12G4
+  if (/\\u(?![0-9a-fA-F]{4})/.test(result)) {
+    invalidEscapeFound = true;
+  }
+
+  return { text: result, invalidEscapeFound };
+}
+
+/** Apply normalizeUnicodeEscapes to a string, also strip NUL bytes */
+function sanitizeString(s: unknown): string {
+  if (typeof s !== "string") return String(s ?? "");
+  const { text } = normalizeUnicodeEscapes(s);
+  return text.replace(/\u0000/g, "");
+}
+
+/** Apply sanitizeString to specific fields of a row object */
+function sanitizeRow(row: Record<string, unknown>): Record<string, unknown> {
+  const STRING_FIELDS = [
+    "title", "content_text", "source_name", "court_name",
+    "case_number_anonymized", "legal_reasoning_summary", "description",
+  ];
+  const sanitized = { ...row };
+  for (const field of STRING_FIELDS) {
+    if (typeof sanitized[field] === "string") {
+      sanitized[field] = sanitizeString(sanitized[field]);
+    }
+  }
+  // Sanitize key_violations array
+  if (Array.isArray(sanitized.key_violations)) {
+    sanitized.key_violations = (sanitized.key_violations as string[]).map((v) =>
+      typeof v === "string" ? sanitizeString(v) : v
+    );
+  }
+  return sanitized;
+}
+
+// =======================================
 // Chunking utilities (mirrors kb-backfill-chunks)
 // =======================================
 
@@ -556,8 +633,8 @@ serve(async (req) => {
       for (let i = 0; i < bulkItems.length; i++) {
         const item = bulkItems[i];
         try {
-          const contentText = String(item.content_text || "").trim();
-          const title = String(item.title || `Untitled_${i}`).trim();
+          const contentText = sanitizeString(item.content_text || "").trim();
+          const title = sanitizeString(item.title || `Untitled_${i}`).trim();
           if (!contentText) {
             errors.push({ index: i, title, error: "Empty content_text" });
             continue;
@@ -608,7 +685,7 @@ serve(async (req) => {
       if (validRows.length > 0) {
         const batchSize = 50;
         for (let batchStart = 0; batchStart < validRows.length; batchStart += batchSize) {
-          const batch = validRows.slice(batchStart, batchStart + batchSize);
+          const batch = validRows.slice(batchStart, batchStart + batchSize).map(sanitizeRow);
           const { error: insertErr, data: inserted } = await adminDb
             .from("legal_practice_kb")
             .insert(batch)
@@ -736,7 +813,7 @@ serve(async (req) => {
 
     const { data: insertedDoc, error: insertError } = await adminDb
       .from("legal_practice_kb")
-      .insert({
+      .insert(sanitizeRow({
         title: extractedData.title || 'Untitled',
         content_text: extractedData.content_text,
         practice_category: extractedData.practice_category || 'criminal',
@@ -752,7 +829,7 @@ serve(async (req) => {
         is_anonymized: false,
         visibility: 'ai_only',
         source_name: fileName || null,
-      })
+      }))
       .select()
       .single();
 

@@ -337,10 +337,15 @@ export function LegalPracticeBulkImport({ open, onOpenChange }: LegalPracticeBul
 
       return { inserted, skipped };
     } catch (error) {
+      const rawMsg = error instanceof Error ? error.message : 'Unknown error';
+      // Decode any literal \uXXXX in error messages for display
+      const decodedMsg = rawMsg.replace(/\\u([0-9a-fA-F]{4})/g, (_m: string, hex: string) => {
+        try { return String.fromCharCode(parseInt(hex, 16)); } catch { return _m; }
+      });
       updateFile(id, {
         status: 'error',
         progress: 100,
-        error: error instanceof Error ? error.message : 'Unknown error',
+        error: decodedMsg,
       });
       return { inserted: 0, skipped: 0 };
     }
