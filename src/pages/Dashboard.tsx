@@ -237,6 +237,8 @@ const Dashboard = () => {
                           key={doc.id}
                           document={doc}
                           isAdmin={false}
+                          rank={'relevancePct' in doc ? (doc.relevancePct as number) : 'rank' in doc ? (doc.rank as number) : undefined}
+                          searchQuery={kbFilters.search}
                         />
                       ))}
                     </div>
