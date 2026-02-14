@@ -28,9 +28,11 @@ import {
 } from "./normalizer.ts";
 import {
   chunkDocument,
+  extractCaseNumber,
   type LegalChunk,
   type LegalDocumentInput,
   type ChunkType,
+  type ChunkResult,
 } from "./chunker.ts";
 
 // ─── RE-EXPORTS for convenience ─────────────────────────────────────
@@ -41,8 +43,9 @@ export type {
   PreprocessResult,
   DocType,
   ChunkType,
+  ChunkResult,
 };
-export { sha256Hex };
+export { sha256Hex, extractCaseNumber };
 
 // ─── TYPES ──────────────────────────────────────────────────────────
 
@@ -96,6 +99,7 @@ export interface JsonlMeta {
   language?: string;
   collection?: JsonlCollection;
   chunk_strategy?: string;
+  case_number?: string;
 }
 
 export interface JsonlLine {
@@ -307,6 +311,36 @@ export function chunkDoc(
     title: document.title,
   };
 
+  const result = chunkDocument(input);
+  return result.chunks;
+}
+
+/**
+ * Chunk with full metadata (strategy + case_number).
+ */
+export function chunkDocFull(
+  document: { doc_type: string; content_text: string; title?: string },
+  opts?: ChunkOptions
+): ChunkResult {
+  const mode = opts?.mode || "auto";
+
+  let effectiveDocType = document.doc_type;
+
+  if (mode === "legislation" && !["law", "code", "regulation"].includes(effectiveDocType)) {
+    effectiveDocType = "law";
+  } else if (mode === "court_decision" && ![
+    "court_decision", "cassation_ruling", "appeal_ruling",
+    "first_instance_ruling", "constitutional_court", "echr_judgment",
+  ].includes(effectiveDocType)) {
+    effectiveDocType = "court_decision";
+  }
+
+  const input: LegalDocumentInput = {
+    doc_type: effectiveDocType,
+    content_text: document.content_text,
+    title: document.title,
+  };
+
   return chunkDocument(input);
 }
 
@@ -361,6 +395,8 @@ export function buildJsonl(
         ...(chunk.chunk_type === "article" && chunk.locator?.article
           ? { article_number: chunk.locator.article }
           : {}),
+        // Include case_number for court decision chunks
+        ...(meta.case_number ? { case_number: meta.case_number } : {}),
       },
     };
 
@@ -476,7 +512,8 @@ export async function ingestText(
     opts
   );
 
-  const chunks = chunkDoc(document, { mode: opts?.chunkMode });
+  const result = chunkDocFull(document, { mode: opts?.chunkMode });
+  const chunks = result.chunks;
 
   const jsonl = buildJsonl(chunks, {
     doc_type: document.doc_type,
@@ -487,7 +524,8 @@ export async function ingestText(
     category: opts?.category,
     collection: opts?.collection || "knowledge_base",
     language: opts?.language || "hy",
-    chunk_strategy: opts?.chunkMode || "auto",
+    chunk_strategy: result.strategy,
+    case_number: result.case_number,
   });
 
   return { document, chunks, jsonl, preprocess, validationErrors };

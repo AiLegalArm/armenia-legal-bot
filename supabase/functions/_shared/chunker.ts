@@ -40,6 +40,12 @@ export interface LegalDocumentInput {
   title?: string;
 }
 
+export interface ChunkResult {
+  chunks: LegalChunk[];
+  strategy: "article" | "sections" | "fixed";
+  case_number?: string;
+}
+
 // ─── CONSTANTS ──────────────────────────────────────────────────────
 const MAX_CHUNK_SIZE = 8000;
 const MIN_CHUNK_SIZE = 200;
@@ -51,6 +57,31 @@ const MIN_CHUNK_SIZE = 200;
 const ARTICLE_HEADER_RE = /\u0540\u0578\u0564\u057e\u0561\u056e\s+(\d+(?:[.-]\d+)*)\s*[.\u0589]/g;
 // Variant with linebreak between "\u0540\u0578\u0564\u057e\u0561\u056e" and number (common in OCR/arlis TXT)
 const ARTICLE_HEADER_NEWLINE_RE = /\u0540\u0578\u0564\u057e\u0561\u056e\n(\d+(?:[.-]\d+)*)\s*[.\u0589]/g;
+
+// ─── CASE NUMBER PATTERNS ──────────────────────────────────────────
+// Armenian court decisions: "\u0533\u0578\u0580\u056e \u0569\u056b\u057e XX-XXXX-XX-XXXX" or variants
+// Also: \u0543\u0544-XX-XXXX, \u0535\u053f\u0534-XXXX, \u0535\u0544/XXXX/XX/XX, etc.
+const CASE_NUMBER_PATTERNS: RegExp[] = [
+  // Armenian: "\u0563\u0578\u0580\u056e \u0569\u056b\u057e" followed by case number
+  /\u0563\u0578\u0580\u056e\s+\u0569\u056b\u057e[.:]?\s*([A-Z\u0531-\u0556]{1,5}[\-\/]\d[\d\-\/]+)/i,
+  // Standalone formatted case numbers: ԵԴ/1234/02/24, ՀՀ-123-2024, etc.
+  /\b([A-Z\u0531-\u0556]{2,5}[\-\/]\d{1,6}[\-\/]\d{2,4}(?:[\-\/]\d{2,4})?)\b/,
+  // Russian: "\u0434\u0435\u043b\u043e \u2116" or "\u0434\u0435\u043b\u043e N"
+  /\u0434\u0435\u043b[\u043e\u0443]\s*(?:\u2116|N|No\.?)\s*([A-Z\u0410-\u042f\d][\d\-\/A-Z\u0410-\u042f]+)/i,
+];
+
+/**
+ * Extract case number from the first ~2000 chars of a court decision.
+ * Returns the first match or undefined.
+ */
+export function extractCaseNumber(text: string): string | undefined {
+  const header = text.slice(0, 2000);
+  for (const pattern of CASE_NUMBER_PATTERNS) {
+    const m = header.match(pattern);
+    if (m && m[1]) return m[1].trim();
+  }
+  return undefined;
+}
 
 const PART_RE = /^(\d+)\s*[.)]\s+/gm;
 
@@ -463,21 +494,36 @@ const LEGISLATION_DOC_TYPES = new Set([
   "law", "code", "regulation",
 ]);
 
-export function chunkDocument(document: LegalDocumentInput): LegalChunk[] {
+export function chunkDocument(document: LegalDocumentInput): ChunkResult {
   const text = document.content_text;
-  if (!text || text.trim().length === 0) return [];
+  if (!text || text.trim().length === 0) {
+    return { chunks: [], strategy: "fixed" };
+  }
 
   let chunks: LegalChunk[];
+  let strategy: ChunkResult["strategy"];
+  let case_number: string | undefined;
+
   if (LEGISLATION_DOC_TYPES.has(document.doc_type)) {
     chunks = chunkLegislation(text);
+    strategy = "article";
   } else if (COURT_DOC_TYPES.has(document.doc_type)) {
-    chunks = chunkCourtDecision(text);
+    const raw = chunkCourtDecision(text);
+    // Determine if we actually found section boundaries
+    const hasSections = raw.some(c =>
+      ["reasoning", "facts", "resolution", "dissent"].includes(c.chunk_type)
+    );
+    strategy = hasSections ? "sections" : "fixed";
+    chunks = raw;
+    case_number = extractCaseNumber(text);
   } else {
     chunks = chunkFixedWindow(text, "full_text");
+    strategy = "fixed";
   }
 
   // Post-process: extract and append table chunks
-  return appendTableChunks(chunks, text);
+  const allChunks = appendTableChunks(chunks, text);
+  return { chunks: allChunks, strategy, case_number };
 }
 
 // Re-export for direct use
