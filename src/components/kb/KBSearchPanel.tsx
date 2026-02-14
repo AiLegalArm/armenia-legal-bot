@@ -1,4 +1,4 @@
-import { useState, useCallback } from "react";
+import { useState, useCallback, useMemo } from "react";
 import { useTranslation } from "react-i18next";
 import { Search, FileText, ChevronDown, ChevronRight, Loader2, Scale, AlertTriangle, BookOpen, Gavel } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -11,6 +11,7 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { useLegalPracticeKB, type KBDocument, type PracticeCategory } from "@/hooks/useLegalPracticeKB";
 import { supabase } from "@/integrations/supabase/client";
+import { extractRelevantSnippets, highlightTerms } from "@/lib/snippet-extractor";
 
 const CATEGORY_LABELS: Record<PracticeCategory, string> = {
   criminal: "\u0554\u0580\u0565\u0561\u056F\u0561\u0576",
@@ -291,6 +292,7 @@ export function KBSearchPanel({ onInsertReference }: KBSearchPanelProps) {
                   <KBLawCard
                     key={result.id}
                     result={result}
+                    searchQuery={query}
                     isExpanded={expandedKBDocs.has(result.id)}
                     onToggle={() => toggleKBDocExpanded(result.id)}
                     onInsertReference={onInsertReference ? handleInsertReference : undefined}
@@ -346,16 +348,17 @@ export function KBSearchPanel({ onInsertReference }: KBSearchPanelProps) {
 
 interface KBLawCardProps {
   result: KBSearchResult;
+  searchQuery: string;
   isExpanded: boolean;
   onToggle: () => void;
   onInsertReference?: (docId: string, chunkIndex: number, text: string) => void;
 }
 
-function KBLawCard({ result, isExpanded, onToggle, onInsertReference }: KBLawCardProps) {
-  const [isCollapsed, setIsCollapsed] = useState(false);
-  const cleanContent = cleanJsonArtifacts(result.content_text);
-  const canCollapse = cleanContent.length > 500;
-  const displayText = isCollapsed ? cleanContent.substring(0, 500) : cleanContent;
+function KBLawCard({ result, searchQuery, isExpanded, onToggle, onInsertReference }: KBLawCardProps) {
+  const snippets = useMemo(
+    () => extractRelevantSnippets(result.content_text, searchQuery, 3, 200),
+    [result.content_text, searchQuery],
+  );
 
   return (
     <div className="border rounded-lg p-3 space-y-2 bg-card">
@@ -381,49 +384,73 @@ function KBLawCard({ result, isExpanded, onToggle, onInsertReference }: KBLawCar
                     {result.source_name}
                   </Badge>
                 )}
+                {snippets.length > 0 && (
+                  <Badge variant="secondary" className="text-xs py-0">
+                    {snippets.length} {snippets.length === 1 ? "fragment" : "fragments"}
+                  </Badge>
+                )}
               </div>
+              {/* Show first snippet as preview even when collapsed */}
+              {!isExpanded && snippets.length > 0 && (
+                <p className="mt-1.5 text-xs text-muted-foreground line-clamp-2">
+                  {snippets[0].text}
+                </p>
+              )}
             </div>
           </button>
         </CollapsibleTrigger>
 
         <CollapsibleContent className="mt-3 space-y-2">
-          <div className="border rounded-lg p-3 bg-secondary/20 space-y-2">
-            <div className="flex items-center justify-between text-xs">
-              <span className="font-semibold text-primary flex items-center gap-1.5">
-                <BookOpen className="h-3 w-3" />
-                {"\u053b\u0580\u0561\u057e\u0561\u056f\u0561\u0576 \u0576\u0578\u0580\u0574 (KB)"}
-              </span>
+          {snippets.length > 0 ? (
+            snippets.map((snippet, idx) => (
+              <div
+                key={idx}
+                className="border rounded-lg p-3 bg-secondary/20 space-y-2"
+              >
+                <div className="flex items-center justify-between text-xs">
+                  <span className="font-semibold text-primary flex items-center gap-1.5">
+                    <BookOpen className="h-3 w-3" />
+                    {"\u0540\u0561\u057F\u057E\u0561\u056E"} {idx + 1}
+                  </span>
+                  <span className="text-muted-foreground">
+                    pos: {snippet.position}
+                  </span>
+                </div>
+                <div className="text-sm text-foreground/90 leading-relaxed">
+                  {highlightTerms(snippet.text, searchQuery).map((seg, i) =>
+                    seg.highlight ? (
+                      <mark key={i} className="bg-primary/20 text-foreground rounded px-0.5">
+                        {seg.text}
+                      </mark>
+                    ) : (
+                      <span key={i}>{seg.text}</span>
+                    )
+                  )}
+                </div>
+                {onInsertReference && (
+                  <div className="pt-1 border-t border-border/50">
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="h-7 text-xs px-3 text-primary"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        onInsertReference(result.id, snippet.chunkIndex, snippet.text);
+                      }}
+                    >
+                      {"\u054f\u0565\u0572\u0561\u0564\u0580\u0565\u056c \u0578\u0580\u057a\u0565\u057d KB \u0570\u0572\u0578\u0582\u0574"}
+                    </Button>
+                  </div>
+                )}
+              </div>
+            ))
+          ) : (
+            <div className="border rounded-lg p-3 bg-secondary/20">
+              <p className="text-sm text-muted-foreground">
+                {result.content_text.substring(0, 400)}...
+              </p>
             </div>
-            <div className="text-sm text-foreground/90 whitespace-pre-wrap leading-relaxed">
-              {displayText}
-              {isCollapsed && canCollapse && "..."}
-            </div>
-            <div className="flex items-center gap-2 pt-1 border-t border-border/50">
-              {canCollapse && (
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  className="h-7 text-xs px-3"
-                  onClick={(e) => { e.stopPropagation(); setIsCollapsed(!isCollapsed); }}
-                >
-                  {isCollapsed ? "\u0538\u0576\u0564\u056c\u0561\u0575\u0576\u0565\u056c" : "\u053f\u0580\u0573\u0565\u056c"}
-                </Button>
-              )}
-              {onInsertReference && (
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  className="h-7 text-xs px-3 text-primary"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    onInsertReference(result.id, 0, result.content_text.substring(0, 2000));
-                  }}
-                >
-                  {"\u054f\u0565\u0572\u0561\u0564\u0580\u0565\u056c \u0578\u0580\u057a\u0565\u057d KB \u0570\u0572\u0578\u0582\u0574"}
-                </Button>
-              )}
-            </div>
-          </div>
+          )}
         </CollapsibleContent>
       </Collapsible>
     </div>

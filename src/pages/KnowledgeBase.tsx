@@ -212,6 +212,7 @@ const KnowledgeBasePage = () => {
                         onView={(id) => navigate(`/kb/${id}`)}
                         isAdmin={isAdmin}
                         rank={'rank' in doc ? (doc.rank as number) : undefined}
+                        searchQuery={filters.search}
                       />
                     ))}
                   </div>
