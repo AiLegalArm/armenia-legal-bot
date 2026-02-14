@@ -1,6 +1,6 @@
-import { useState, useCallback } from "react";
+import { useState, useCallback, useRef } from "react";
 import { useTranslation } from "react-i18next";
-import { Search, FileText, ChevronDown, ChevronRight, Loader2, Scale, AlertTriangle, BookOpen, Gavel } from "lucide-react";
+import { Search, FileText, ChevronDown, ChevronRight, Loader2, Scale, AlertTriangle, BookOpen, Gavel, Maximize2, Minimize2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
@@ -367,6 +367,40 @@ interface KBLawCardProps {
 
 function KBLawCard({ result, searchQuery, isExpanded, onToggle, onInsertReference }: KBLawCardProps) {
   const chunks = result.chunks;
+  // Track which chunks have been expanded to full text
+  const [expandedChunks, setExpandedChunks] = useState<Map<number, string>>(new Map());
+  const [loadingChunks, setLoadingChunks] = useState<Set<number>>(new Set());
+
+  const handleExpandChunk = async (chunkIndex: number) => {
+    // If already expanded, collapse it
+    if (expandedChunks.has(chunkIndex)) {
+      setExpandedChunks((prev) => {
+        const next = new Map(prev);
+        next.delete(chunkIndex);
+        return next;
+      });
+      return;
+    }
+
+    setLoadingChunks((prev) => new Set(prev).add(chunkIndex));
+    try {
+      const { data, error } = await supabase.rpc("get_kb_chunk_full", {
+        p_kb_id: result.id,
+        p_chunk_index: chunkIndex,
+      });
+      if (error) throw error;
+      const parsed = data as unknown as { chunk_text: string };
+      setExpandedChunks((prev) => new Map(prev).set(chunkIndex, parsed.chunk_text));
+    } catch (err) {
+      console.error("Failed to load full chunk:", err);
+    } finally {
+      setLoadingChunks((prev) => {
+        const next = new Set(prev);
+        next.delete(chunkIndex);
+        return next;
+      });
+    }
+  };
 
   return (
     <div className="border rounded-lg p-3 space-y-2 bg-card">
@@ -411,48 +445,79 @@ function KBLawCard({ result, searchQuery, isExpanded, onToggle, onInsertReferenc
 
         <CollapsibleContent className="mt-3 space-y-2">
           {chunks.length > 0 ? (
-            chunks.map((chunk, idx) => (
-              <div
-                key={idx}
-                className="border rounded-lg p-3 bg-secondary/20 space-y-2"
-              >
-                <div className="flex items-center justify-between text-xs">
-                  <span className="font-semibold text-primary flex items-center gap-1.5">
-                    <BookOpen className="h-3 w-3" />
-                    {chunk.label || `${chunk.chunk_type} #${chunk.chunk_index}`}
-                  </span>
-                  <span className="text-muted-foreground">
-                    score: {(chunk.score * 100).toFixed(0)}%
-                  </span>
-                </div>
-                <div className="text-sm text-foreground/90 leading-relaxed">
-                  {highlightTerms(chunk.excerpt, searchQuery).map((seg, i) =>
-                    seg.highlight ? (
-                      <mark key={i} className="bg-primary/20 text-foreground rounded px-0.5">
-                        {seg.text}
-                      </mark>
+            chunks.map((chunk, idx) => {
+              const isChunkExpanded = expandedChunks.has(chunk.chunk_index);
+              const isChunkLoading = loadingChunks.has(chunk.chunk_index);
+              const displayText = isChunkExpanded
+                ? expandedChunks.get(chunk.chunk_index)!
+                : chunk.excerpt;
+
+              return (
+                <div
+                  key={idx}
+                  className="border rounded-lg p-3 bg-secondary/20 space-y-2"
+                >
+                  <div className="flex items-center justify-between text-xs">
+                    <span className="font-semibold text-primary flex items-center gap-1.5">
+                      <BookOpen className="h-3 w-3" />
+                      {chunk.label || `${chunk.chunk_type} #${chunk.chunk_index}`}
+                    </span>
+                    <span className="text-muted-foreground">
+                      score: {(chunk.score * 100).toFixed(0)}%
+                    </span>
+                  </div>
+                  <div className="text-sm text-foreground/90 leading-relaxed whitespace-pre-wrap">
+                    {isChunkExpanded ? (
+                      displayText
                     ) : (
-                      <span key={i}>{seg.text}</span>
-                    )
-                  )}
-                </div>
-                {onInsertReference && (
-                  <div className="pt-1 border-t border-border/50">
+                      highlightTerms(displayText, searchQuery).map((seg, i) =>
+                        seg.highlight ? (
+                          <mark key={i} className="bg-primary/20 text-foreground rounded px-0.5">
+                            {seg.text}
+                          </mark>
+                        ) : (
+                          <span key={i}>{seg.text}</span>
+                        )
+                      )
+                    )}
+                  </div>
+                  <div className="flex items-center gap-2 pt-1 border-t border-border/50">
                     <Button
                       variant="ghost"
                       size="sm"
-                      className="h-7 text-xs px-3 text-primary"
+                      className="h-7 text-xs px-3"
+                      disabled={isChunkLoading}
                       onClick={(e) => {
                         e.stopPropagation();
-                        onInsertReference(result.id, chunk.chunk_index, chunk.excerpt);
+                        handleExpandChunk(chunk.chunk_index);
                       }}
                     >
-                      {"\u054f\u0565\u0572\u0561\u0564\u0580\u0565\u056c \u0578\u0580\u057a\u0565\u057d KB \u0570\u0572\u0578\u0582\u0574"}
+                      {isChunkLoading ? (
+                        <Loader2 className="h-3 w-3 animate-spin mr-1" />
+                      ) : isChunkExpanded ? (
+                        <Minimize2 className="h-3 w-3 mr-1" />
+                      ) : (
+                        <Maximize2 className="h-3 w-3 mr-1" />
+                      )}
+                      {isChunkExpanded ? "\u053f\u0580\u0573\u0565\u056c" : "\u0551\u0578\u0582\u0575\u0581 \u057f\u0561\u056c \u0561\u0574\u0562\u0578\u0572\u057b\u0568"}
                     </Button>
+                    {onInsertReference && (
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="h-7 text-xs px-3 text-primary"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          onInsertReference(result.id, chunk.chunk_index, displayText);
+                        }}
+                      >
+                        {"\u054f\u0565\u0572\u0561\u0564\u0580\u0565\u056c \u0578\u0580\u057a\u0565\u057d KB \u0570\u0572\u0578\u0582\u0574"}
+                      </Button>
+                    )}
                   </div>
-                )}
-              </div>
-            ))
+                </div>
+              );
+            })
           ) : (
             <div className="border rounded-lg p-3 bg-secondary/20">
               <p className="text-sm text-muted-foreground italic">
