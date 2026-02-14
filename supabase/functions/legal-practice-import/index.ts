@@ -56,15 +56,17 @@ function normalizeUnicodeEscapes(input: string): NormalizeResult {
   return { text: result, invalidEscapeFound };
 }
 
-/** Apply normalizeUnicodeEscapes to a string, also strip NUL bytes */
+/** Apply normalizeUnicodeEscapes to a string, also strip real NUL bytes */
 function sanitizeString(s: unknown): string {
   if (typeof s !== "string") return String(s ?? "");
   const { text } = normalizeUnicodeEscapes(s);
-  return text.replace(/\u0000/g, "");
+  return text.replace(/\0/g, "");
 }
 
+type AnyRow = Record<string, unknown>;
+
 /** Apply sanitizeString to specific fields of a row object */
-function sanitizeRow(row: Record<string, unknown>): Record<string, unknown> {
+function sanitizeRow(row: AnyRow): AnyRow {
   const STRING_FIELDS = [
     "title", "content_text", "source_name", "court_name",
     "case_number_anonymized", "legal_reasoning_summary", "description",

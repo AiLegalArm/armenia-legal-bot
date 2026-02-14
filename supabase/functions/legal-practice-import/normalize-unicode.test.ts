@@ -39,26 +39,33 @@ function normalizeUnicodeEscapes(input: string): NormalizeResult {
   return { text: result, invalidEscapeFound };
 }
 
-Deno.test("normalizes Russian escaped text", () => {
+function sanitizeString(s: unknown): string {
+  if (typeof s !== "string") return String(s ?? "");
+  const { text } = normalizeUnicodeEscapes(s);
+  return text.replace(/\0/g, "").replace(/\\0/g, "");
+}
+
+// --- Tests ---
+
+Deno.test("normalizes Russian escaped text to real Cyrillic", () => {
   const input = "\\u044d\\u043b\\u0435\\u043c";
   const { text, invalidEscapeFound } = normalizeUnicodeEscapes(input);
-  assertEquals(text, "\u044d\u043b\u0435\u043c"); // "элем"
+  // Must produce real decoded string, not escapes
+  assertEquals(text, String.fromCharCode(0x044d, 0x043b, 0x0435, 0x043c));
   assertEquals(invalidEscapeFound, false);
 });
 
-Deno.test("normalizes surrogate pair emoji", () => {
+Deno.test("normalizes surrogate pair emoji to real character", () => {
   const input = "\\uD83D\\uDE00";
   const { text, invalidEscapeFound } = normalizeUnicodeEscapes(input);
-  assertEquals(text, "\uD83D\uDE00"); // 😀
+  assertEquals(text, String.fromCodePoint(0x1F600));
   assertEquals(invalidEscapeFound, false);
 });
 
 Deno.test("handles invalid escape gracefully", () => {
   const input = "test \\u12G4 and \\u123 end";
   const { text, invalidEscapeFound } = normalizeUnicodeEscapes(input);
-  // Should not crash, invalid sequences flagged
   assertEquals(invalidEscapeFound, true);
-  // The text should still contain the invalid sequences
   assertEquals(text.includes("end"), true);
 });
 
@@ -69,15 +76,21 @@ Deno.test("does not modify normal text", () => {
   assertEquals(invalidEscapeFound, false);
 });
 
-Deno.test("strips null character escape", () => {
+Deno.test("strips literal \\u0000 escape", () => {
   const input = "before\\u0000after";
   const { text, invalidEscapeFound } = normalizeUnicodeEscapes(input);
   assertEquals(text, "beforeafter");
   assertEquals(invalidEscapeFound, true);
 });
 
-Deno.test("normalizes Armenian text", () => {
+Deno.test("sanitizeString strips real NUL bytes", () => {
+  const input = "abc\0def";
+  const result = sanitizeString(input);
+  assertEquals(result, "abcdef");
+});
+
+Deno.test("normalizes Armenian text to real characters", () => {
   const input = "\\u0540\\u0578\\u0564\\u057E\\u0561\\u056E";
   const { text } = normalizeUnicodeEscapes(input);
-  assertEquals(text, "\u0540\u0578\u0564\u057E\u0561\u056E");
+  assertEquals(text, String.fromCharCode(0x0540, 0x0578, 0x0564, 0x057E, 0x0561, 0x056E));
 });
