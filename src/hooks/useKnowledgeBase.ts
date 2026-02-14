@@ -94,8 +94,11 @@ export function useKnowledgeBase(filters: KBFilters = {}) {
         chunksByDoc.set(chunk.doc_id, arr);
       }
       
+      const isArticleQuery = /(?:\u0540\u0578\u0564\u057E\u0561\u056E|\u0421\u0442\u0430\u0442\u044C\u044F|Article)\s*\d+/i.test(filters.search || '');
+
       return (parsed.documents || [])
         .filter((doc) => {
+          if (isArticleQuery) return true;
           const score = Number(doc.max_score);
           return Number.isFinite(score) && Math.round(score * 100) >= 50;
         })
