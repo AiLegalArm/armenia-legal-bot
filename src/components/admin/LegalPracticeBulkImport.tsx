@@ -81,6 +81,28 @@ interface LegalPracticeBulkImportProps {
 
 const MAX_FILE_SIZE = 50 * 1024 * 1024; // 50MB
 
+/** Sanitize string for PostgreSQL: strip NUL bytes, lone surrogates, control chars */
+function sanitizeStr(s: string): string {
+  return s
+    .replace(/\x00/g, '')
+    .replace(/[\uD800-\uDFFF]/g, '')
+    .replace(/[\x01-\x08\x0B\x0C\x0E-\x1F\x7F]/g, '');
+}
+
+/** Recursively sanitize all string values in an object/array */
+function deepSanitize<T>(value: T): T {
+  if (typeof value === 'string') return sanitizeStr(value) as unknown as T;
+  if (Array.isArray(value)) return value.map(deepSanitize) as unknown as T;
+  if (value !== null && typeof value === 'object') {
+    const out: Record<string, unknown> = {};
+    for (const [k, v] of Object.entries(value as Record<string, unknown>)) {
+      out[k] = deepSanitize(v);
+    }
+    return out as T;
+  }
+  return value;
+}
+
 export function LegalPracticeBulkImport({ open, onOpenChange }: LegalPracticeBulkImportProps) {
   const { t } = useTranslation('kb');
   const queryClient = useQueryClient();
@@ -305,9 +327,12 @@ export function LegalPracticeBulkImport({ open, onOpenChange }: LegalPracticeBul
         });
       }
 
+      // Sanitize all string fields before sending to Edge Function
+      const sanitizedItems = deepSanitize(items);
+
       // Send to Edge Function (service_role insert, no RLS issues)
       const { data, error: fnError } = await supabase.functions.invoke('legal-practice-import', {
-        body: { bulkItems: items },
+        body: { bulkItems: sanitizedItems },
       });
 
       if (fnError) throw fnError;
