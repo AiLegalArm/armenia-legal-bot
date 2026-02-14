@@ -61,7 +61,7 @@ export function useKnowledgeBase(filters: KBFilters = {}) {
         .from('knowledge_base')
         .select('*', { count: 'exact' })
         .eq('is_active', true)
-        .order('updated_at', { ascending: false })
+        .order('created_at', { ascending: false })
         .range(offset, offset + pageSize - 1);
 
       if (filters.category && filters.category !== 'all') {
