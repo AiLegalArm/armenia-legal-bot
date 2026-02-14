@@ -163,10 +163,27 @@ serve(async (req) => {
       totalInserted += batch.length;
     }
 
+    // ── Step 5: Trigger table screenshot processing (async, non-blocking) ──
+    const hasTableChunks = chunkRows.some(c => c.chunk_type === "table");
+    if (hasTableChunks) {
+      const internalKey = Deno.env.get("INTERNAL_API_KEY") || Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || "";
+      fetch(`${supabaseUrl}/functions/v1/kb-table-screenshots`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "x-internal-key": internalKey,
+        },
+        body: JSON.stringify({ docId }),
+      }).catch((e) => {
+        console.error("Failed to trigger table screenshots:", e);
+      });
+    }
+
     return json({
       document_id: docId,
       chunks_inserted: totalInserted,
       deduplicated: false,
+      table_processing: hasTableChunks ? "triggered" : "none",
     }, 200);
   } catch (error) {
     const msg = error instanceof Error ? error.message : "Unknown";
