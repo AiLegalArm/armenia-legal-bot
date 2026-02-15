@@ -82,7 +82,7 @@ serve(async (req) => {
       const practiceCategory = mapCategoryToPracticeCategory(request.category);
       
       const rag = await dualSearch({
-        supabase,
+        supabase: authClient,
         supabaseUrl: SUPABASE_URL,
         supabaseKey: SUPABASE_SERVICE_KEY,
         query: searchTerms.join(' '),

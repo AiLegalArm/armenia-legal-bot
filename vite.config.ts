@@ -1,11 +1,29 @@
-import { defineConfig } from "vite";
+import { defineConfig, loadEnv } from "vite";
 import react from "@vitejs/plugin-react-swc";
 import path from "path";
 import { componentTagger } from "lovable-tagger";
 import { VitePWA } from "vite-plugin-pwa";
 
 // https://vitejs.dev/config/
-export default defineConfig(({ mode }) => ({
+export default defineConfig(({ mode }) => {
+  const env = loadEnv(mode, process.cwd(), "");
+
+  // Build Supabase origin for Workbox caching regex
+  // Fallback is current prod ref — temporary bootstrap, update if project changes
+  let supabaseOrigin = "https://nrmmgcgwriyrlbcpoqvk.supabase.co";
+  if (env.VITE_SUPABASE_URL) {
+    try {
+      supabaseOrigin = new URL(env.VITE_SUPABASE_URL).origin;
+    } catch {
+      console.warn("[vite.config] Invalid VITE_SUPABASE_URL, using fallback origin");
+    }
+  } else if (mode === "production") {
+    console.warn("[vite.config] VITE_SUPABASE_URL not set in production — using hardcoded fallback");
+  }
+  const escapedOrigin = supabaseOrigin.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const supabaseCachePattern = new RegExp(`^${escapedOrigin}\\/.*`, "i");
+
+  return ({
   server: {
     host: "::",
     port: 8080,
@@ -48,7 +66,7 @@ export default defineConfig(({ mode }) => ({
         globPatterns: ["**/*.{js,css,html,ico,png,svg,woff2}"],
         runtimeCaching: [
           {
-            urlPattern: /^https:\/\/ktnygkszihdganoqamhi\.supabase\.co\/.*/i,
+            urlPattern: supabaseCachePattern,
             handler: "NetworkFirst",
             options: {
               cacheName: "supabase-api-cache",
@@ -68,4 +86,5 @@ export default defineConfig(({ mode }) => ({
     },
     dedupe: ["react", "react-dom", "react/jsx-runtime"],
   },
-}));
+});
+});
