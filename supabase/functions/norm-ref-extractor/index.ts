@@ -21,13 +21,7 @@
  */
 
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
-
-// ─── CORS ───────────────────────────────────────────────────────────
-const corsHeaders = {
-  "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers":
-    "authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
-};
+import { handleCors, checkInternalAuth } from "../_shared/edge-security.ts";
 
 // ─── TYPES ──────────────────────────────────────────────────────────
 
@@ -247,9 +241,12 @@ export function extractNormRefs(text: string): NormRef[] {
 // ─── HTTP HANDLER ───────────────────────────────────────────────────
 
 serve(async (req) => {
-  if (req.method === "OPTIONS") {
-    return new Response(null, { headers: corsHeaders });
-  }
+  const cors = handleCors(req);
+  if (cors.errorResponse) return cors.errorResponse;
+  const corsHeaders = cors.corsHeaders!;
+
+  const authErr = checkInternalAuth(req, corsHeaders);
+  if (authErr) return authErr;
 
   try {
     const body = await req.json();
