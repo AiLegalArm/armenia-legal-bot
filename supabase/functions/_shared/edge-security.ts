@@ -51,15 +51,13 @@ export function getCorsHeaders(requestOrigin?: string | null): Record<string, st
     return null;
   }
 
-  let origin: string;
-  if (requestOrigin && allowed.includes(requestOrigin)) {
-    origin = requestOrigin;
-  } else {
-    origin = allowed[0];
+  // Fail-closed: reject origins not in allowlist
+  if (!requestOrigin || !allowed.includes(requestOrigin)) {
+    return null;
   }
 
   return {
-    "Access-Control-Allow-Origin": origin,
+    "Access-Control-Allow-Origin": requestOrigin,
     "Access-Control-Allow-Headers": DEFAULT_ALLOWED_HEADERS,
     "Access-Control-Allow-Methods": "POST, OPTIONS",
     "Vary": "Origin",

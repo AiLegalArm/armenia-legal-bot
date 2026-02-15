@@ -8,24 +8,16 @@ import { dualSearch } from "../_shared/rag-search.ts";
 import { buildSearchQuery, mapCourtTypeToPracticeCategory } from "./rag-search.ts";
 import { redactForLog } from "../_shared/pii-redactor.ts";
 import { log, err } from "../_shared/safe-logger.ts";
-
-// =============================================================================
-// CORS HEADERS
-// =============================================================================
-
-const corsHeaders = {
-  "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
-};
+import { handleCors } from "../_shared/edge-security.ts";
 
 // =============================================================================
 // MAIN HANDLER
 // =============================================================================
 
 serve(async (req) => {
-  if (req.method === "OPTIONS") {
-    return new Response(null, { headers: corsHeaders });
-  }
+  const cors = handleCors(req);
+  if (cors.errorResponse) return cors.errorResponse;
+  const corsHeaders = cors.corsHeaders!;
 
   try {
     // === AUTH GUARD (Audit Fix: Stage 2/5 — Critical) ===
