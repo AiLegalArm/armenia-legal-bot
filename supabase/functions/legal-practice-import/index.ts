@@ -375,25 +375,40 @@ async function extractWithAI(textContent: string, apiKey: string): Promise<Extra
     };
   }
 
-  const resp = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${apiKey}`,
-    },
-    body: JSON.stringify({
-      model: "google/gemini-2.5-flash-lite",
-      temperature: 0,
-      messages: [
-        { role: "system", content: DECISION_EXTRACTOR_SYSTEM_PROMPT },
-        { role: "user", content: input.substring(0, 50000) },
-      ],
-    }),
+  const requestBody = JSON.stringify({
+    model: "google/gemini-2.5-flash-lite",
+    temperature: 0,
+    messages: [
+      { role: "system", content: DECISION_EXTRACTOR_SYSTEM_PROMPT },
+      { role: "user", content: input.substring(0, 50000) },
+    ],
   });
 
-  if (!resp.ok) {
-    const errText = await resp.text().catch(() => "");
-    throw new Error(`AI extraction failed: ${resp.status} ${resp.statusText} ${errText}`);
+  let resp: Response | null = null;
+  const MAX_RETRIES = 3;
+  for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
+    resp = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${apiKey}`,
+      },
+      body: requestBody,
+    });
+    if (resp.ok) break;
+    // Retry on 5xx / 429
+    if (resp.status >= 500 || resp.status === 429) {
+      const delay = Math.pow(2, attempt) * 1000 + Math.random() * 500;
+      console.warn(`AI gateway ${resp.status}, retry ${attempt + 1}/${MAX_RETRIES} after ${Math.round(delay)}ms`);
+      await new Promise(r => setTimeout(r, delay));
+      continue;
+    }
+    break; // non-retryable error
+  }
+
+  if (!resp || !resp.ok) {
+    const errText = resp ? await resp.text().catch(() => "") : "no response";
+    throw new Error(`AI extraction failed: ${resp?.status} ${resp?.statusText} ${errText}`);
   }
 
   const payload = await resp.json();
@@ -464,24 +479,36 @@ CRITICAL RULES:
 2. PRESERVE THE ORIGINAL LANGUAGE of the document in ALL values. If the text is in Armenian, all extracted strings MUST be in Armenian. If in Russian, keep Russian. NEVER translate to English.
 3. All string values must use actual UTF-8 characters, not unicode escapes.`;
 
-  const resp = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${apiKey}`,
-    },
-    body: JSON.stringify({
-      model: "google/gemini-2.5-flash-lite",
-      temperature: 0,
-      messages: [
-        { role: "system", content: prompt },
-        { role: "user", content: input },
-      ],
-    }),
-  });
+  let resp: Response | null = null;
+  const MAX_RETRIES = 3;
+  for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
+    resp = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${apiKey}`,
+      },
+      body: JSON.stringify({
+        model: "google/gemini-2.5-flash-lite",
+        temperature: 0,
+        messages: [
+          { role: "system", content: prompt },
+          { role: "user", content: input },
+        ],
+      }),
+    });
+    if (resp.ok) break;
+    if (resp.status >= 500 || resp.status === 429) {
+      const delay = Math.pow(2, attempt) * 1000 + Math.random() * 500;
+      console.warn(`AI gateway ${resp.status}, retry ${attempt + 1}/${MAX_RETRIES} after ${Math.round(delay)}ms`);
+      await new Promise(r => setTimeout(r, delay));
+      continue;
+    }
+    break;
+  }
 
-  if (!resp.ok) {
-    console.error(`AI extraction failed: ${resp.status}`);
+  if (!resp || !resp.ok) {
+    console.error(`AI extraction failed: ${resp?.status}`);
     return {};
   }
 
