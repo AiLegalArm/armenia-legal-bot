@@ -77,20 +77,17 @@ Deno.test("getCorsHeaders: allowed origin is reflected", () => {
   });
 });
 
-Deno.test("getCorsHeaders: disallowed origin -> first allowlisted origin", () => {
+Deno.test("getCorsHeaders: disallowed origin -> null (fail-closed)", () => {
   return withEnv({ ALLOWED_ORIGINS: "https://app.example.com,https://admin.example.com", ALLOW_WILDCARD_CORS: undefined }, () => {
     const headers = getCorsHeaders("https://evil.com");
-    assertExists(headers);
-    assertEquals(headers!["Access-Control-Allow-Origin"], "https://app.example.com");
-    assertEquals(headers!["Vary"], "Origin");
+    assertEquals(headers, null);
   });
 });
 
-Deno.test("getCorsHeaders: null origin -> first allowlisted origin", () => {
+Deno.test("getCorsHeaders: null origin -> null (fail-closed)", () => {
   return withEnv({ ALLOWED_ORIGINS: "https://app.example.com", ALLOW_WILDCARD_CORS: undefined }, () => {
     const headers = getCorsHeaders(null);
-    assertExists(headers);
-    assertEquals(headers!["Access-Control-Allow-Origin"], "https://app.example.com");
+    assertEquals(headers, null);
   });
 });
 

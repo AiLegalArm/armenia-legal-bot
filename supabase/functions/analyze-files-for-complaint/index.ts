@@ -1,11 +1,7 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { FILE_ANALYSIS, buildModelParams } from "../_shared/model-config.ts";
-
-const corsHeaders = {
-  "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
-};
+import { handleCors } from "../_shared/edge-security.ts";
 
 interface AnalyzeRequest {
   files: Array<{
@@ -26,9 +22,9 @@ interface AnalyzeRequest {
 }
 
 serve(async (req) => {
-  if (req.method === "OPTIONS") {
-    return new Response(null, { headers: corsHeaders });
-  }
+  const cors = handleCors(req);
+  if (cors.errorResponse) return cors.errorResponse;
+  const corsHeaders = cors.corsHeaders!;
 
   try {
     // === AUTH GUARD (Prevent Anonymous Access) ===

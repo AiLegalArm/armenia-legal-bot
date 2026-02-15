@@ -1,11 +1,7 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.91.1";
 import { AUDIO_TRANSCRIPTION, buildModelParams } from "../_shared/model-config.ts";
-
-const corsHeaders = {
-  "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
-};
+import { handleCors } from "../_shared/edge-security.ts";
 
 const CONFIDENCE_THRESHOLD = 0.50;
 // Lovable AI Gateway supports large inline files - setting limit to 100MB
@@ -13,97 +9,12 @@ const CONFIDENCE_THRESHOLD = 0.50;
 const MAX_FILE_SIZE_MB = 100;
 const MAX_FILE_SIZE_BYTES = MAX_FILE_SIZE_MB * 1024 * 1024;
 
-const TRANSCRIPTION_SYSTEM_PROMPT = `You are a professional audio transcription specialist. Your ONLY task is to accurately transcribe EXACTLY what is spoken in the audio/video file.
-
-## CRITICAL RULES:
-1. **TRANSCRIBE ONLY WHAT YOU HEAR** - Do NOT invent, assume, or add any content
-2. If audio is silent or unintelligible, say so explicitly
-3. If you cannot understand a word, mark it as [inaudible] or [unclear]
-4. Do NOT add content that was not spoken in the recording
-5. Do NOT assume context or fill in gaps with plausible text
-
-## Transcription Guidelines:
-1. Transcribe every spoken word accurately, preserving the original language
-2. Auto-detect language (Armenian hy-AM, Russian ru-RU, English en-US, or other)
-3. Identify different speakers if multiple voices are present (Speaker 1:, Speaker 2:, etc.)
-4. Include timestamps for significant segments in format [MM:SS]
-5. Preserve terminology exactly as spoken
-
-## Output Format (JSON):
-{
-  "transcription": "Exact transcription of spoken content...",
-  "language_detected": "hy-AM",
-  "speakers_count": 1,
-  "confidence_score": 0.85,
-  "confidence_reason": "Reason for confidence level",
-  "duration_seconds": 45,
-  "warnings": ["Any issues encountered"],
-  "word_count": 120
-}
-
-## Confidence Score Guidelines:
-- 0.85-1.0: Clear audio, high accuracy
-- 0.70-0.84: Good audio with minor issues
-- 0.50-0.69: Moderate quality, some sections unclear
-- Below 0.50: Poor quality, significant portions unclear
-
-## If Audio Has No Speech:
-If the audio file contains no speech (only music, silence, or noise), return:
-{
-  "transcription": "[No speech detected in this recording]",
-  "language_detected": "unknown",
-  "speakers_count": 0,
-  "confidence_score": 1.0,
-  "confidence_reason": "No speech content to transcribe",
-  "duration_seconds": X,
-  "warnings": ["Audio contains no speech"],
-  "word_count": 0
-}
-
-CRITICAL: Always respond with valid JSON only. NEVER fabricate content that was not in the audio.`;
-
-// Get MIME type from file extension
-function getMimeType(fileName: string): string {
-  const ext = fileName?.split('.').pop()?.toLowerCase() || 'mp3';
-  const mimeTypes: Record<string, string> = {
-    'mp3': 'audio/mpeg',
-    'wav': 'audio/wav',
-    'm4a': 'audio/mp4',
-    'ogg': 'audio/ogg',
-    'webm': 'audio/webm',
-    'flac': 'audio/flac',
-    'mp4': 'video/mp4',
-    'mov': 'video/quicktime',
-    'avi': 'video/x-msvideo',
-    'mkv': 'video/x-matroska'
-  };
-  return mimeTypes[ext] || 'audio/mpeg';
-}
-
-// Check if file is video
-function isVideoFile(fileName: string): boolean {
-  const ext = fileName?.split('.').pop()?.toLowerCase() || '';
-  return ['mp4', 'mov', 'avi', 'mkv', 'webm'].includes(ext);
-}
-
-// Convert ArrayBuffer to base64 in chunks to avoid memory issues
-function arrayBufferToBase64(buffer: ArrayBuffer): string {
-  const uint8Array = new Uint8Array(buffer);
-  const chunkSize = 32768; // 32KB chunks
-  let base64 = "";
-  
-  for (let i = 0; i < uint8Array.length; i += chunkSize) {
-    const chunk = uint8Array.slice(i, Math.min(i + chunkSize, uint8Array.length));
-    base64 += btoa(String.fromCharCode.apply(null, Array.from(chunk)));
-  }
-  
-  return base64;
-}
+// ... keep existing code (TRANSCRIPTION_SYSTEM_PROMPT, getMimeType, isVideoFile, arrayBufferToBase64)
 
 serve(async (req) => {
-  if (req.method === "OPTIONS") {
-    return new Response(null, { headers: corsHeaders });
-  }
+  const cors = handleCors(req);
+  if (cors.errorResponse) return cors.errorResponse;
+  const corsHeaders = cors.corsHeaders!;
 
   try {
     // === AUTH GUARD (Prevent Anonymous Access) ===
