@@ -171,36 +171,42 @@ serve(async (req) => {
       docs = (data ?? []) as KbDoc[];
       if (docs.length === 0) return json(404, { error: "DOC_NOT_FOUND", docId });
     } else {
-      // Get docs without chunks
-      const selectCols = isKB
-        ? "id,title,content_text,category"
-        : "id,title,content_text";
-      const { data: allDocs, error: e1 } = await supabase
-        .from(sourceTable)
-        .select(selectCols)
-        .eq("is_active", true)
-        .order("updated_at", { ascending: false })
-        .limit(500);
-      if (e1) throw { status: 500, code: "DB_ERROR", message: e1.message };
-
-      const docList = (allDocs ?? []) as KbDoc[];
-
+      // Get only IDs of docs that already have chunks (lightweight query)
       const { data: existing, error: e2 } = await supabase
         .from(chunksTable)
         .select(fkColumn)
-        .limit(50000);
+        .limit(1000);
       if (e2) throw { status: 500, code: "DB_ERROR", message: e2.message };
 
       const existingSet = new Set(
         (existing ?? []).map((x: Record<string, string>) => String(x[fkColumn]))
       );
-      docs = docList.filter((d) => !existingSet.has(d.id));
+      const existingIds = [...existingSet];
+
+      // Fetch a small batch of active docs excluding already-chunked ones
+      const selectCols = isKB
+        ? "id,title,content_text,category"
+        : "id,title,content_text";
+
+      let query = supabase
+        .from(sourceTable)
+        .select(selectCols)
+        .eq("is_active", true)
+        .order("updated_at", { ascending: false })
+        .limit(batchLimit);
+
+      // Exclude docs that already have chunks
+      if (existingIds.length > 0) {
+        query = query.not("id", "in", `(${existingIds.join(",")})`);
+      }
+
+      const { data: allDocs, error: e1 } = await query;
+      if (e1) throw { status: 500, code: "DB_ERROR", message: e1.message };
+
+      docs = (allDocs ?? []) as KbDoc[];
     }
 
     const totalRemaining = docs.length;
-    if (!docId) {
-      docs = docs.slice(0, batchLimit);
-    }
 
     // 2) Plan chunks
     const plan = [];
