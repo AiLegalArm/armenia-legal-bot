@@ -20,9 +20,6 @@ project_id = "nrmmgcgwriyrlbcpoqvk"
 
 [functions.legal-chat]
 
-[functions.legal-chat]
-verify_jwt = false
-
 [functions.extract-case-fields]
 
 [functions.analyze-files-for-complaint]
