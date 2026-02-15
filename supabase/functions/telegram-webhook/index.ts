@@ -1,11 +1,6 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.91.1";
 
-const corsHeaders = {
-  "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
-};
-
 interface TelegramUpdate {
   message?: {
     chat: { id: number };
@@ -17,10 +12,41 @@ interface TelegramUpdate {
   };
 }
 
-serve(async (req) => {
-  if (req.method === "OPTIONS") {
-    return new Response(null, { headers: corsHeaders });
+/**
+ * Validate X-Telegram-Bot-Api-Secret-Token header.
+ * Returns null if valid, or an error Response if invalid.
+ */
+function verifyTelegramSecret(req: Request): Response | null {
+  const expected = Deno.env.get("TELEGRAM_WEBHOOK_SECRET");
+  if (!expected) {
+    // Fail-closed: secret not configured
+    console.error("TELEGRAM_WEBHOOK_SECRET not configured");
+    return new Response(JSON.stringify({ error: "Server misconfigured" }), {
+      status: 500,
+      headers: { "Content-Type": "application/json" },
+    });
   }
+
+  const provided = req.headers.get("x-telegram-bot-api-secret-token");
+  if (!provided || provided !== expected) {
+    return new Response(JSON.stringify({ error: "Unauthorized" }), {
+      status: 403,
+      headers: { "Content-Type": "application/json" },
+    });
+  }
+
+  return null;
+}
+
+serve(async (req) => {
+  // Telegram sends POST only; reject anything else
+  if (req.method !== "POST") {
+    return new Response(null, { status: 405 });
+  }
+
+  // Verify Telegram webhook secret
+  const secretError = verifyTelegramSecret(req);
+  if (secretError) return secretError;
 
   try {
     const TELEGRAM_BOT_TOKEN = Deno.env.get("TELEGRAM_BOT_TOKEN");
@@ -37,7 +63,7 @@ serve(async (req) => {
 
     if (!message) {
       return new Response(JSON.stringify({ ok: true }), {
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json" },
       });
     }
 
@@ -54,7 +80,7 @@ serve(async (req) => {
         message.caption
       );
       return new Response(JSON.stringify({ ok: true }), {
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json" },
       });
     }
 
@@ -62,7 +88,7 @@ serve(async (req) => {
 
     if (!text) {
       return new Response(JSON.stringify({ ok: true }), {
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json" },
       });
     }
 
@@ -89,7 +115,7 @@ serve(async (req) => {
 
       await sendTelegramMessage(TELEGRAM_BOT_TOKEN, chatId, welcomeMessage);
       return new Response(JSON.stringify({ ok: true }), {
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json" },
       });
     }
 
@@ -110,7 +136,7 @@ serve(async (req) => {
 
       await sendTelegramMessage(TELEGRAM_BOT_TOKEN, chatId, helpMessage);
       return new Response(JSON.stringify({ ok: true }), {
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json" },
       });
     }
 
@@ -127,7 +153,6 @@ serve(async (req) => {
         const prefs = profile.notification_preferences as { telegram?: boolean } | null;
         const isEnabled = prefs?.telegram !== false;
         
-        // Count uploaded files
         const { count } = await supabase
           .from("telegram_uploads")
           .select("*", { count: "exact", head: true })
@@ -150,11 +175,11 @@ serve(async (req) => {
 
       await sendTelegramMessage(TELEGRAM_BOT_TOKEN, chatId, statusMessage);
       return new Response(JSON.stringify({ ok: true }), {
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json" },
       });
     }
 
-    // Handle /verify command with verification code (SECURE method)
+    // Handle /verify command
     if (text.startsWith("/verify ")) {
       const code = text.slice(8).trim().toUpperCase();
       
@@ -162,11 +187,10 @@ serve(async (req) => {
         await sendTelegramMessage(TELEGRAM_BOT_TOKEN, chatId, 
           "❌ Неверный формат кода. Используйте: /verify XXXXXX (6 символов)");
         return new Response(JSON.stringify({ ok: true }), {
-          headers: { ...corsHeaders, "Content-Type": "application/json" },
+          headers: { "Content-Type": "application/json" },
         });
       }
 
-      // Find valid verification code
       const { data: verificationCode, error: findError } = await supabase
         .from("telegram_verification_codes")
         .select("id, user_id, expires_at")
@@ -177,21 +201,17 @@ serve(async (req) => {
 
       if (findError || !verificationCode) {
         await sendTelegramMessage(TELEGRAM_BOT_TOKEN, chatId, 
-          `❌ Неверный или просроченный код.
-
-Получите новый код в настройках профиля приложения.`);
+          `❌ Неверный или просроченный код.\n\nПолучите новый код в настройках профиля приложения.`);
         return new Response(JSON.stringify({ ok: true }), {
-          headers: { ...corsHeaders, "Content-Type": "application/json" },
+          headers: { "Content-Type": "application/json" },
         });
       }
 
-      // Mark code as used
       await supabase
         .from("telegram_verification_codes")
         .update({ used_at: new Date().toISOString() })
         .eq("id", verificationCode.id);
 
-      // Link Telegram account to user profile
       const { data: profile, error: updateError } = await supabase
         .from("profiles")
         .update({ telegram_chat_id: chatId.toString() })
@@ -216,11 +236,11 @@ serve(async (req) => {
       }
 
       return new Response(JSON.stringify({ ok: true }), {
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json" },
       });
     }
 
-    // Handle legacy /link command - inform about new secure method
+    // Handle legacy /link command
     if (text.startsWith("/link ")) {
       await sendTelegramMessage(TELEGRAM_BOT_TOKEN, chatId, 
         `⚠️ <b>Метод привязки изменен</b>
@@ -230,7 +250,7 @@ serve(async (req) => {
 2. Нажмите "Получить код"
 3. Отправьте сюда: /verify XXXXXX`);
       return new Response(JSON.stringify({ ok: true }), {
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json" },
       });
     }
 
@@ -240,13 +260,13 @@ serve(async (req) => {
     );
 
     return new Response(JSON.stringify({ ok: true }), {
-      headers: { ...corsHeaders, "Content-Type": "application/json" },
+      headers: { "Content-Type": "application/json" },
     });
 
   } catch (error) {
     console.error("telegram-webhook error:", error);
     return new Response(JSON.stringify({ ok: true }), {
-      headers: { ...corsHeaders, "Content-Type": "application/json" },
+      headers: { "Content-Type": "application/json" },
     });
   }
 });
@@ -259,7 +279,6 @@ async function handleFileUpload(
   document: { file_id: string; file_name?: string; mime_type?: string; file_size?: number } | undefined,
   caption: string | undefined
 ): Promise<void> {
-  // Find user by telegram_chat_id
   const { data: profile, error: profileError } = await supabase
     .from("profiles")
     .select("id, full_name, email")
@@ -268,11 +287,7 @@ async function handleFileUpload(
 
   if (profileError || !profile) {
     await sendTelegramMessage(botToken, chatId, 
-      `❌ Аккаунт не привязан.
-
-Для привязки:
-1. Получите код в настройках профиля приложения
-2. Отправьте: /verify XXXXXX`
+      `❌ Аккаунт не привязан.\n\nДля привязки:\n1. Получите код в настройках профиля приложения\n2. Отправьте: /verify XXXXXX`
     );
     return;
   }
@@ -283,7 +298,6 @@ async function handleFileUpload(
   let fileSize: number | undefined;
 
   if (photo && photo.length > 0) {
-    // Get the largest photo (last in array)
     const largestPhoto = photo[photo.length - 1];
     fileId = largestPhoto.file_id;
     originalFilename = `photo_${Date.now()}.jpg`;
@@ -298,14 +312,12 @@ async function handleFileUpload(
     return;
   }
 
-  // Check file size (max 20MB)
   if (fileSize && fileSize > 20 * 1024 * 1024) {
     await sendTelegramMessage(botToken, chatId, "❌ Файл слишком большой. Максимальный размер: 20 МБ.");
     return;
   }
 
   try {
-    // Get file path from Telegram
     const fileInfoResponse = await fetch(
       `https://api.telegram.org/bot${botToken}/getFile?file_id=${fileId}`
     );
@@ -317,7 +329,6 @@ async function handleFileUpload(
 
     const telegramFilePath: string = fileInfo.result.file_path;
 
-    // Download file from Telegram
     const fileResponse = await fetch(
       `https://api.telegram.org/file/bot${botToken}/${telegramFilePath}`
     );
@@ -328,11 +339,9 @@ async function handleFileUpload(
 
     const fileBuffer = await fileResponse.arrayBuffer();
 
-    // Generate storage path
     const fileExt = originalFilename.split('.').pop() || 'bin';
     const storagePath = `${profile.id}/${crypto.randomUUID()}.${fileExt}`;
 
-    // Upload to Supabase Storage
     const { error: uploadError } = await supabase.storage
       .from("telegram-uploads")
       .upload(storagePath, fileBuffer, {
@@ -340,11 +349,8 @@ async function handleFileUpload(
         upsert: false,
       });
 
-    if (uploadError) {
-      throw uploadError;
-    }
+    if (uploadError) throw uploadError;
 
-    // Save record to database
     const { error: dbError } = await supabase
       .from("telegram_uploads")
       .insert({
@@ -359,18 +365,12 @@ async function handleFileUpload(
       });
 
     if (dbError) {
-      // Rollback storage upload
       await supabase.storage.from("telegram-uploads").remove([storagePath]);
       throw dbError;
     }
 
     await sendTelegramMessage(botToken, chatId, 
-      `✅ <b>Файл загружен</b>
-
-📄 ${originalFilename}
-${caption ? `📝 ${caption}` : ""}
-
-Файл доступен в вашем личном кабинете.`
+      `✅ <b>Файл загружен</b>\n\n📄 ${originalFilename}\n${caption ? `📝 ${caption}` : ""}\n\nФайл доступен в вашем личном кабинете.`
     );
 
   } catch (error) {
