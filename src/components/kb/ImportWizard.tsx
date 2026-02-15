@@ -40,6 +40,15 @@ import {
   Play,
 } from 'lucide-react';
 import { kbCategoryOptions, type KbCategory } from '@/components/kb/kbCategories';
+
+// Practice categories for legal_practice_kb target
+const practiceCategoryOptions = [
+  { value: 'criminal', label: 'Уголовное' },
+  { value: 'civil', label: 'Гражданское' },
+  { value: 'administrative', label: 'Административное' },
+  { value: 'echr', label: 'ЕСПЧ' },
+  { value: 'constitutional', label: 'Конституционное' },
+] as const;
 import { useBulkImport } from '@/hooks/useBulkImport';
 import { BulkImportQueue } from '@/components/kb/BulkImportQueue';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
@@ -502,7 +511,10 @@ export function ImportWizard({ open, onOpenChange, onImport }: ImportWizardProps
                 <Label>Целевая таблица</Label>
                 <div className="grid grid-cols-2 gap-3">
                   <button
-                    onClick={() => setTarget('knowledge_base')}
+                    onClick={() => {
+                      setTarget('knowledge_base');
+                      setOptions(prev => ({ ...prev, category: 'other' as KbCategory }));
+                    }}
                     className={`flex flex-col items-center gap-2 rounded-lg border-2 p-4 text-center transition-colors hover:bg-accent ${
                       target === 'knowledge_base' ? 'border-primary bg-primary/5' : 'border-border'
                     }`}
@@ -512,7 +524,10 @@ export function ImportWizard({ open, onOpenChange, onImport }: ImportWizardProps
                     <span className="text-xs text-muted-foreground">knowledge_base</span>
                   </button>
                   <button
-                    onClick={() => setTarget('legal_practice_kb')}
+                    onClick={() => {
+                      setTarget('legal_practice_kb');
+                      setOptions(prev => ({ ...prev, category: 'criminal' as KbCategory }));
+                    }}
                     className={`flex flex-col items-center gap-2 rounded-lg border-2 p-4 text-center transition-colors hover:bg-accent ${
                       target === 'legal_practice_kb' ? 'border-primary bg-primary/5' : 'border-border'
                     }`}
@@ -578,11 +593,18 @@ export function ImportWizard({ open, onOpenChange, onImport }: ImportWizardProps
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
-                      {kbCategoryOptions.map(cat => (
-                        <SelectItem key={cat.value} value={cat.value}>
-                          {t(cat.labelKey)}
-                        </SelectItem>
-                      ))}
+                      {target === 'legal_practice_kb'
+                        ? practiceCategoryOptions.map(cat => (
+                            <SelectItem key={cat.value} value={cat.value}>
+                              {cat.label}
+                            </SelectItem>
+                          ))
+                        : kbCategoryOptions.map(cat => (
+                            <SelectItem key={cat.value} value={cat.value}>
+                              {t(cat.labelKey)}
+                            </SelectItem>
+                          ))
+                      }
                     </SelectContent>
                   </Select>
                 </div>
