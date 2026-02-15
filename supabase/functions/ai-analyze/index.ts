@@ -14,11 +14,7 @@ import { applyBudgets, logTokenUsage, type RankedContent } from "../_shared/toke
 import { LEGAL_DETERMINISTIC, buildModelParams } from "../_shared/model-config.ts";
 import { redactPII } from "../_shared/pii-redactor.ts";
 import { dualSearch, formatKBContext, formatPracticeContext as formatPracticeCtx, temporalDisclaimer } from "../_shared/rag-search.ts";
-
-const corsHeaders = {
-  "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
-};
+import { handleCors } from "../_shared/edge-security.ts";
 
 // Legal AI System Prompts \u2014 STRICTLY for Republic of Armenia (RA) law
 // CRITICAL: No hallucinations. RAG-FIRST. KB is reference-only.
@@ -114,9 +110,9 @@ interface AnalysisRequest {
 
 
 serve(async (req) => {
-  if (req.method === "OPTIONS") {
-    return new Response(null, { headers: corsHeaders });
-  }
+  const cors = handleCors(req);
+  if (cors.errorResponse) return cors.errorResponse;
+  const corsHeaders = cors.corsHeaders!;
 
   try {
     // === AUTH GUARD (Audit Fix: Stage 5 — Critical) ===

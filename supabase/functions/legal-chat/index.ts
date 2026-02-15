@@ -7,14 +7,10 @@ import { redactForLog } from "../_shared/pii-redactor.ts";
 import { log, warn, err } from "../_shared/safe-logger.ts";
 import { searchKB, searchPractice, formatKBContext, formatPracticeContext as formatPracticeCtx, temporalDisclaimer } from "../_shared/rag-search.ts";
 import type { KBSearchResult, PracticeSearchResult } from "../_shared/rag-types.ts";
+import { handleCors } from "../_shared/edge-security.ts";
 
 // Types now imported from _shared/rag-types.ts
 type LegalPracticeResult = PracticeSearchResult;
-
-const corsHeaders = {
-  "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
-};
 
 // Legal AI System Prompt - production grade
 const LEGAL_AI_SYSTEM_PROMPT = `You are "Ai Legal Armenia" \u2014 a Legal Assistant Agent operating within a modular Legal AI system.
@@ -176,9 +172,9 @@ const GREETING_MESSAGE = `\u0532\u0561\u0580\u0587 \u0541\u0565\u0566\u0589 \u05
 const FN = "legal-chat";
 
 serve(async (req) => {
-  if (req.method === "OPTIONS") {
-    return new Response(null, { headers: corsHeaders });
-  }
+  const cors = handleCors(req);
+  if (cors.errorResponse) return cors.errorResponse;
+  const corsHeaders = cors.corsHeaders!;
 
   try {
     // === AUTH GUARD (Prevent Anonymous Access) ===
