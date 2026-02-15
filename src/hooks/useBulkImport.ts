@@ -26,6 +26,18 @@ function sanitizeString(s: string): string {
     .replace(/[\x01-\x08\x0B\x0C\x0E-\x1F\x7F]/g, '');
 }
 
+/** Detect case outcome from text content (Armenian + Russian) */
+function detectOutcomeFromText(text: string): string {
+  const lower = text.toLowerCase();
+  // Russian patterns
+  if (/удовлетворить|удовлетворен/i.test(lower)) return 'granted';
+  if (/отказать|отклонить|отказано/i.test(lower)) return 'rejected';
+  if (/частично/i.test(lower)) return 'partial';
+  if (/возвратить|направить на новое/i.test(lower)) return 'remanded';
+  if (/прекратить|прекращено/i.test(lower)) return 'discontinued';
+  return 'granted';
+}
+
 // ── Types ────────────────────────────────────────────────────────────
 
 export type ImportStage =
@@ -190,7 +202,7 @@ export function useBulkImport() {
       rawText = sanitizeString(rawText);
       fileName = sanitizeString(fileName);
 
-      // Stage 2: Insert directly into knowledge_base table
+      // Stage 2: Normalize
       updateItem(item.id, { stage: 'normalized' });
       await new Promise(r => setTimeout(r, 10));
 
@@ -200,30 +212,66 @@ export function useBulkImport() {
       updateItem(item.id, { stage: 'jsonl' });
       await new Promise(r => setTimeout(r, 10));
 
-      // Insert into knowledge_base (the table the KB UI reads from)
-      const { data: insertedRow, error: insertErr } = await supabase
-        .from('knowledge_base')
-        .insert({
+      if (options.target === 'legal_practice_kb') {
+        // Use dedicated legal-practice-import edge function
+        const practiceItem = {
           title: fileName,
           content_text: rawText,
-          category: (options.category || 'other') as any,
+          practice_category: options.category || 'criminal',
+          court_type: 'cassation',
+          outcome: detectOutcomeFromText(rawText),
+          is_anonymized: true,
+          visibility: 'ai_only',
           source_name: options.sourceName || undefined,
-          source_url: item.payload.url || undefined,
-          is_active: true,
-        })
-        .select('id')
-        .single();
+        };
 
-      if (insertErr) throw new Error(`Insert: ${insertErr.message}`);
+        const { data, error: fnError } = await supabase.functions.invoke('legal-practice-import', {
+          body: { bulkItems: [practiceItem] },
+        });
 
-      updateItem(item.id, {
-        stage: 'inserted',
-        result: {
-          documentId: insertedRow?.id,
-          chunksInserted: 0,
-          deduplicated: false,
-        },
-      });
+        if (fnError) throw new Error(`Import: ${fnError.message}`);
+        if (data?.error) throw new Error(data.error);
+
+        const inserted = data?.inserted_practice ?? 0;
+        if (inserted === 0 && (data?.skipped ?? 0) > 0) {
+          updateItem(item.id, {
+            stage: 'inserted',
+            result: { documentId: undefined, chunksInserted: 0, deduplicated: true },
+          });
+        } else if (inserted > 0) {
+          updateItem(item.id, {
+            stage: 'inserted',
+            result: { documentId: data?.ids?.[0], chunksInserted: 0, deduplicated: false },
+          });
+        } else {
+          throw new Error(data?.errors?.[0]?.error || 'No rows inserted');
+        }
+      } else {
+        // Insert into knowledge_base (the table the KB UI reads from)
+        const { data: insertedRow, error: insertErr } = await supabase
+          .from('knowledge_base')
+          .insert({
+            title: fileName,
+            content_text: rawText,
+            category: (options.category || 'other') as any,
+            source_name: options.sourceName || undefined,
+            source_url: item.payload.url || undefined,
+            is_active: true,
+          })
+          .select('id')
+          .single();
+
+        if (insertErr) throw new Error(`Insert: ${insertErr.message}`);
+
+        updateItem(item.id, {
+          stage: 'inserted',
+          result: {
+            documentId: insertedRow?.id,
+            chunksInserted: 0,
+            deduplicated: false,
+          },
+        });
+      }
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Unknown error';
       updateItem(item.id, { stage: 'error', error: message });
@@ -258,9 +306,10 @@ export function useBulkImport() {
     }
 
     setIsRunning(false);
-    // Invalidate KB queries so the list refreshes with new data
+    // Invalidate queries so the list refreshes with new data
     queryClient.invalidateQueries({ queryKey: ['kb-list'] });
     queryClient.invalidateQueries({ queryKey: ['kb-search'] });
+    queryClient.invalidateQueries({ queryKey: ['legal-practice-kb'] });
   }, [processItem, updateItem, queryClient]);
 
   // ── Retry failed items only ────────────────────────────────────
