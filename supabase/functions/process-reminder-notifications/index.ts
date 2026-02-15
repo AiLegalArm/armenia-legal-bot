@@ -1,10 +1,6 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.91.1";
-
-const corsHeaders = {
-  "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
-};
+import { handleCors, checkInternalAuth } from "../_shared/edge-security.ts";
 
 // Language-specific templates
 const templates = {
@@ -63,9 +59,17 @@ function formatDateTime(isoDate: string, lang: string): string {
 }
 
 serve(async (req) => {
+  const cors = handleCors(req);
+  if (cors.errorResponse) return cors.errorResponse;
+  const corsHeaders = cors.corsHeaders!;
+
   if (req.method === "OPTIONS") {
-    return new Response(null, { headers: corsHeaders });
+    return new Response(null, { status: 204, headers: corsHeaders });
   }
+
+  // Internal-only: require x-internal-key
+  const authError = checkInternalAuth(req, corsHeaders);
+  if (authError) return authError;
 
   try {
     const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
@@ -73,7 +77,7 @@ serve(async (req) => {
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
     const now = new Date();
-    const checkWindows = [5, 15, 30, 60, 120, 1440]; // minutes before event
+    const checkWindows = [5, 15, 30, 60, 120, 1440];
 
     let totalSent = 0;
     let totalErrors = 0;
@@ -82,7 +86,6 @@ serve(async (req) => {
       const windowStart = new Date(now.getTime() + (minutesBefore - 1) * 60000);
       const windowEnd = new Date(now.getTime() + (minutesBefore + 1) * 60000);
 
-      // Find reminders where event_datetime is within window AND notify_before includes this value
       const { data: reminders, error: remindersError } = await supabase
         .from("reminders")
         .select(`
@@ -120,7 +123,6 @@ serve(async (req) => {
         const prefs = profile.notification_preferences as { telegram?: boolean } | null;
         if (prefs && prefs.telegram === false) continue;
 
-        // Default to Russian for this legal app
         const lang = "ru";
         const templateKey = typeToKey[reminder.reminder_type] || "other";
         const template = templates[lang][templateKey];
@@ -131,13 +133,13 @@ serve(async (req) => {
           .replace("{timeLeft}", formatTimeLeft(minutesBefore, lang))
           .replace("{description}", reminder.description || "");
 
-        // Send notification
         try {
           const response = await fetch(`${supabaseUrl}/functions/v1/send-telegram-notification`, {
             method: "POST",
             headers: {
               "Content-Type": "application/json",
-              Authorization: `Bearer ${supabaseServiceKey}`,
+              "Authorization": `Bearer ${supabaseServiceKey}`,
+              "x-internal-key": Deno.env.get("INTERNAL_INGEST_KEY") || "",
             },
             body: JSON.stringify({
               chatId: profile.telegram_chat_id,
@@ -149,7 +151,6 @@ serve(async (req) => {
           if (response.ok) {
             totalSent++;
             
-            // Create in-app notification too
             await supabase.from("notifications").insert({
               user_id: reminder.user_id,
               reminder_id: reminder.id,

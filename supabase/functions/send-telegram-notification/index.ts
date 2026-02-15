@@ -1,10 +1,6 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.91.1";
-
-const corsHeaders = {
-  "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
-};
+import { handleCors, checkInternalAuth } from "../_shared/edge-security.ts";
 
 interface NotificationRequest {
   userId?: string;
@@ -14,9 +10,17 @@ interface NotificationRequest {
 }
 
 serve(async (req) => {
+  const cors = handleCors(req);
+  if (cors.errorResponse) return cors.errorResponse;
+  const corsHeaders = cors.corsHeaders!;
+
   if (req.method === "OPTIONS") {
-    return new Response(null, { headers: corsHeaders });
+    return new Response(null, { status: 204, headers: corsHeaders });
   }
+
+  // Internal-only: require x-internal-key
+  const authError = checkInternalAuth(req, corsHeaders);
+  if (authError) return authError;
 
   try {
     const TELEGRAM_BOT_TOKEN = Deno.env.get("TELEGRAM_BOT_TOKEN");
@@ -39,7 +43,6 @@ serve(async (req) => {
 
     let targetChatId = chatId;
 
-    // If userId provided, get telegram_chat_id from profile
     if (userId && !chatId) {
       const { data: profile, error: profileError } = await supabase
         .from("profiles")
@@ -57,7 +60,6 @@ serve(async (req) => {
         });
       }
 
-      // Check if telegram notifications are enabled
       const prefs = profile.notification_preferences as { telegram?: boolean } | null;
       if (prefs && prefs.telegram === false) {
         return new Response(JSON.stringify({ 
@@ -79,7 +81,6 @@ serve(async (req) => {
       });
     }
 
-    // Send message via Telegram Bot API
     const telegramResponse = await fetch(
       `https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage`,
       {
