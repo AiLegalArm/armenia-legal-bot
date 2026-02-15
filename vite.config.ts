@@ -25,7 +25,9 @@ export default defineConfig(({ mode }) => {
     console.warn("[vite.config] VITE_SUPABASE_URL not set in production — using hardcoded fallback");
   }
 
-  const supabaseCachePattern = new RegExp(`^${escapeRegExp(supabaseOrigin)}/`, "i");
+  const supabaseCachePattern = new RegExp(
+    `^${escapeRegExp(supabaseOrigin)}/(rest/v1/|functions/v1/)`, "i"
+  );
 
   return {
     server: {
