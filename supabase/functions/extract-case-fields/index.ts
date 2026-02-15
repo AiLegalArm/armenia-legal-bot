@@ -1,11 +1,7 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.91.1";
 import { FIELD_EXTRACTION, buildModelParams } from "../_shared/model-config.ts";
-
-const corsHeaders = {
-  "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
-};
+import { handleCors } from "../_shared/edge-security.ts";
 
 const SYSTEM_PROMPT = `You are an expert legal analyst for Armenian (RA) law cases. Your task is to extract key pieces of information from case materials:
 
@@ -34,9 +30,9 @@ IMPORTANT:
 - For case_number, return the EXACT number found in documents (e.g., "\u053F\u0534/1718/02/24"), or empty string if not found.`;
 
 serve(async (req) => {
-  if (req.method === "OPTIONS") {
-    return new Response(null, { headers: corsHeaders });
-  }
+  const cors = handleCors(req);
+  if (cors.errorResponse) return cors.errorResponse;
+  const corsHeaders = cors.corsHeaders!;
 
   try {
     // === AUTH GUARD (Prevent Anonymous Access) ===
