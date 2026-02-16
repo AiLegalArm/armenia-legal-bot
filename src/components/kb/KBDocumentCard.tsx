@@ -94,6 +94,54 @@ const categoryColors: Partial<Record<KbCategory, string>> = {
   eaeu_customs_code: 'bg-stone-500/10 text-stone-700 dark:text-stone-400',
 };
 
+/** Inline expandable preview for documents without chunks */
+function FallbackContentPreview({
+  text,
+  searchQuery,
+  collapseLabel,
+  expandLabel,
+}: {
+  text: string;
+  searchQuery?: string;
+  collapseLabel: string;
+  expandLabel: string;
+}) {
+  const [expanded, setExpanded] = useState(false);
+  const previewLen = 300;
+  const isLong = text.length > previewLen;
+  const displayText = expanded ? text : text.substring(0, previewLen) + (isLong ? '...' : '');
+
+  return (
+    <div className="mb-3 space-y-1">
+      <p className="text-sm text-muted-foreground whitespace-pre-wrap break-words">
+        {searchQuery
+          ? highlightTerms(displayText, searchQuery).map((seg, i) =>
+              seg.highlight ? (
+                <mark key={i} className="bg-primary/20 text-foreground rounded px-0.5">{seg.text}</mark>
+              ) : (
+                <span key={i}>{seg.text}</span>
+              )
+            )
+          : displayText}
+      </p>
+      {isLong && (
+        <Button
+          variant="ghost"
+          size="sm"
+          className="h-7 text-xs text-primary"
+          onClick={() => setExpanded(!expanded)}
+        >
+          {expanded ? (
+            <><Minimize2 className="mr-1 h-3 w-3" />{collapseLabel}</>
+          ) : (
+            <><Maximize2 className="mr-1 h-3 w-3" />{expandLabel}</>
+          )}
+        </Button>
+      )}
+    </div>
+  );
+}
+
 const getCategoryColor = (category: KbCategory): string => {
   return categoryColors[category] || 'bg-gray-500/10 text-gray-700 dark:text-gray-400';
 };
@@ -285,10 +333,16 @@ export function KBDocumentCard({
               </div>
             ))}
           </div>
+        ) : document.content_text ? (
+          <FallbackContentPreview
+            text={document.content_text}
+            searchQuery={searchQuery}
+            collapseLabel={t('collapse', 'Collapse')}
+            expandLabel={t('show_full_article', 'Show full')}
+          />
         ) : (
-          <p className="mb-3 line-clamp-3 text-sm text-muted-foreground">
-            {document.content_text ? document.content_text.substring(0, 500) : t('no_chunks_found', 'Фрагменты не найдены')}
-            {document.content_text && document.content_text.length > 500 ? '...' : ''}
+          <p className="mb-3 text-sm text-muted-foreground">
+            {t('no_chunks_found', '\u0556\u0580\u0561\u0563\u0574\u0565\u0576\u057F\u0576\u0565\u0580 \u0579\u0565\u0576 \u0563\u057F\u0576\u057E\u0565\u056C')}
           </p>
         )}
         
