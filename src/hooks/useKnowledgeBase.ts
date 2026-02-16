@@ -58,67 +58,111 @@ export function useKnowledgeBase(filters: KBFilters = {}) {
   const pageSize = filters.pageSize || 20;
   const offset = (page - 1) * pageSize;
 
-  // Chunk-level search using PostgreSQL RPC
+  // Chunk-level search + fallback direct search
   const { data: searchResults, isLoading: isSearching } = useQuery({
     queryKey: ['kb-search', filters.search, filters.category],
     queryFn: async () => {
       if (!filters.search || filters.search.length < 2) return null;
-      
-      const { data, error } = await supabase
+
+      // Run chunk search and direct table search in parallel
+      const chunkSearchPromise = supabase
         .rpc('search_kb_chunks', {
           p_query: filters.search,
           p_category: filters.category && filters.category !== 'all' ? filters.category : null,
           p_limit_chunks: 50,
           p_limit_docs: 10,
           p_chunks_per_doc: 3,
-        });
-      
-      if (error) throw error;
-      
-      const parsed = data as unknown as {
-        documents: Array<{
-          id: string; title: string; category: string;
-          source_name: string | null; article_number: string | null;
-          source_url: string | null; max_score: number;
-        }>;
-        chunks: Array<{
-          doc_id: string; chunk_index: number; chunk_type: string;
-          label: string | null; char_start: number; excerpt: string;
-          full_text: string | null; score: number;
-        }>;
-      };
-      
-      // Group chunks by doc_id
-      const chunksByDoc = new Map<string, typeof parsed.chunks>();
-      for (const chunk of parsed.chunks || []) {
-        const arr = chunksByDoc.get(chunk.doc_id) || [];
-        arr.push(chunk);
-        chunksByDoc.set(chunk.doc_id, arr);
+        })
+        .then(res => res, () => ({ data: null, error: { message: 'chunk search failed' } }));
+
+      // Direct ILIKE search on knowledge_base table (catches docs without chunks)
+      const searchTerm = `%${filters.search}%`;
+      let directQuery = supabase
+        .from('knowledge_base')
+        .select('id, title, content_text, category, source_name, source_url, article_number, version_date')
+        .eq('is_active', true)
+        .or(`title.ilike.${searchTerm},content_text.ilike.${searchTerm}`)
+        .limit(20);
+
+      if (filters.category && filters.category !== 'all') {
+        directQuery = directQuery.eq('category', filters.category);
       }
-      
-      const q = (filters.search || '').trim();
-      const isArticleQuery = /^(?:\u0540\u0578\u0564\u057E\u0561\u056E|\u0540\u0578\u0564\.?|\u0421\u0442\u0430\u0442\u044C\u044F|\u0441\u0442\.?|Article|Art\.?)\s*\d+/i.test(q);
 
-      const docs = parsed.documents || [];
-      const globalMax = docs.reduce((mx, d) => Math.max(mx, Number(d.max_score) || 0), 0);
+      const directSearchPromise = directQuery.then(
+        res => res,
+        () => ({ data: null, error: { message: 'direct search failed' } })
+      );
 
-      return docs
-        .map((doc) => {
+      const [chunkResult, directResult] = await Promise.all([chunkSearchPromise, directSearchPromise]);
+
+      // Parse chunk results
+      const chunkDocs: KBChunkSearchResult[] = [];
+      if (chunkResult.data) {
+        const parsed = chunkResult.data as unknown as {
+          documents: Array<{
+            id: string; title: string; category: string;
+            source_name: string | null; article_number: string | null;
+            source_url: string | null; max_score: number;
+          }>;
+          chunks: Array<{
+            doc_id: string; chunk_index: number; chunk_type: string;
+            label: string | null; char_start: number; excerpt: string;
+            full_text: string | null; score: number;
+          }>;
+        };
+
+        const chunksByDoc = new Map<string, typeof parsed.chunks>();
+        for (const chunk of parsed.chunks || []) {
+          const arr = chunksByDoc.get(chunk.doc_id) || [];
+          arr.push(chunk);
+          chunksByDoc.set(chunk.doc_id, arr);
+        }
+
+        const docs = parsed.documents || [];
+        const globalMax = docs.reduce((mx, d) => Math.max(mx, Number(d.max_score) || 0), 0);
+
+        for (const doc of docs) {
           const raw = Number(doc.max_score) || 0;
-          const relevancePct = globalMax > 0 ? Math.round((raw / globalMax) * 100) : 0;
+          const relevancePct = globalMax > 0 ? Math.round((raw / globalMax) * 100) : 100;
           const docChunks = chunksByDoc.get(doc.id) || [];
           const excerpt = docChunks[0]?.excerpt || '';
-          return {
+          chunkDocs.push({
             ...doc,
             relevancePct,
             content_text: excerpt.substring(0, 500),
             chunks: docChunks,
-          } satisfies KBChunkSearchResult;
-        })
-        .filter((doc) => {
-          if (isArticleQuery) return true;
-          return doc.relevancePct >= 50;
-        });
+          });
+        }
+      }
+
+      // Merge direct results (for docs not found via chunks)
+      const seenIds = new Set(chunkDocs.map(d => d.id));
+      if (directResult.data && Array.isArray(directResult.data)) {
+        for (const row of directResult.data) {
+          if (seenIds.has(row.id)) continue;
+          seenIds.add(row.id);
+          chunkDocs.push({
+            id: row.id,
+            title: row.title,
+            category: row.category,
+            source_name: row.source_name,
+            article_number: row.article_number,
+            source_url: row.source_url,
+            max_score: 0,
+            relevancePct: 80, // direct match is relevant
+            content_text: (row.content_text || '').substring(0, 500),
+            chunks: [],
+          });
+        }
+      }
+
+      const q = (filters.search || '').trim();
+      const isArticleQuery = /^(?:\u0540\u0578\u0564\u057E\u0561\u056E|\u0540\u0578\u0564\.?|\u0421\u0442\u0430\u0442\u044C\u044F|\u0441\u0442\.?|Article|Art\.?)\s*\d+/i.test(q);
+
+      return chunkDocs.filter((doc) => {
+        if (isArticleQuery) return true;
+        return doc.relevancePct >= 50;
+      });
     },
     enabled: !!filters.search && filters.search.length >= 2,
   });
