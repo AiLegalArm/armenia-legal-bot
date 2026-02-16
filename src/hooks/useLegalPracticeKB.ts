@@ -106,11 +106,8 @@ export function useLegalPracticeKB() {
 
       const [edgeResult, chunkResult] = await Promise.all([edgePromise, chunkPromise]);
 
-      if (edgeResult.error) {
-        throw new Error(edgeResult.error.message || "Search failed");
-      }
-
-      const edgeDocs: KBDocument[] = edgeResult.data?.documents || [];
+      // Edge function may fail (timeout, etc.) — treat as soft failure
+      const edgeDocs: KBDocument[] = edgeResult.error ? [] : (edgeResult.data?.documents || []);
 
       // Merge chunk-RPC results (if any) with edge results
       const seenIds = new Set(edgeDocs.map((d) => d.id));

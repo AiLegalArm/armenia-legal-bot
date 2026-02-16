@@ -79,7 +79,7 @@ serve(async (req) => {
     }
 
     // B) category allowlist
-    const ALLOWED_CATEGORIES = new Set(["criminal", "civil", "administrative", "echr"]);
+    const ALLOWED_CATEGORIES = new Set(["criminal", "civil", "administrative", "echr", "constitutional"]);
     if (category != null && !ALLOWED_CATEGORIES.has(category)) {
       return new Response(
         JSON.stringify({ error: "Invalid category" }),
@@ -106,8 +106,7 @@ serve(async (req) => {
         legal_reasoning_summary,
         decision_map,
         key_paragraphs,
-        content_chunks,
-        content_text
+        content_chunks
       `)
       .eq("is_active", true)
       .limit(safeLimitDocs);
@@ -146,10 +145,9 @@ serve(async (req) => {
         limitChunksPerDoc
       );
 
-      // If no chunks available, create a single chunk from content_text
-      const finalTopChunks = topChunks.length > 0 ? topChunks : 
-        (doc.content_text ? [{ chunkIndex: 0, text: doc.content_text }] : []);
-      const finalTotalChunks = totalChunks > 0 ? totalChunks : (doc.content_text ? 1 : 0);
+      // If no chunks available, return empty
+      const finalTopChunks = topChunks.length > 0 ? topChunks : [];
+      const finalTotalChunks = totalChunks > 0 ? totalChunks : 0;
 
       return {
         id: doc.id,
