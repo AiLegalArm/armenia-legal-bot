@@ -169,7 +169,14 @@ export function ImportWizard({ open, onOpenChange, onImport }: ImportWizardProps
     bulkClearAll();
   }, [bulkClearAll]);
 
-  const handleClose = useCallback(() => {
+  const handleDialogChange = useCallback((isOpen: boolean) => {
+    if (!isOpen) {
+      reset();
+      onOpenChange(false);
+    }
+  }, [reset, onOpenChange]);
+
+  const handleCloseClick = useCallback(() => {
     reset();
     onOpenChange(false);
   }, [reset, onOpenChange]);
@@ -352,7 +359,7 @@ export function ImportWizard({ open, onOpenChange, onImport }: ImportWizardProps
   // ── Render ─────────────────────────────────────────────────────
 
   return (
-    <Dialog open={open} onOpenChange={handleClose}>
+    <Dialog open={open} onOpenChange={handleDialogChange}>
       <DialogContent className="max-w-2xl max-h-[90vh] overflow-hidden flex flex-col [&>button]:z-50">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
@@ -716,7 +723,7 @@ export function ImportWizard({ open, onOpenChange, onImport }: ImportWizardProps
           <div className="flex items-center justify-between border-t pt-3">
             <Button
               variant="outline"
-              onClick={step === 0 ? handleClose : goBack}
+              onClick={step === 0 ? handleCloseClick : goBack}
               size="sm"
             >
               {step === 0 ? (
@@ -748,7 +755,7 @@ export function ImportWizard({ open, onOpenChange, onImport }: ImportWizardProps
               </Button>
             )}
             <div className="flex-1" />
-            <Button variant="ghost" onClick={handleClose} size="sm">
+            <Button variant="ghost" onClick={handleCloseClick} size="sm">
               {'\u0417\u0430\u043a\u0440\u044b\u0442\u044c'}
             </Button>
           </div>
