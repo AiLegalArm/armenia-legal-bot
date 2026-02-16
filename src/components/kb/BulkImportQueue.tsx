@@ -139,7 +139,7 @@ export function BulkImportQueue({
       )}
 
       {/* Item list */}
-      <ScrollArea className="max-h-[300px]">
+      <ScrollArea className="max-h-[40vh]">
         <div className="space-y-1.5">
           {items.map(item => {
             const Icon = SOURCE_ICONS[item.source];
@@ -155,7 +155,7 @@ export function BulkImportQueue({
                 }`}
               >
                 <Icon className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
-                <span className="truncate flex-1 text-xs">{item.label}</span>
+                <span className="truncate flex-1 text-xs" title={item.label}>{item.label}</span>
 
                 {/* Stage badge */}
                 <Badge variant={stageBadgeVariant(item.stage)} className="text-[10px] shrink-0">
@@ -195,10 +195,10 @@ export function BulkImportQueue({
           <p className="text-xs font-medium text-destructive">
             {failed} {'\u044d\u043b\u0435\u043c\u0435\u043d\u0442(\u043e\u0432) \u0441 \u043e\u0448\u0438\u0431\u043a\u0430\u043c\u0438'}
           </p>
-          <ScrollArea className="max-h-[100px]">
+          <ScrollArea className="max-h-[30vh]">
             <div className="space-y-1">
               {items.filter(it => it.stage === 'error').map(it => (
-                <p key={it.id} className="text-[10px] text-destructive/80 truncate">
+                <p key={it.id} className="text-[10px] text-destructive/80 whitespace-normal break-all">
                   <strong>{it.label}:</strong> {it.error}
                 </p>
               ))}
