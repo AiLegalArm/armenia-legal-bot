@@ -1910,6 +1910,7 @@ export type Database = {
         }
         Returns: boolean
       }
+      immutable_unaccent: { Args: { "": string }; Returns: string }
       is_team_leader: {
         Args: { _team_id: string; _user_id: string }
         Returns: boolean
