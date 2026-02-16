@@ -10,6 +10,7 @@ const corsHeaders: Record<string, string> = {
 type BackfillBody = {
   table?: "legal_practice_kb" | "knowledge_base";
   docId?: string;
+  docIds?: string[];
   chunkSize?: number;
   dryRun?: boolean;
   batchLimit?: number;
@@ -143,9 +144,10 @@ serve(async (req) => {
     const body = (await req.json().catch(() => ({}))) as BackfillBody;
     const table = body.table || "legal_practice_kb";
     const docId = typeof body.docId === "string" && body.docId.trim() ? body.docId.trim() : undefined;
+    const docIds = Array.isArray(body.docIds) ? body.docIds.filter((x) => typeof x === "string" && x.trim()) : [];
     const chunkSize = normalizeChunkSize(body.chunkSize);
     const dryRun = body.dryRun === true;
-    const batchLimit = Math.min(Math.max(typeof body.batchLimit === "number" ? body.batchLimit : 5, 1), 10);
+    const batchLimit = Math.min(Math.max(typeof body.batchLimit === "number" ? body.batchLimit : 5, 1), 100);
 
     const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
 
@@ -171,40 +173,46 @@ serve(async (req) => {
       if (error) throw { status: 500, code: "DB_ERROR", message: error.message };
       docs = (data ?? []) as KbDoc[];
       if (docs.length === 0) return json(404, { error: "DOC_NOT_FOUND", docId });
+    } else if (docIds.length > 0) {
+      // Process specific list of doc IDs (batch mode)
+      const selectCols = isKB
+        ? "id,title,content_text,category"
+        : "id,title,content_text";
+      const batch = docIds.slice(0, batchLimit);
+      const { data, error } = await supabase
+        .from(sourceTable)
+        .select(selectCols)
+        .in("id", batch);
+
+      if (error) throw { status: 500, code: "DB_ERROR", message: error.message };
+      docs = (data ?? []) as KbDoc[];
     } else {
-      // Get only IDs of docs that already have chunks (lightweight query)
-      const { data: existing, error: e2 } = await supabase
-        .from(chunksTable)
-        .select(fkColumn)
-        .limit(1000);
-      if (e2) throw { status: 500, code: "DB_ERROR", message: e2.message };
-
-      const existingSet = new Set(
-        (existing ?? []).map((x: Record<string, string>) => String(x[fkColumn]))
-      );
-      const existingIds = [...existingSet];
-
-      // Fetch a small batch of active docs excluding already-chunked ones
+      // Auto-discover: fetch candidates then filter out those with chunks
       const selectCols = isKB
         ? "id,title,content_text,category"
         : "id,title,content_text";
 
-      let query = supabase
+      const fetchLimit = batchLimit * 4;
+      const { data: candidates, error: e1 } = await supabase
         .from(sourceTable)
         .select(selectCols)
         .eq("is_active", true)
         .order("updated_at", { ascending: false })
-        .limit(batchLimit);
+        .limit(fetchLimit);
 
-      // Exclude docs that already have chunks
-      if (existingIds.length > 0) {
-        query = query.not("id", "in", `(${existingIds.join(",")})`);
-      }
-
-      const { data: allDocs, error: e1 } = await query;
       if (e1) throw { status: 500, code: "DB_ERROR", message: e1.message };
 
-      docs = (allDocs ?? []) as KbDoc[];
+      const pending: KbDoc[] = [];
+      for (const doc of (candidates ?? []) as KbDoc[]) {
+        if (pending.length >= batchLimit) break;
+        const { count, error: cErr } = await supabase
+          .from(chunksTable)
+          .select(fkColumn, { count: "exact", head: true })
+          .eq(fkColumn, doc.id);
+        if (cErr) throw { status: 500, code: "DB_ERROR", message: cErr.message };
+        if ((count ?? 0) === 0) pending.push(doc);
+      }
+      docs = pending;
     }
 
     const totalRemaining = docs.length;
