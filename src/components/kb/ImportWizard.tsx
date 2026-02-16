@@ -127,8 +127,9 @@ export function ImportWizard({ open, onOpenChange, onImport }: ImportWizardProps
   const [jsonlRecords, setJsonlRecords] = useState<Record<string, unknown>[]>([]);
   const [jsonlError, setJsonlError] = useState<string | null>(null);
 
-  // Bulk import hook
+  // Bulk import hook — destructure to get stable references for callbacks
   const bulk = useBulkImport();
+  const bulkClearAll = bulk.clearAll;
 
   // Step 1: Target
   const [target, setTarget] = useState<ImportTarget>('knowledge_base');
@@ -165,8 +166,8 @@ export function ImportWizard({ open, onOpenChange, onImport }: ImportWizardProps
     setOptions({ normalize: true, chunk: true, category: 'other' as KbCategory, sourceName: '' });
     setPreviewRecords([]);
     setImporting(false);
-    bulk.clearAll();
-  }, [bulk]);
+    bulkClearAll();
+  }, [bulkClearAll]);
 
   const handleClose = useCallback(() => {
     reset();
