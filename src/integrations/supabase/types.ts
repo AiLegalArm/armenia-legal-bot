@@ -2089,6 +2089,16 @@ export type Database = {
           title: string
         }[]
       }
+      search_legal_practice_chunks: {
+        Args: {
+          category_filter?: string
+          p_chunks_per_doc?: number
+          p_limit_chunks?: number
+          p_limit_docs?: number
+          p_query: string
+        }
+        Returns: Json
+      }
       search_legal_practice_kb: {
         Args: {
           category_filter?: string
