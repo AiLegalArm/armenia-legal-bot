@@ -262,16 +262,16 @@ export function KBDocumentCard({
               return (
                 <div
                   key={idx}
-                  className="rounded border-l-2 border-primary/40 bg-muted/40 px-2.5 py-1.5 text-xs leading-relaxed text-foreground/80"
+                  className="rounded border-l-2 border-primary/40 bg-muted/40 px-2.5 py-1.5 text-xs leading-relaxed text-foreground/80 overflow-hidden"
                 >
-                  <div className="flex items-start justify-between gap-1">
+                  <div className="flex items-start justify-between gap-1 min-w-0">
                     <div className="flex-1">
                       {chunk.label && (
                         <span className="font-semibold text-primary text-[10px] block mb-0.5">
                           {chunk.label}
                         </span>
                       )}
-                      <span className={showFull ? 'whitespace-pre-wrap' : ''}>
+                      <span className={showFull ? 'whitespace-pre-wrap break-words overflow-hidden' : 'break-words'}>
                         {searchQuery && !showFull
                           ? highlightTerms(displayText, searchQuery).map((seg, i) =>
                               seg.highlight ? (
