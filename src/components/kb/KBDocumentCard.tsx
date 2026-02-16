@@ -145,12 +145,17 @@ export function KBDocumentCard({
     <Card className="transition-shadow hover:shadow-md">
       <CardHeader className="flex flex-row items-start justify-between space-y-0 pb-2">
         <div className="flex-1 space-y-1 pr-2">
-          <CardTitle className="line-clamp-2 text-base font-semibold leading-tight">
+          <CardTitle className="text-sm sm:text-base font-semibold leading-snug break-words whitespace-normal">
             {document.title}
           </CardTitle>
           {document.article_number && (
-            <p className="text-sm text-muted-foreground">
+            <p className="text-xs sm:text-sm font-medium text-primary">
               {t('article_number')}: {document.article_number}
+            </p>
+          )}
+          {document.source_name && (
+            <p className="text-xs text-muted-foreground truncate">
+              {document.source_name}
             </p>
           )}
         </div>
