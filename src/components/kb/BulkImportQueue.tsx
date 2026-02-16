@@ -100,7 +100,7 @@ export function BulkImportQueue({
           <span className="text-muted-foreground">
             {completed}/{total}
             {failed > 0 && (
-              <span className="text-destructive ml-1">({failed} \u043e\u0448.)</span>
+              <span className="text-destructive ml-1">({failed} {'\u043e\u0448.'})</span>
             )}
           </span>
         </div>
@@ -169,18 +169,18 @@ export function BulkImportQueue({
 
                 {/* Result info */}
                 {item.result?.deduplicated && (
-                  <Badge variant="outline" className="text-[10px] shrink-0">\u0434\u0443\u0431\u043b\u044c</Badge>
+                  <Badge variant="outline" className="text-[10px] shrink-0">{'\u0434\u0443\u0431\u043b\u044c'}</Badge>
                 )}
                 {item.result?.chunksInserted !== undefined && !item.result.deduplicated && (
                   <Badge variant="outline" className="text-[10px] shrink-0">
-                    {item.result.chunksInserted} \u0447\u0430\u043d\u043a\u043e\u0432
+                    {item.result.chunksInserted} {'\u0447\u0430\u043d\u043a\u043e\u0432'}
                   </Badge>
                 )}
 
                 {/* Retry count */}
                 {item.retryCount > 0 && (
                   <span className="text-[10px] text-muted-foreground shrink-0">
-                    \u00d7{item.retryCount}
+                    {'\u00d7'}{item.retryCount}
                   </span>
                 )}
               </div>
@@ -193,7 +193,7 @@ export function BulkImportQueue({
       {failed > 0 && !isRunning && (
         <div className="rounded-lg border border-destructive/30 bg-destructive/5 p-3 space-y-2">
           <p className="text-xs font-medium text-destructive">
-            {failed} \u044d\u043b\u0435\u043c\u0435\u043d\u0442(\u043e\u0432) \u0441 \u043e\u0448\u0438\u0431\u043a\u0430\u043c\u0438
+            {failed} {'\u044d\u043b\u0435\u043c\u0435\u043d\u0442(\u043e\u0432) \u0441 \u043e\u0448\u0438\u0431\u043a\u0430\u043c\u0438'}
           </p>
           <ScrollArea className="max-h-[100px]">
             <div className="space-y-1">
@@ -212,25 +212,25 @@ export function BulkImportQueue({
         {isRunning && (
           <Button variant="destructive" size="sm" onClick={onAbort}>
             <Square className="h-3.5 w-3.5 mr-1" />
-            \u0421\u0442\u043e\u043f
+            {'\u0421\u0442\u043e\u043f'}
           </Button>
         )}
         {!isRunning && failed > 0 && (
           <>
             <Button variant="outline" size="sm" onClick={onRetryFailed}>
               <RotateCcw className="h-3.5 w-3.5 mr-1" />
-              \u041f\u043e\u0432\u0442\u043e\u0440\u0438\u0442\u044c \u043e\u0448\u0438\u0431\u043a\u0438
+              {'\u041f\u043e\u0432\u0442\u043e\u0440\u0438\u0442\u044c \u043e\u0448\u0438\u0431\u043a\u0438'}
             </Button>
             <Button variant="outline" size="sm" onClick={onDownloadErrors}>
               <Download className="h-3.5 w-3.5 mr-1" />
-              \u042d\u043a\u0441\u043f\u043e\u0440\u0442 \u043e\u0448\u0438\u0431\u043e\u043a
+              {'\u042d\u043a\u0441\u043f\u043e\u0440\u0442 \u043e\u0448\u0438\u0431\u043e\u043a'}
             </Button>
           </>
         )}
         {!isRunning && completed > 0 && (
           <Button variant="ghost" size="sm" onClick={onClearCompleted}>
             <Trash2 className="h-3.5 w-3.5 mr-1" />
-            \u041e\u0447\u0438\u0441\u0442\u0438\u0442\u044c
+            {'\u041e\u0447\u0438\u0441\u0442\u0438\u0442\u044c'}
           </Button>
         )}
       </div>
