@@ -1,10 +1,14 @@
 import { serve } from "https://deno.land/std@0.224.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.4";
-import { handleCors } from "../_shared/edge-security.ts";
 import { chunkDocument, type LegalDocumentInput } from "../_shared/chunker.ts";
 
+const corsHeaders: Record<string, string> = {
+  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-internal-key, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
+};
+
 type BackfillBody = {
-  table?: "legal_practice_kb" | "knowledge_base"; // NEW: which table to backfill
+  table?: "legal_practice_kb" | "knowledge_base";
   docId?: string;
   chunkSize?: number;
   dryRun?: boolean;
@@ -127,9 +131,9 @@ function categoryToDocType(category: string | null | undefined): string {
 // ── Main handler ────────────────────────────────────────────────────
 
 serve(async (req) => {
-  const cors = handleCors(req);
-  if (cors.errorResponse) return cors.errorResponse;
-  const corsHeaders = cors.corsHeaders!;
+  if (req.method === "OPTIONS") {
+    return new Response(null, { headers: corsHeaders });
+  }
 
   try {
     if (req.method !== "POST") return json(405, { error: "METHOD_NOT_ALLOWED" });
