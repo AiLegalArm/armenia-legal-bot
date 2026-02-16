@@ -1,14 +1,11 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.91.1";
-import { handleCors, checkInternalAuth } from "../_shared/edge-security.ts";
+import { handleCors } from "../_shared/edge-security.ts";
 
 const DIM = 768;
 const MAX_ATTEMPTS_BEFORE_DEAD_LETTER = 5;
 
 // ─── Deterministic text embedding via n-gram hashing ─────────────────────────
-// Creates a 768-dim vector from text using overlapping character trigrams.
-// Not as powerful as neural embeddings, but deterministic and zero-latency.
-
 function hashCode(str: string): number {
   let hash = 0;
   for (let i = 0; i < str.length; i++) {
@@ -22,17 +19,14 @@ function generateEmbedding(text: string): number[] {
   const vec = new Float64Array(DIM);
   const normalized = text.toLowerCase().replace(/\s+/g, " ").trim();
   
-  // Character trigrams
   for (let i = 0; i < normalized.length - 2; i++) {
     const trigram = normalized.substring(i, i + 3);
     const h = Math.abs(hashCode(trigram));
     const idx = h % DIM;
-    // Use sign from second hash to allow negative values (richer representation)
     const sign = hashCode(trigram + "_s") > 0 ? 1 : -1;
     vec[idx] += sign;
   }
 
-  // Word unigrams (boost)
   const words = normalized.split(/\s+/);
   for (const word of words) {
     if (word.length < 2) continue;
@@ -42,7 +36,6 @@ function generateEmbedding(text: string): number[] {
     vec[idx] += sign * 2;
   }
 
-  // Word bigrams
   for (let i = 0; i < words.length - 1; i++) {
     const bigram = words[i] + " " + words[i + 1];
     const h = Math.abs(hashCode("b_" + bigram));
@@ -51,7 +44,6 @@ function generateEmbedding(text: string): number[] {
     vec[idx] += sign * 1.5;
   }
 
-  // L2 normalize
   let norm = 0;
   for (let i = 0; i < DIM; i++) norm += vec[i] * vec[i];
   norm = Math.sqrt(norm);
@@ -71,8 +63,27 @@ serve(async (req) => {
   if (cors.errorResponse) return cors.errorResponse;
   const corsHeaders = cors.corsHeaders!;
 
-  const authErr = checkInternalAuth(req, corsHeaders);
-  if (authErr) return authErr;
+  // Accept both internal-key and authenticated user (admin)
+  const internalKey = req.headers.get("x-internal-key");
+  const expectedKey = Deno.env.get("INTERNAL_INGEST_KEY");
+  const isInternalAuth = internalKey && expectedKey && internalKey === expectedKey;
+
+  if (!isInternalAuth) {
+    // Fall back to JWT auth
+    const authHeader = req.headers.get("Authorization") ?? "";
+    const anonClient = createClient(
+      Deno.env.get("SUPABASE_URL")!,
+      Deno.env.get("SUPABASE_ANON_KEY")!,
+      { global: { headers: { Authorization: authHeader } } }
+    );
+    const { data: { user }, error: authError } = await anonClient.auth.getUser();
+    if (authError || !user) {
+      return new Response(JSON.stringify({ error: "Unauthorized" }), {
+        status: 401,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+  }
 
   try {
     const { table, batchLimit = 10 } = await req.json();
