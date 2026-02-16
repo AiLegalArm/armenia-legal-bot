@@ -76,13 +76,12 @@ export function useKnowledgeBase(filters: KBFilters = {}) {
         .then(res => res, () => ({ data: null, error: { message: 'chunk search failed' } }));
 
       // Direct ILIKE search on knowledge_base table (catches docs without chunks)
-      // Only search title to avoid timeout on huge content_text columns
       const searchTerm = `%${filters.search}%`;
       let directQuery = supabase
         .from('knowledge_base')
-        .select('id, title, category, source_name, source_url, article_number, version_date')
+        .select('id, title, content_text, category, source_name, source_url, article_number, version_date')
         .eq('is_active', true)
-        .ilike('title', searchTerm)
+        .or(`title.ilike.${searchTerm},content_text.ilike.${searchTerm}`)
         .limit(20);
 
       if (filters.category && filters.category !== 'all') {
@@ -151,7 +150,7 @@ export function useKnowledgeBase(filters: KBFilters = {}) {
             source_url: row.source_url,
             max_score: 0,
             relevancePct: 80, // direct match is relevant
-            content_text: '',
+            content_text: (row.content_text || '').substring(0, 500),
             chunks: [],
           });
         }
