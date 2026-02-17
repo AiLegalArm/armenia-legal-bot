@@ -448,6 +448,7 @@ export function KBSearchPanel({ onInsertReference }: KBSearchPanelProps) {
                     <MergedResultCard
                       key={`${item.source}-${item.id}`}
                       item={item}
+                      searchQuery={query}
                       onClick={() => handleMergedItemClick(item)}
                     />
                   ))}
@@ -561,9 +562,21 @@ export function KBSearchPanel({ onInsertReference }: KBSearchPanelProps) {
 // Merged Result Card (compact, click-to-navigate)
 // ================================================================
 
-function MergedResultCard({ item, onClick }: { item: MergedSearchItem; onClick: () => void }) {
+function MergedResultCard({ item, searchQuery, onClick }: { item: MergedSearchItem; searchQuery?: string; onClick: () => void }) {
   const { t } = useTranslation("kb");
   const scorePct = Math.round(item.normalizedScore * 100);
+
+  const renderHighlighted = (text: string, maxLen?: number) => {
+    const truncated = maxLen && text.length > maxLen ? text.substring(0, maxLen) + "\u2026" : text;
+    if (!searchQuery) return truncated;
+    return highlightTerms(truncated, searchQuery).map((seg, i) =>
+      seg.highlight ? (
+        <mark key={i} className="bg-primary/20 text-foreground rounded px-0.5">{seg.text}</mark>
+      ) : (
+        <span key={i}>{seg.text}</span>
+      )
+    );
+  };
 
   return (
     <button
@@ -578,7 +591,7 @@ function MergedResultCard({ item, onClick }: { item: MergedSearchItem; onClick: 
       <div className="flex-1 min-w-0">
         <div className="flex items-center gap-1.5 flex-wrap">
           <span className="text-xs font-medium whitespace-normal break-words leading-tight">
-            {item.title}
+            {renderHighlighted(item.title)}
           </span>
         </div>
         <div className="flex items-center gap-1 mt-0.5 flex-wrap">
@@ -603,7 +616,7 @@ function MergedResultCard({ item, onClick }: { item: MergedSearchItem; onClick: 
         </div>
         {item.preview && (
           <p className="text-[11px] text-muted-foreground line-clamp-2 mt-1 leading-snug">
-            {item.preview}
+            {renderHighlighted(item.preview, 300)}
           </p>
         )}
       </div>
