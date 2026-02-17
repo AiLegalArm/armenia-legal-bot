@@ -38,6 +38,7 @@ export interface KBDocument {
   key_paragraphs: KeyParagraph[];
   top_chunks: TopChunk[];
   totalChunks: number;
+  max_score?: number;
 }
 
 export interface KBChunk {
@@ -141,6 +142,7 @@ export function useLegalPracticeKB() {
             key_paragraphs: Array.isArray(row.key_paragraphs) ? row.key_paragraphs as KeyParagraph[] : [],
             top_chunks: [],
             totalChunks: row.total_chunks || 0,
+            max_score: Number(row.relevance_score ?? 0) || 0,
           });
         }
       }
