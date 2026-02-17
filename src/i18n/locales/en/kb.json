@@ -173,5 +173,8 @@
   "kb_collapse": "Collapse",
   "kb_loading": "Loading...",
   "show_full_article": "Show full article",
-  "collapse": "Collapse"
+  "collapse": "Collapse",
+  "practice_show_more": "Show excerpts",
+  "practice_show_less": "Collapse",
+  "practice_load_full": "Load full text"
 }

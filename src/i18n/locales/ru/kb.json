@@ -183,5 +183,8 @@
   "collapse": "Свернуть",
   "kb_show_full": "Показать полностью",
   "kb_collapse": "Свернуть",
-  "kb_loading": "Загрузка..."
+  "kb_loading": "Загрузка...",
+  "practice_show_more": "Показать фрагменты",
+  "practice_show_less": "Свернуть",
+  "practice_load_full": "Загрузить полный текст"
 }
