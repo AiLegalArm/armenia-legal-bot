@@ -407,7 +407,7 @@ const CaseDetail = () => {
               </TabsContent>
 
               <TabsContent value="kb-search" className="mt-4">
-                <KBSearchPanel onReferencesChange={setReferencesText} />
+                <KBSearchPanel caseId={id} onReferencesChange={setReferencesText} />
               </TabsContent>
             </Tabs>
           </div>

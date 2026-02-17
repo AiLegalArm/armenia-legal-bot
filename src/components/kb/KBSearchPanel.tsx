@@ -164,13 +164,15 @@ function normalizeScores(scores: number[]): number[] {
 // ================================================================
 
 interface KBSearchPanelProps {
+  caseId?: string;
   onInsertReference?: (docId: string, chunkIndex: number, text: string) => void;
   /** @deprecated Use the centralized references store instead */
   onReferencesChange?: (referencesText: string) => void;
 }
 
-export function KBSearchPanel({ onInsertReference, onReferencesChange }: KBSearchPanelProps) {
-  const storeReferencesText = useReferencesText();
+export function KBSearchPanel({ caseId, onInsertReference, onReferencesChange }: KBSearchPanelProps) {
+  const storeKey = caseId || "_global";
+  const storeReferencesText = useReferencesText(storeKey);
   const { t } = useTranslation("kb");
   const [query, setQuery] = useState("");
   const [viewFilter, setViewFilter] = useState<ViewFilter>("all");
@@ -369,7 +371,7 @@ export function KBSearchPanel({ onInsertReference, onReferencesChange }: KBSearc
       onInsertReference(docId, chunkIndex, text);
     } else {
       // Use centralized store
-      appendReferenceBlock(text);
+      appendReferenceBlock(storeKey, text);
       // Also notify legacy callback if provided
       onReferencesChange?.(storeReferencesText ? storeReferencesText + "\n\n---\n\n" + text : text);
       setCollectedRefs((prev) => [...prev, text]);
@@ -666,7 +668,7 @@ export function KBSearchPanel({ onInsertReference, onReferencesChange }: KBSearc
                       variant="ghost"
                       size="sm"
                       className="h-7 text-xs text-destructive"
-                      onClick={() => { setCollectedRefs([]); clearReferences(); onReferencesChange?.(""); }}
+                      onClick={() => { setCollectedRefs([]); clearReferences(storeKey); onReferencesChange?.(""); }}
                     >
                       {t("clear", "\u0544\u0561\u0584\u0580\u0565\u056C")}
                     </Button>

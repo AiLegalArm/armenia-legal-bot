@@ -34,7 +34,7 @@ interface DocumentGeneratorProps {
 
 export function DocumentGenerator({ caseData, preselectedType }: DocumentGeneratorProps) {
   const { t, i18n } = useTranslation(["cases", "common"]);
-  const storeReferencesText = useReferencesText();
+  const storeReferencesText = useReferencesText(caseData?.id);
 
   const {
     // Templates

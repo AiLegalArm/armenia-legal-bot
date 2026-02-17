@@ -55,7 +55,7 @@ export function MultiAgentPanel({ caseId, caseFacts, caseType, partyRole }: Mult
   const { t } = useTranslation(["ai", "cases"]);
   const [activeTab, setActiveTab] = useState("volumes");
   const [selectedRole, setSelectedRole] = useState(partyRole || "");
-  const referencesText = useReferencesText();
+  const referencesText = useReferencesText(caseId);
   
   const {
     isLoading,

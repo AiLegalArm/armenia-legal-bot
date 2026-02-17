@@ -4,52 +4,63 @@ import {
   setReferencesText,
   appendReferenceBlock,
   clearReferences,
+  clearAllReferences,
 } from "./references-store";
 
 const SEP = "\n\n---\n\n";
+const CASE_A = "case-aaa";
+const CASE_B = "case-bbb";
 
 beforeEach(() => {
-  clearReferences();
+  clearAllReferences();
 });
 
-describe("references-store", () => {
-  it("starts empty", () => {
-    expect(getReferencesText()).toBe("");
+describe("references-store (per-case)", () => {
+  it("starts empty for any caseId", () => {
+    expect(getReferencesText(CASE_A)).toBe("");
+    expect(getReferencesText(CASE_B)).toBe("");
   });
 
-  it("setReferencesText replaces value", () => {
-    setReferencesText("block1");
-    expect(getReferencesText()).toBe("block1");
-    setReferencesText("block2");
-    expect(getReferencesText()).toBe("block2");
+  it("setReferencesText replaces value for specific case", () => {
+    setReferencesText(CASE_A, "block1");
+    expect(getReferencesText(CASE_A)).toBe("block1");
+    expect(getReferencesText(CASE_B)).toBe("");
   });
 
-  it("appendReferenceBlock appends with separator", () => {
-    appendReferenceBlock("A");
-    expect(getReferencesText()).toBe("A");
-    appendReferenceBlock("B");
-    expect(getReferencesText()).toBe("A" + SEP + "B");
-    appendReferenceBlock("C");
-    expect(getReferencesText()).toBe("A" + SEP + "B" + SEP + "C");
+  it("appendReferenceBlock appends with separator per case", () => {
+    appendReferenceBlock(CASE_A, "A");
+    appendReferenceBlock(CASE_A, "B");
+    appendReferenceBlock(CASE_B, "X");
+    expect(getReferencesText(CASE_A)).toBe("A" + SEP + "B");
+    expect(getReferencesText(CASE_B)).toBe("X");
   });
 
   it("appendReferenceBlock ignores empty/whitespace blocks", () => {
-    appendReferenceBlock("A");
-    appendReferenceBlock("");
-    appendReferenceBlock("   ");
-    expect(getReferencesText()).toBe("A");
+    appendReferenceBlock(CASE_A, "A");
+    appendReferenceBlock(CASE_A, "");
+    appendReferenceBlock(CASE_A, "   ");
+    expect(getReferencesText(CASE_A)).toBe("A");
   });
 
-  it("clearReferences resets to empty", () => {
-    appendReferenceBlock("A");
-    appendReferenceBlock("B");
-    clearReferences();
-    expect(getReferencesText()).toBe("");
+  it("clearReferences resets only specific case", () => {
+    appendReferenceBlock(CASE_A, "A");
+    appendReferenceBlock(CASE_B, "B");
+    clearReferences(CASE_A);
+    expect(getReferencesText(CASE_A)).toBe("");
+    expect(getReferencesText(CASE_B)).toBe("B");
+  });
+
+  it("clearAllReferences resets everything", () => {
+    appendReferenceBlock(CASE_A, "A");
+    appendReferenceBlock(CASE_B, "B");
+    clearAllReferences();
+    expect(getReferencesText(CASE_A)).toBe("");
+    expect(getReferencesText(CASE_B)).toBe("");
   });
 
   it("clearReferences is idempotent", () => {
-    clearReferences();
-    clearReferences();
-    expect(getReferencesText()).toBe("");
+    clearReferences(CASE_A);
+    clearReferences(CASE_A);
+    expect(getReferencesText(CASE_A)).toBe("");
   });
 });

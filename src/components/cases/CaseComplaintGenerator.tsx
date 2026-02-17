@@ -285,7 +285,7 @@ export function CaseComplaintGenerator({
           extractedText: combinedText.slice(0, 80000),
           language: lang === "hy" ? "hy" : lang === "ru" ? "ru" : "en",
         };
-      const currentRefsText = getReferencesText();
+      const currentRefsText = getReferencesText(caseId);
       if (currentRefsText?.trim()) {
         requestBody.referencesText = currentRefsText;
       }
