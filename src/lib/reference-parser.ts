@@ -25,7 +25,7 @@ export interface ParsedReferences {
 
 const VALID_SOURCES = new Set(["kb", "practice"]);
 
-const JSON_FENCE_RE = /```json\s*\n([\s\S]*?)\n```/;
+const JSON_FENCE_RE = /```json\s*\n([\s\S]*?)\n```/g;
 
 function validateSourceRef(obj: unknown): SourceRef | null {
   if (typeof obj !== "object" || obj === null) return null;
@@ -34,7 +34,7 @@ function validateSourceRef(obj: unknown): SourceRef | null {
 
   if (typeof o.source !== "string" || !VALID_SOURCES.has(o.source)) return null;
   if (typeof o.docId !== "string" || o.docId.length === 0) return null;
-  if (typeof o.chunkIndex !== "number" || !Number.isFinite(o.chunkIndex)) return null;
+  if (typeof o.chunkIndex !== "number" || !Number.isInteger(o.chunkIndex)) return null;
 
   const title = typeof o.title === "string" ? o.title : "";
   const snippetOnly = o.snippet_only === true || o.chunkIndex === -1;
@@ -63,19 +63,24 @@ function validateSourceRef(obj: unknown): SourceRef | null {
 export function parseReferences(text: string): ParsedReferences {
   if (!text || !text.trim()) return { sources: [], rawBlocks: [] };
 
-  const rawBlocks = text.split("\n\n---\n\n").filter((b) => b.trim().length > 0);
+  const norm = text.replace(/\r\n/g, "\n");
+  const rawBlocks = norm.split("\n\n---\n\n").filter((b) => b.trim().length > 0);
   const sources: SourceRef[] = [];
 
   for (const block of rawBlocks) {
-    const match = JSON_FENCE_RE.exec(block);
-    if (!match) continue;
-
-    try {
-      const parsed = JSON.parse(match[1]);
-      const ref = validateSourceRef(parsed);
-      if (ref) sources.push(ref);
-    } catch {
-      // Malformed JSON — skip
+    const re = new RegExp(JSON_FENCE_RE.source, JSON_FENCE_RE.flags);
+    let match: RegExpExecArray | null;
+    while ((match = re.exec(block)) !== null) {
+      try {
+        const parsed = JSON.parse(match[1]);
+        const ref = validateSourceRef(parsed);
+        if (ref) {
+          sources.push(ref);
+          break; // first valid wins
+        }
+      } catch {
+        // Malformed JSON — try next fence
+      }
     }
   }
 
