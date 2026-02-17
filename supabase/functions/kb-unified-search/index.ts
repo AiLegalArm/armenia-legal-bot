@@ -204,25 +204,30 @@ serve(async (req) => {
       }
     }
 
-    // ─── Fetch true total chunk counts for practice docs ─────────────
+    // ─── Fetch true total chunk counts via RPC (from chunks table) ───
     const practiceDocIds = practiceDocs.map((d) => d.id);
     const trueTotalChunks = new Map<string, number>();
     if (practiceDocIds.length > 0) {
       try {
-        const { data: countData } = await sb
-          .from("legal_practice_kb")
-          .select("id, content_chunks")
-          .in("id", practiceDocIds);
-        if (countData) {
+        const { data: countData, error: countErr } = await sb.rpc(
+          "get_practice_total_chunks",
+          { p_ids: practiceDocIds },
+        );
+        if (countErr) {
+          warn("kb-unified-search", "Chunk count RPC failed", {
+            requestId,
+            error: countErr.message,
+          });
+        } else if (countData && Array.isArray(countData)) {
           for (const row of countData) {
-            trueTotalChunks.set(
-              row.id,
-              Array.isArray(row.content_chunks) ? row.content_chunks.length : 0,
-            );
+            trueTotalChunks.set(row.id, row.total_chunks ?? 0);
           }
         }
-      } catch (_e) {
-        // Non-fatal: fall back to returned chunk count
+      } catch (e) {
+        warn("kb-unified-search", "Chunk count RPC exception", {
+          requestId,
+          error: String(e),
+        });
       }
     }
 
@@ -263,7 +268,7 @@ serve(async (req) => {
         max_score: Number(doc.max_score) || 0,
         top_chunks: topChunks,
         returnedChunks: topChunks.length,
-        totalChunks: trueTotalChunks.get(doc.id) ?? docChunks.length,
+        totalChunks: Math.max(trueTotalChunks.get(doc.id) ?? 0, docChunks.length),
         preview,
       };
     });

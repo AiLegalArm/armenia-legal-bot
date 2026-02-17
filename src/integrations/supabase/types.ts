@@ -1898,6 +1898,13 @@ export type Database = {
           total_tokens: number
         }[]
       }
+      get_practice_total_chunks: {
+        Args: { p_ids: string[] }
+        Returns: {
+          id: string
+          total_chunks: number
+        }[]
+      }
       get_team_member_ids: { Args: { _leader_id: string }; Returns: string[] }
       get_user_roles: {
         Args: { _user_id: string }
