@@ -38,6 +38,7 @@ export interface KBDocument {
   key_paragraphs: KeyParagraph[];
   top_chunks: TopChunk[];
   totalChunks: number;
+  returnedChunks?: number;
   max_score?: number;
 }
 
