@@ -22,6 +22,7 @@ import { getRolePrompt, ROLE_CONFIGS, LegalRole } from "./prompts/role-prompts.t
 import { dualSearch } from "../_shared/rag-search.ts";
 import { buildSearchQuery, mapCategoryToPracticeCategory } from "./rag-search.ts";
 import { handleCors } from "../_shared/edge-security.ts";
+import { parseReferencesText, buildUserSourcesBlock } from "../_shared/reference-sources.ts";
 
 serve(async (req) => {
   const cors = handleCors(req);
@@ -53,6 +54,19 @@ serve(async (req) => {
 
     const body = await req.json();
     const request = validateRequest(body);
+    const referencesText: string = typeof body.referencesText === "string" ? body.referencesText : "";
+
+    // Parse user-selected sources (optional)
+    let userSourcesBlock = "";
+    if (referencesText.trim()) {
+      const { refs } = parseReferencesText(referencesText);
+      const capped = refs.slice(0, 10);
+      userSourcesBlock = buildUserSourcesBlock(capped);
+      if (refs.length > 10) {
+        userSourcesBlock += "\nNOTE: Only first 10 of " + refs.length + " user-selected sources included due to token budget.\n";
+      }
+      log("generate-document", "User sources parsed", { count: capped.length, total: refs.length });
+    }
 
     const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
     if (!LOVABLE_API_KEY) {
@@ -150,7 +164,11 @@ ${legalPracticeContext}
 LANGUAGE REQUIREMENT:
 ${languageNote}
 
-Generate a complete, professional legal document that is ready for submission to Armenian authorities/courts.
+${userSourcesBlock}
+
+${userSourcesBlock ? `If any user-selected source conflicts with the template structure or legal sources above, state the conflict explicitly before proceeding.
+When user-selected sources are provided, you MUST cite them by docId and chunkIndex in your document.
+` : ''}Generate a complete, professional legal document that is ready for submission to Armenian authorities/courts.
 Use the legal sources and court practice above to strengthen legal argumentation where applicable.`;
 
     // ==========================================================================

@@ -45,7 +45,8 @@ interface CaseData {
 
 export function useDocumentGenerator(
   caseData: CaseData | undefined,
-  preselectedType: 'appeal' | 'cassation' | null | undefined
+  preselectedType: 'appeal' | 'cassation' | null | undefined,
+  referencesText?: string
 ) {
   const { t, i18n } = useTranslation(["cases", "common"]);
   const { toast } = useToast();
@@ -265,27 +266,32 @@ export function useDocumentGenerator(
         }))
       };
 
+      const requestBody: Record<string, unknown> = {
+        templateId: selectedTemplate.id,
+        templateName: getTemplateName(selectedTemplate),
+        category: selectedTemplate.category,
+        subcategory: selectedTemplate.subcategory,
+        caseData: caseData || null,
+        sourceText: sourceText || null,
+        fileExtractedText: fileExtractedText || null,
+        recipientName,
+        recipientPosition,
+        recipientOrganization: finalRecipientOrg,
+        recipientAddress,
+        recipientPhones,
+        recipientEmail,
+        senderName,
+        senderAddress,
+        senderContact,
+        language,
+        additionalFields
+      };
+      if (referencesText?.trim()) {
+        requestBody.referencesText = referencesText;
+      }
+
       const { data, error } = await supabase.functions.invoke("generate-document", {
-        body: {
-          templateId: selectedTemplate.id,
-          templateName: getTemplateName(selectedTemplate),
-          category: selectedTemplate.category,
-          subcategory: selectedTemplate.subcategory,
-          caseData: caseData || null,
-          sourceText: sourceText || null,
-          fileExtractedText: fileExtractedText || null,
-          recipientName,
-          recipientPosition,
-          recipientOrganization: finalRecipientOrg,
-          recipientAddress,
-          recipientPhones,
-          recipientEmail,
-          senderName,
-          senderAddress,
-          senderContact,
-          language,
-          additionalFields
-        },
+        body: requestBody,
       });
 
       if (error) throw error;
