@@ -127,6 +127,10 @@ export interface MergedSearchItem {
   normalizedScore: number;
   preview: string;
   meta: Record<string, string>;
+  /** Best chunk index for insertion (if available) */
+  chunkIndex?: number;
+  /** Pre-built text for insertion (no extra network call) */
+  insertText?: string;
 }
 
 type ViewFilter = "all" | "kb" | "practice";
@@ -197,8 +201,10 @@ export function KBSearchPanel({ onInsertReference }: KBSearchPanelProps) {
 
     for (let i = 0; i < kbResults.length; i++) {
       const r = kbResults[i];
-      const preview = r.chunks.length > 0
-        ? (r.chunks[0].excerpt || "").substring(0, 300)
+      const bestChunk = r.chunks.length > 0 ? r.chunks[0] : null;
+      const preview = bestChunk ? (bestChunk.excerpt || "").substring(0, 300) : "";
+      const insertSnippet = bestChunk
+        ? (bestChunk.label ? bestChunk.label + "\n" : "") + bestChunk.excerpt
         : "";
       items.push({
         source: "kb",
@@ -211,6 +217,8 @@ export function KBSearchPanel({ onInsertReference }: KBSearchPanelProps) {
           ...(r.source_name ? { source: r.source_name } : {}),
           ...(r.article_number ? { article: r.article_number } : {}),
         },
+        chunkIndex: bestChunk?.chunk_index,
+        insertText: insertSnippet || undefined,
       });
     }
 
@@ -223,11 +231,15 @@ export function KBSearchPanel({ onInsertReference }: KBSearchPanelProps) {
 
     for (let i = 0; i < documents.length; i++) {
       const d = documents[i];
+      const hasTopChunk = d.top_chunks.length > 0;
       const preview = d.legal_reasoning_summary
         ? d.legal_reasoning_summary.substring(0, 300)
-        : d.top_chunks.length > 0
+        : hasTopChunk
           ? d.top_chunks[0].text.substring(0, 300)
           : "";
+      const insertSnippet = hasTopChunk
+        ? d.top_chunks[0].text
+        : d.legal_reasoning_summary || "";
       items.push({
         source: "practice",
         id: d.id,
@@ -239,6 +251,8 @@ export function KBSearchPanel({ onInsertReference }: KBSearchPanelProps) {
           court: COURT_LABELS[d.court_type] || d.court_type,
           outcome: OUTCOME_LABELS[d.outcome] || d.outcome,
         },
+        chunkIndex: hasTopChunk ? d.top_chunks[0].chunkIndex : undefined,
+        insertText: insertSnippet || undefined,
       });
     }
 
@@ -450,6 +464,13 @@ export function KBSearchPanel({ onInsertReference }: KBSearchPanelProps) {
                       item={item}
                       searchQuery={query}
                       onClick={() => handleMergedItemClick(item)}
+                      onInsert={onInsertReference && item.insertText ? () => {
+                        const sourceLabel = item.source === "kb" ? t("source_kb", "\u0555\u0580\u0565\u0576\u057D\u0564\u0580.") : t("source_practice", "\u054A\u0580\u0561\u056F\u057F.");
+                        const metaParts = [sourceLabel, item.title, ...Object.values(item.meta)].filter(Boolean);
+                        const header = `[${metaParts.join(" | ")}]`;
+                        const text = header + "\n" + item.insertText!;
+                        onInsertReference!(item.id, item.chunkIndex ?? 0, text);
+                      } : undefined}
                     />
                   ))}
                   <div className="flex items-center gap-2 pt-1">
@@ -562,7 +583,7 @@ export function KBSearchPanel({ onInsertReference }: KBSearchPanelProps) {
 // Merged Result Card (compact, click-to-navigate)
 // ================================================================
 
-function MergedResultCard({ item, searchQuery, onClick }: { item: MergedSearchItem; searchQuery?: string; onClick: () => void }) {
+function MergedResultCard({ item, searchQuery, onClick, onInsert }: { item: MergedSearchItem; searchQuery?: string; onClick: () => void; onInsert?: () => void }) {
   const { t } = useTranslation("kb");
   const scorePct = Math.round(item.normalizedScore * 100);
 
@@ -579,48 +600,58 @@ function MergedResultCard({ item, searchQuery, onClick }: { item: MergedSearchIt
   };
 
   return (
-    <button
-      onClick={onClick}
-      className="w-full text-left border rounded-md px-3 py-2 bg-card hover:bg-accent/50 transition-colors flex items-start gap-2"
-    >
-      {item.source === "kb" ? (
-        <BookOpen className="h-3.5 w-3.5 mt-0.5 shrink-0 text-primary" />
-      ) : (
-        <Gavel className="h-3.5 w-3.5 mt-0.5 shrink-0 text-muted-foreground" />
-      )}
-      <div className="flex-1 min-w-0">
-        <div className="flex items-center gap-1.5 flex-wrap">
-          <span className="text-xs font-medium whitespace-normal break-words leading-tight">
-            {renderHighlighted(item.title)}
-          </span>
-        </div>
-        <div className="flex items-center gap-1 mt-0.5 flex-wrap">
-          <Badge variant={item.source === "kb" ? "default" : "secondary"} className="text-[10px] py-0 px-1.5 h-4">
-            {item.source === "kb"
-              ? t("source_kb", "\u0555\u0580\u0565\u0576\u057D\u0564\u0580.")
-              : t("source_practice", "\u054A\u0580\u0561\u056F\u057F.")}
-          </Badge>
-          <Badge variant="outline" className="text-[10px] py-0 px-1.5 h-4">
-            {item.category}
-          </Badge>
-          {scorePct > 0 && (
-            <Badge variant="outline" className="text-[10px] py-0 px-1.5 h-4">
-              {scorePct}%
-            </Badge>
-          )}
-          {Object.entries(item.meta).map(([k, v]) => (
-            <Badge key={k} variant="outline" className="text-[10px] py-0 px-1.5 h-4">
-              {v}
-            </Badge>
-          ))}
-        </div>
-        {item.preview && (
-          <p className="text-[11px] text-muted-foreground line-clamp-2 mt-1 leading-snug">
-            {renderHighlighted(item.preview, 300)}
-          </p>
+    <div className="w-full text-left border rounded-md px-3 py-2 bg-card hover:bg-accent/50 transition-colors flex items-start gap-2">
+      <button onClick={onClick} className="flex items-start gap-2 flex-1 min-w-0 text-left">
+        {item.source === "kb" ? (
+          <BookOpen className="h-3.5 w-3.5 mt-0.5 shrink-0 text-primary" />
+        ) : (
+          <Gavel className="h-3.5 w-3.5 mt-0.5 shrink-0 text-muted-foreground" />
         )}
-      </div>
-    </button>
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-1.5 flex-wrap">
+            <span className="text-xs font-medium whitespace-normal break-words leading-tight">
+              {renderHighlighted(item.title)}
+            </span>
+          </div>
+          <div className="flex items-center gap-1 mt-0.5 flex-wrap">
+            <Badge variant={item.source === "kb" ? "default" : "secondary"} className="text-[10px] py-0 px-1.5 h-4">
+              {item.source === "kb"
+                ? t("source_kb", "\u0555\u0580\u0565\u0576\u057D\u0564\u0580.")
+                : t("source_practice", "\u054A\u0580\u0561\u056F\u057F.")}
+            </Badge>
+            <Badge variant="outline" className="text-[10px] py-0 px-1.5 h-4">
+              {item.category}
+            </Badge>
+            {scorePct > 0 && (
+              <Badge variant="outline" className="text-[10px] py-0 px-1.5 h-4">
+                {scorePct}%
+              </Badge>
+            )}
+            {Object.entries(item.meta).map(([k, v]) => (
+              <Badge key={k} variant="outline" className="text-[10px] py-0 px-1.5 h-4">
+                {v}
+              </Badge>
+            ))}
+          </div>
+          {item.preview && (
+            <p className="text-[11px] text-muted-foreground line-clamp-2 mt-1 leading-snug">
+              {renderHighlighted(item.preview, 300)}
+            </p>
+          )}
+        </div>
+      </button>
+      {onInsert && (
+        <Button
+          variant="ghost"
+          size="icon"
+          className="h-6 w-6 shrink-0 mt-0.5"
+          title={t("insert_reference", "Insert reference")}
+          onClick={(e) => { e.stopPropagation(); onInsert(); }}
+        >
+          <FileText className="h-3 w-3" />
+        </Button>
+      )}
+    </div>
   );
 }
 
