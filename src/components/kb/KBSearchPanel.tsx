@@ -1,6 +1,6 @@
-import { useState, useCallback, useMemo } from "react";
+import { useState, useCallback, useMemo, useRef } from "react";
 import { useTranslation } from "react-i18next";
-import { Search, FileText, ChevronDown, ChevronRight, Loader2, Scale, AlertTriangle, BookOpen, Gavel, Maximize2, Minimize2 } from "lucide-react";
+import { Search, FileText, ChevronDown, ChevronRight, Loader2, Scale, AlertTriangle, BookOpen, Gavel, Maximize2, Minimize2, Copy, ClipboardList } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
@@ -9,6 +9,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
+import { Textarea } from "@/components/ui/textarea";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useLegalPracticeKB, type KBDocument, type PracticeCategory } from "@/hooks/useLegalPracticeKB";
 import { supabase } from "@/integrations/supabase/client";
@@ -170,6 +171,10 @@ export function KBSearchPanel({ onInsertReference }: KBSearchPanelProps) {
   const [viewFilter, setViewFilter] = useState<ViewFilter>("all");
   const [mergedVisibleCount, setMergedVisibleCount] = useState(MERGED_PAGE_SIZE);
 
+  // Internal references collector (used when no external consumer)
+  const [collectedRefs, setCollectedRefs] = useState<string[]>([]);
+  const [refsOpen, setRefsOpen] = useState(false);
+  const refsTextareaRef = useRef<HTMLTextAreaElement>(null);
   // Practice search state
   const [category, setCategory] = useState<PracticeCategory | "all">("all");
   const [expandedDocs, setExpandedDocs] = useState<Set<string>>(new Set());
@@ -354,9 +359,17 @@ export function KBSearchPanel({ onInsertReference }: KBSearchPanelProps) {
     }
   };
 
-  const handleInsertReference = (docId: string, chunkIndex: number, text: string) => {
-    if (onInsertReference) onInsertReference(docId, chunkIndex, text);
-  };
+  const handleInsertReference = useCallback((docId: string, chunkIndex: number, text: string) => {
+    if (onInsertReference) {
+      onInsertReference(docId, chunkIndex, text);
+    } else {
+      // Internal collector
+      setCollectedRefs((prev) => [...prev, text]);
+      setRefsOpen(true);
+      // Scroll textarea into view after state update
+      setTimeout(() => refsTextareaRef.current?.scrollIntoView({ behavior: "smooth", block: "nearest" }), 100);
+    }
+  }, [onInsertReference]);
 
   const clearAll = () => {
     clearPractice();
@@ -588,6 +601,62 @@ export function KBSearchPanel({ onInsertReference }: KBSearchPanelProps) {
             )}
           </div>
         </ScrollArea>
+
+        {/* ─── Internal references panel ─── */}
+        {!onInsertReference && (
+          <Collapsible open={refsOpen} onOpenChange={setRefsOpen}>
+            <CollapsibleTrigger asChild>
+              <Button variant="outline" size="sm" className="w-full h-7 text-xs gap-1.5">
+                <ClipboardList className="h-3 w-3" />
+                {t("references_title", "\u0540\u0572\u0578\u0582\u0574\u0576\u0565\u0580")}
+                {collectedRefs.length > 0 && (
+                  <Badge variant="secondary" className="text-[10px] py-0 px-1.5 h-4 ml-1">
+                    {collectedRefs.length}
+                  </Badge>
+                )}
+                {refsOpen ? <ChevronDown className="h-3 w-3 ml-auto" /> : <ChevronRight className="h-3 w-3 ml-auto" />}
+              </Button>
+            </CollapsibleTrigger>
+            <CollapsibleContent className="pt-2 space-y-1.5">
+              {collectedRefs.length === 0 ? (
+                <p className="text-[11px] text-muted-foreground text-center py-2">
+                  {t("references_empty", "\u0540\u0572\u0578\u0582\u0574\u0576\u0565\u0580 \u0579\u056F\u0561\u0576\u0589 \u054D\u0565\u0572\u0574\u0565\u0584 Insert \u056F\u0578\u0573\u0561\u056F\u0568\u0589")}
+                </p>
+              ) : (
+                <>
+                  <Textarea
+                    ref={refsTextareaRef}
+                    readOnly
+                    value={collectedRefs.join("\n\n---\n\n")}
+                    className="text-xs min-h-[100px] max-h-[200px] resize-y"
+                  />
+                  <div className="flex gap-1.5">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="h-7 text-xs gap-1"
+                      onClick={() => {
+                        navigator.clipboard.writeText(collectedRefs.join("\n\n---\n\n"));
+                        import("sonner").then(({ toast }) => toast.success(t("references_copied", "\u054A\u0561\u057F\u0573\u0565\u0576\u057E\u0565\u0581")));
+                      }}
+                    >
+                      <Copy className="h-3 w-3" />
+                      {t("copy_references", "\u054A\u0561\u057F\u0573\u0565\u0576\u0565\u056C")}
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="h-7 text-xs text-destructive"
+                      onClick={() => setCollectedRefs([])}
+                    >
+                      {t("clear", "\u0544\u0561\u0584\u0580\u0565\u056C")}
+                    </Button>
+                  </div>
+                </>
+              )}
+            </CollapsibleContent>
+          </Collapsible>
+        )}
 
         {hasAnyResults && (
           <Button variant="ghost" size="sm" onClick={clearAll} className="text-xs">
