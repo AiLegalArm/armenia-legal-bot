@@ -321,13 +321,68 @@ export function KBSearchPanel({ caseId, onInsertReference, onReferencesChange }:
     }
   }, []);
 
+  // ─── Unified search via Edge function (with fallback) ────────────
+  const searchUnified = useCallback(async (searchQuery: string, cat: string | null) => {
+    const trimmed = searchQuery.trim();
+    if (trimmed.length < 2) return false;
+
+    try {
+      const { data, error } = await supabase.functions.invoke("kb-unified-search", {
+        body: {
+          query: trimmed,
+          category: cat,
+          kbCategory: null,
+        },
+      });
+
+      if (error) throw error;
+      if (!data || !data.merged) throw new Error("Invalid response");
+
+      // Parse KB results from unified response
+      const kbDocs = data.kb?.documents || [];
+      const kbChunksRaw = data.kb?.chunks || [];
+      const chunksByDoc = new Map<string, KBChunkResult[]>();
+      for (const chunk of kbChunksRaw) {
+        const arr = chunksByDoc.get(chunk.doc_id) || [];
+        arr.push(chunk);
+        chunksByDoc.set(chunk.doc_id, arr);
+      }
+      const globalMax = kbDocs.reduce((mx: number, d: { max_score: number }) => Math.max(mx, Number(d.max_score) || 0), 0);
+      const parsedKb: KBSearchResult[] = kbDocs.map((doc: { id: string; title: string; category: string; source_name: string | null; article_number: string | null; source_url: string | null; max_score: number }) => {
+        const raw = Number(doc.max_score) || 0;
+        const relevancePct = globalMax > 0 ? Math.round((raw / globalMax) * 100) : 0;
+        return { ...doc, relevancePct, chunks: chunksByDoc.get(doc.id) || [] };
+      });
+      setKbResults(parsedKb);
+
+      // Parse practice results - map to KBDocument shape expected by useLegalPracticeKB
+      // We use searchPractice internally for state, but also set results directly
+      // For practice, the unified endpoint returns items compatible with existing cards
+      // We trigger the practice search in parallel as fallback data source
+      return true;
+    } catch (e) {
+      console.warn("Unified search failed, falling back to parallel RPCs", e);
+      return false;
+    }
+  }, []);
+
   const handleSearch = async () => {
     if (!query.trim()) return;
     setMergedVisibleCount(MERGED_PAGE_SIZE);
-    await Promise.all([
-      searchPractice(query, category === "all" ? null : category),
-      searchKBLegislation(query),
+
+    const cat = category === "all" ? null : category;
+
+    // Try unified endpoint first
+    const [unifiedOk] = await Promise.all([
+      searchUnified(query, cat),
+      // Always run practice search in parallel (used for Practice tab cards with expand/lazy load)
+      searchPractice(query, cat),
     ]);
+
+    // If unified failed, fall back to separate KB search
+    if (!unifiedOk) {
+      await searchKBLegislation(query);
+    }
   };
 
   const handleKeyDown = (e: React.KeyboardEvent) => {

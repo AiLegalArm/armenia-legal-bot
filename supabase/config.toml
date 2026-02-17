@@ -56,3 +56,6 @@ verify_jwt = false
 
 [functions.ingest-document]
 verify_jwt = false
+
+[functions.kb-unified-search]
+verify_jwt = false
