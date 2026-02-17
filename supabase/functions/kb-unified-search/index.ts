@@ -204,6 +204,28 @@ serve(async (req) => {
       }
     }
 
+    // ─── Fetch true total chunk counts for practice docs ─────────────
+    const practiceDocIds = practiceDocs.map((d) => d.id);
+    const trueTotalChunks = new Map<string, number>();
+    if (practiceDocIds.length > 0) {
+      try {
+        const { data: countData } = await sb
+          .from("legal_practice_kb")
+          .select("id, content_chunks")
+          .in("id", practiceDocIds);
+        if (countData) {
+          for (const row of countData) {
+            trueTotalChunks.set(
+              row.id,
+              Array.isArray(row.content_chunks) ? row.content_chunks.length : 0,
+            );
+          }
+        }
+      } catch (_e) {
+        // Non-fatal: fall back to returned chunk count
+      }
+    }
+
     // ─── Group practice chunks by doc ────────────────────────────────
     const practiceChunksByDoc = new Map<string, PracticeChunk[]>();
     for (const c of practiceChunks) {
@@ -223,8 +245,12 @@ serve(async (req) => {
     // ─── Build practice response items ───────────────────────────────
     const practiceItems = practiceDocs.map((doc) => {
       const docChunks = practiceChunksByDoc.get(doc.id) || [];
-      const preview = docChunks.length > 0
-        ? docChunks[0].excerpt.substring(0, MAX_PREVIEW_CHARS)
+      const topChunks = docChunks.slice(0, MAX_CHUNKS_PER_DOC).map((c) => ({
+        chunkIndex: c.chunk_index,
+        text: c.excerpt.substring(0, MAX_PREVIEW_CHARS),
+      }));
+      const preview = topChunks.length > 0
+        ? topChunks[0].text
         : "";
       return {
         id: doc.id,
@@ -235,11 +261,10 @@ serve(async (req) => {
         decision_date: doc.decision_date,
         source_url: doc.source_url,
         max_score: Number(doc.max_score) || 0,
-        top_chunks: docChunks.slice(0, MAX_CHUNKS_PER_DOC).map((c) => ({
-          chunkIndex: c.chunk_index,
-          text: c.excerpt.substring(0, MAX_PREVIEW_CHARS),
-        })),
-        totalChunks: docChunks.length,
+        top_chunks: topChunks,
+        returnedChunks: topChunks.length,
+        totalChunks: trueTotalChunks.get(doc.id) ?? docChunks.length,
+        preview,
       };
     });
 
