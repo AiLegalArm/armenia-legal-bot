@@ -33,11 +33,12 @@ interface LegalChatBotProps {
   isOpen?: boolean;
   onOpenChange?: (open: boolean) => void;
   referencesText?: string;
+  caseId?: string;
 }
 
-export function LegalChatBot({ isOpen: controlledIsOpen, onOpenChange, referencesText: propReferencesText }: LegalChatBotProps = {}) {
+export function LegalChatBot({ isOpen: controlledIsOpen, onOpenChange, referencesText: propReferencesText, caseId }: LegalChatBotProps = {}) {
   const { t } = useTranslation('ai');
-  const storeReferencesText = useReferencesText();
+  const storeReferencesText = useReferencesText(caseId);
   const effectiveReferencesText = propReferencesText || storeReferencesText;
   const [internalIsOpen, setInternalIsOpen] = useState(false);
   
