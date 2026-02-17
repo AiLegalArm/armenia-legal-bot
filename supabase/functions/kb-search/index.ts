@@ -1,10 +1,13 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.91.1";
 import { handleCors } from "../_shared/edge-security.ts";
+import { log, warn, err } from "../_shared/safe-logger.ts";
+
+// ─── Types ───────────────────────────────────────────────────────────────────
 
 interface SearchRequest {
   query: string;
-  category?: "criminal" | "civil" | "administrative" | "echr" | null;
+  category?: "criminal" | "civil" | "administrative" | "echr" | "constitutional" | null;
   limitDocs?: number;
   limitChunksPerDoc?: number;
 }
@@ -29,227 +32,236 @@ interface SearchResultDocument {
   totalChunks: number;
 }
 
+interface ChunksRpcDoc {
+  id: string;
+  title: string;
+  practice_category: string;
+  court_type: string;
+  outcome: string;
+  decision_date: string | null;
+  source_url: string | null;
+  max_score: number;
+}
+
+interface ChunksRpcChunk {
+  doc_id: string;
+  chunk_index: number;
+  excerpt: string;
+  score: number;
+}
+
+interface ChunksRpcResponse {
+  documents: ChunksRpcDoc[];
+  chunks: ChunksRpcChunk[];
+}
+
+// ─── Constants ───────────────────────────────────────────────────────────────
+
+const ALLOWED_CATEGORIES = new Set([
+  "criminal", "civil", "administrative", "echr", "constitutional",
+]);
+
+// ─── Handler ─────────────────────────────────────────────────────────────────
+
 serve(async (req) => {
-  // Handle CORS
   const cors = handleCors(req);
   if (cors.errorResponse) return cors.errorResponse;
   const corsHeaders = cors.corsHeaders!;
+  const requestId = crypto.randomUUID().slice(0, 8);
 
   try {
     // === AUTH GUARD ===
     const authHeader = req.headers.get("Authorization") ?? "";
     const token = authHeader.replace("Bearer ", "");
     if (!token) {
-      return new Response(JSON.stringify({ error: "Unauthorized" }), {
-        status: 401,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
+      return json(corsHeaders, { error: "Unauthorized" }, 401);
     }
     const sb = createClient(
       Deno.env.get("SUPABASE_URL")!,
       Deno.env.get("SUPABASE_ANON_KEY")!,
-      { global: { headers: { Authorization: authHeader } } }
+      { global: { headers: { Authorization: authHeader } } },
     );
     const { data: claimsData, error: authError } = await sb.auth.getClaims(token);
     if (authError || !claimsData?.claims?.sub) {
-      return new Response(JSON.stringify({ error: "Unauthorized" }), {
-        status: 401,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
+      return json(corsHeaders, { error: "Unauthorized" }, 401);
     }
-    // === END AUTH GUARD ===
-
-    const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
-    const supabaseKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
-    const supabase = createClient(supabaseUrl, supabaseKey);
 
     if (req.method !== "POST") {
-      return new Response(
-        JSON.stringify({ error: "Method not allowed" }),
-        { status: 405, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-      );
+      return json(corsHeaders, { error: "Method not allowed" }, 405);
     }
 
+    // === Parse & validate ===
     const body: SearchRequest = await req.json();
-    const {
-      query,
-      category = null,
-      limitDocs = 5,
-      limitChunksPerDoc = 3,
-    } = body;
+    const { category = null, limitDocs = 20, limitChunksPerDoc = 4 } = body;
+    const rawQuery = body.query;
 
-    if (!query || typeof query !== "string" || query.trim().length === 0) {
-      return new Response(
-        JSON.stringify({ error: "Query is required" }),
-        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-      );
+    if (!rawQuery || typeof rawQuery !== "string") {
+      return json(corsHeaders, { error: "Query is required" }, 400);
     }
 
-    // B) category allowlist
-    const ALLOWED_CATEGORIES = new Set(["criminal", "civil", "administrative", "echr", "constitutional"]);
+    const query = normalizeSearchQuery(rawQuery);
+    if (query.length < 2) {
+      return json(corsHeaders, { error: "Query too short" }, 400);
+    }
+
     if (category != null && !ALLOWED_CATEGORIES.has(category)) {
-      return new Response(
-        JSON.stringify({ error: "Invalid category" }),
-        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-      );
+      return json(corsHeaders, { error: "Invalid category" }, 400);
     }
 
-    // A) limitDocs cap
-    const safeLimitDocs = Math.max(1, Math.min(Number(limitDocs) || 5, 20));
+    const safeLimitDocs = Math.max(1, Math.min(Number(limitDocs) || 20, 20));
+    const safeChunksPerDoc = Math.max(1, Math.min(Number(limitChunksPerDoc) || 4, 6));
 
-    const searchTerm = sanitizeForPostgrest(query.trim().toLowerCase());
+    log("kb-search", "Search start", { requestId, qLen: query.length, category });
 
-    // Build the query
-    let dbQuery = supabase
-      .from("legal_practice_kb")
-      .select(`
-        id,
-        title,
-        practice_category,
-        court_type,
-        outcome,
-        applied_articles,
-        key_violations,
-        legal_reasoning_summary,
-        decision_map,
-        key_paragraphs,
-        content_chunks
-      `)
-      .eq("is_active", true)
-      .limit(safeLimitDocs);
+    // === PRIMARY: search_legal_practice_chunks RPC ===
+    let path = "chunks";
+    let results: SearchResultDocument[];
 
-    // Apply category filter if provided
-    if (category) {
-      dbQuery = dbQuery.eq("practice_category", category);
+    try {
+      results = await searchViaChunksRpc(sb, query, category, safeLimitDocs, safeChunksPerDoc);
+    } catch (e) {
+      warn("kb-search", "Chunks RPC failed, falling back", { requestId });
+      results = [];
     }
 
-    // Search using ilike on indexed/small fields only (content_text is too large for ilike)
-    dbQuery = dbQuery.or(
-      `title.ilike.%${searchTerm}%,` +
-      `legal_reasoning_summary.ilike.%${searchTerm}%`
-    );
-
-    const { data: documents, error } = await dbQuery;
-
-    if (error) {
-      console.error(JSON.stringify({ ts: new Date().toISOString(), lvl: "error", fn: "kb-search", msg: "DB search failed" }));
-      return new Response(
-        JSON.stringify({ error: "Database search failed" }),
-        { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-      );
+    // === FALLBACK: search_legal_practice_kb RPC ===
+    if (results.length === 0) {
+      path = "fallback";
+      try {
+        results = await searchViaFallbackRpc(sb, query, category, safeLimitDocs);
+      } catch (e) {
+        err("kb-search", "Fallback RPC also failed", e, { requestId });
+        results = [];
+      }
     }
 
-    // Process documents and compute top chunks
-    const results: SearchResultDocument[] = (documents || []).map((doc) => {
-      const chunks = doc.content_chunks || [];
-      const totalChunks = chunks.length;
-
-      // Find most relevant chunks by keyword scoring
-      const topChunks = findRelevantChunks(
-        chunks,
-        searchTerm,
-        doc.key_paragraphs || [],
-        limitChunksPerDoc
-      );
-
-      // If no chunks available, return empty
-      const finalTopChunks = topChunks.length > 0 ? topChunks : [];
-      const finalTotalChunks = totalChunks > 0 ? totalChunks : 0;
-
-      return {
-        id: doc.id,
-        title: doc.title,
-        practice_category: doc.practice_category,
-        court_type: doc.court_type,
-        outcome: doc.outcome,
-        applied_articles: doc.applied_articles || [],
-        key_violations: doc.key_violations || [],
-        legal_reasoning_summary: doc.legal_reasoning_summary,
-        decision_map: doc.decision_map,
-        key_paragraphs: doc.key_paragraphs || [],
-        top_chunks: finalTopChunks,
-        totalChunks: finalTotalChunks,
-      };
-    });
+    log("kb-search", "Search done", { requestId, path, docs: results.length });
 
     return new Response(
       JSON.stringify({ documents: results }),
-      { headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      { headers: { ...corsHeaders, "Content-Type": "application/json" } },
     );
-
   } catch (error) {
-    console.error(JSON.stringify({ ts: new Date().toISOString(), lvl: "error", fn: "kb-search", msg: error instanceof Error ? error.message : "Unknown" }));
-    return new Response(
-      JSON.stringify({ error: error instanceof Error ? error.message : "Search failed" }),
-      { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-    );
+    err("kb-search", "Unhandled error", error, { requestId });
+    return json(corsHeaders, { error: "Search failed" }, 500);
   }
 });
 
-/**
- * Find most relevant chunks using keyword scoring
- */
-function findRelevantChunks(
-  chunks: string[],
-  searchTerm: string,
-  keyParagraphs: Array<{ tag?: string; chunkIdx?: number }>,
-  limit: number
-): TopChunk[] {
-  if (chunks.length === 0) return [];
+// ─── PRIMARY: Chunks RPC ─────────────────────────────────────────────────────
 
-  // Score each chunk
-  const scored: Array<{ index: number; score: number; text: string }> = [];
-  const searchWords = searchTerm.toLowerCase().split(/\s+/).filter(w => w.length > 2);
+async function searchViaChunksRpc(
+  sb: ReturnType<typeof createClient>,
+  query: string,
+  category: string | null,
+  limitDocs: number,
+  chunksPerDoc: number,
+): Promise<SearchResultDocument[]> {
+  const { data, error } = await sb.rpc("search_legal_practice_chunks", {
+    p_query: query,
+    category_filter: category ?? null,
+    p_limit_chunks: 120,
+    p_limit_docs: limitDocs,
+    p_chunks_per_doc: chunksPerDoc,
+  });
 
-  for (let i = 0; i < chunks.length; i++) {
-    const chunk = chunks[i];
-    const lowerChunk = chunk.toLowerCase();
-    let score = 0;
+  if (error) throw new Error(`chunks RPC: ${error.message}`);
+  if (!data) return [];
 
-    // Keyword matching
-    for (const word of searchWords) {
-      const matches = (lowerChunk.match(new RegExp(escapeRegex(word), "gi")) || []).length;
-      score += matches * 2;
-    }
+  const parsed: ChunksRpcResponse = typeof data === "string" ? JSON.parse(data) : data;
+  const docs = parsed.documents || [];
+  const chunks = parsed.chunks || [];
 
-    // Boost for key paragraph chunks
-    const isKeyParagraph = keyParagraphs.some(kp => kp.chunkIdx === i);
-    if (isKeyParagraph) {
-      score += 10;
-    }
+  if (docs.length === 0) return [];
 
-    // Boost first chunk slightly (often contains introduction)
-    if (i === 0) {
-      score += 5;
-    }
-
-    scored.push({ index: i, score, text: chunk });
+  // Group chunks by doc_id
+  const chunksByDoc = new Map<string, ChunksRpcChunk[]>();
+  for (const c of chunks) {
+    const arr = chunksByDoc.get(c.doc_id) || [];
+    arr.push(c);
+    chunksByDoc.set(c.doc_id, arr);
   }
 
-  // Sort by score descending
-  scored.sort((a, b) => b.score - a.score);
+  return docs.map((doc) => {
+    const docChunks = chunksByDoc.get(doc.id) || [];
+    return {
+      id: doc.id,
+      title: doc.title,
+      practice_category: doc.practice_category,
+      court_type: doc.court_type,
+      outcome: doc.outcome,
+      applied_articles: [],
+      key_violations: [],
+      legal_reasoning_summary: null,
+      decision_map: null,
+      key_paragraphs: [],
+      top_chunks: docChunks.map((c) => ({
+        chunkIndex: c.chunk_index,
+        text: c.excerpt,
+      })),
+      totalChunks: docChunks.length,
+    };
+  });
+}
 
-  // Return top chunks
-  return scored.slice(0, limit).map((s) => ({
-    chunkIndex: s.index,
-    text: s.text, // Return full chunk text
+// ─── FALLBACK: search_legal_practice_kb RPC ──────────────────────────────────
+
+async function searchViaFallbackRpc(
+  sb: ReturnType<typeof createClient>,
+  query: string,
+  category: string | null,
+  limitDocs: number,
+): Promise<SearchResultDocument[]> {
+  const { data, error } = await sb.rpc("search_legal_practice_kb", {
+    search_query: query,
+    category_filter: category ?? null,
+    limit_docs: limitDocs,
+  });
+
+  if (error) throw new Error(`fallback RPC: ${error.message}`);
+  if (!data || !Array.isArray(data)) return [];
+
+  return data.map((r: Record<string, unknown>) => ({
+    id: r.id as string,
+    title: r.title as string,
+    practice_category: (r.practice_category ?? "") as string,
+    court_type: (r.court_type ?? "") as string,
+    outcome: (r.outcome ?? "") as string,
+    applied_articles: (r.applied_articles ?? []) as unknown[],
+    key_violations: (r.key_violations ?? []) as string[],
+    legal_reasoning_summary: (r.legal_reasoning_summary ?? r.content_snippet ?? null) as string | null,
+    decision_map: null,
+    key_paragraphs: [],
+    top_chunks: [],
+    totalChunks: 0,
   }));
 }
 
-function escapeRegex(str: string): string {
-  return str.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-}
+// ─── Helpers ─────────────────────────────────────────────────────────────────
 
 /**
- * Sanitize user input for safe use in PostgREST .or()/.ilike() filters.
- * Strips characters that act as PostgREST operators/delimiters and
- * escapes SQL LIKE wildcards (% and _).
+ * Normalize search query: strip HTML, control chars, collapse whitespace,
+ * cap length. Preserves Armenian (U+0531-U+058F) and Cyrillic.
  */
-function sanitizeForPostgrest(input: string): string {
-  return input
-    .replace(/[%_]/g, "")          // remove SQL LIKE wildcards
-    .replace(/[(),.*\\]/g, "")     // remove PostgREST metacharacters
-    .replace(/\s+/g, " ")         // normalize whitespace
-    .trim()
-    .substring(0, 200);           // hard length cap
+function normalizeSearchQuery(raw: string): string {
+  let q = raw
+    .replace(/<[^>]*>/g, "")              // strip HTML tags
+    .replace(/&[a-zA-Z]+;/g, "")          // strip HTML entities
+    // deno-lint-ignore no-control-regex
+    .replace(/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/g, "") // control chars (keep \n \r \t)
+    .replace(/\s+/g, " ")                 // collapse whitespace
+    .trim();
+
+  if (q.length > 200) q = q.substring(0, 200);
+  return q;
+}
+
+function json(
+  corsHeaders: Record<string, string>,
+  body: Record<string, unknown>,
+  status: number,
+): Response {
+  return new Response(JSON.stringify(body), {
+    status,
+    headers: { ...corsHeaders, "Content-Type": "application/json" },
+  });
 }
