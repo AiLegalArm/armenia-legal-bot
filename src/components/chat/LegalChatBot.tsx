@@ -38,7 +38,8 @@ interface LegalChatBotProps {
 
 export function LegalChatBot({ isOpen: controlledIsOpen, onOpenChange, referencesText: propReferencesText, caseId }: LegalChatBotProps = {}) {
   const { t } = useTranslation('ai');
-  const storeReferencesText = useReferencesText(caseId);
+  const storeKey = caseId ?? "_global";
+  const storeReferencesText = useReferencesText(storeKey);
   const effectiveReferencesText = propReferencesText || storeReferencesText;
   const [internalIsOpen, setInternalIsOpen] = useState(false);
   

@@ -14,6 +14,7 @@ import { Label } from '@/components/ui/label';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { exportAnalysisToPDF, exportMultipleAnalysesToPDF } from '@/lib/pdfExport';
 import { Loader2, Brain, Download, FileSignature, Save, AlertTriangle, Check } from 'lucide-react';
+import { useReferencesText } from '@/lib/references-store';
 
 interface CaseAIAnalysisPanelProps {
   caseId: string;
@@ -23,6 +24,7 @@ interface CaseAIAnalysisPanelProps {
   caseTitle: string;
   aiCreditsExhausted: boolean;
   onOpenComplaintGenerator: () => void;
+  /** @deprecated Use the centralized references store instead */
   referencesText?: string;
 }
 
@@ -34,8 +36,9 @@ export function CaseAIAnalysisPanel({
   caseTitle,
   aiCreditsExhausted,
   onOpenComplaintGenerator,
-  referencesText
+  referencesText: _legacyReferencesText
 }: CaseAIAnalysisPanelProps) {
+  const referencesText = useReferencesText(caseId);
   const { t, i18n } = useTranslation(['ai', 'cases', 'common', 'disclaimer', 'errors']);
   const { user } = useAuth();
   const { toast } = useToast();
