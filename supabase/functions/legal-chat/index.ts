@@ -8,6 +8,7 @@ import { log, warn, err } from "../_shared/safe-logger.ts";
 import { searchKB, searchPractice, formatKBContext, formatPracticeContext as formatPracticeCtx, temporalDisclaimer } from "../_shared/rag-search.ts";
 import type { KBSearchResult, PracticeSearchResult } from "../_shared/rag-types.ts";
 import { handleCors } from "../_shared/edge-security.ts";
+import { parseReferencesText, buildUserSourcesBlock } from "../_shared/reference-sources.ts";
 
 // Types now imported from _shared/rag-types.ts
 type LegalPracticeResult = PracticeSearchResult;
@@ -200,7 +201,9 @@ serve(async (req) => {
     }
     // === END AUTH GUARD ===
 
-    const { message, conversationHistory, caseDate } = await req.json();
+    const reqBody = await req.json();
+    const { message, conversationHistory, caseDate } = reqBody;
+    const referencesText: string = typeof reqBody.referencesText === "string" ? reqBody.referencesText : "";
 
     if (!message || typeof message !== "string") {
       return new Response(
@@ -285,10 +288,27 @@ serve(async (req) => {
       logInjectionAttempt("legal-chat", "USER_MESSAGE", messageScan);
     }
 
-    const systemPromptWithContext = LEGAL_AI_SYSTEM_PROMPT
+    // Parse user-selected sources (optional, no extra fetch)
+    let userSourcesBlock = "";
+    if (referencesText.trim()) {
+      const { refs } = parseReferencesText(referencesText);
+      const capped = refs.slice(0, 10);
+      userSourcesBlock = buildUserSourcesBlock(capped);
+      if (refs.length > 10) {
+        userSourcesBlock += "\nNOTE: Only first 10 of " + refs.length + " user-selected sources included due to token budget.\n";
+      }
+      log(FN, "User sources parsed", { count: capped.length, total: refs.length });
+    }
+
+    let systemPromptWithContext = LEGAL_AI_SYSTEM_PROMPT
       .replace("{CONTEXT}", budgeted.ragLegislation || "\u0533\u056B\u057F\u0565\u056C\u056B\u0584\u0576\u0565\u0580\u056B \u0562\u0561\u0566\u0561\u0575\u0578\u0582\u0574 \u0570\u0561\u0574\u0561\u057A\u0561\u057F\u0561\u057D\u056D\u0561\u0576 \u057F\u0565\u0572\u0565\u056F\u0561\u057F\u057E\u0578\u0582\u0569\u0575\u0578\u0582\u0576 \u0579\u056B \u0563\u057F\u0576\u057E\u0565\u056C\u0589")
       .replace("{PRACTICE_CONTEXT}", budgeted.ragPractice || "\u0534\u0561\u057F\u0561\u056F\u0561\u0576 \u057A\u0580\u0561\u056F\u057F\u056B\u056F\u0561\u0575\u056B \u0570\u0561\u0574\u0561\u057A\u0561\u057F\u0561\u057D\u056D\u0561\u0576 \u0578\u0580\u0578\u0577\u0578\u0582\u0574\u0576\u0565\u0580 \u0579\u0565\u0576 \u0563\u057F\u0576\u057E\u0565\u056C\u0589")
       .replace("{USER_MESSAGE}", secureSandbox("USER_MESSAGE", messageScan.sanitizedText, "legal-chat").output);
+
+    if (userSourcesBlock) {
+      systemPromptWithContext += "\n\n" + userSourcesBlock +
+        "\nWhen user-selected sources are provided above, you MUST cite them by docId and chunkIndex. Do NOT fetch additional data for these sources; use only the provided snippets.\n";
+    }
 
     // Build messages array with conversation history
     const messages: Array<{ role: string; content: string }> = [

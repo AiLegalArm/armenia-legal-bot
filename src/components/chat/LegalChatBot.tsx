@@ -31,9 +31,10 @@ const GREETING_MESSAGE = "\u0532\u0561\u0580\u0587 \u0541\u0565\u0566\u0589 \u05
 interface LegalChatBotProps {
   isOpen?: boolean;
   onOpenChange?: (open: boolean) => void;
+  referencesText?: string;
 }
 
-export function LegalChatBot({ isOpen: controlledIsOpen, onOpenChange }: LegalChatBotProps = {}) {
+export function LegalChatBot({ isOpen: controlledIsOpen, onOpenChange, referencesText }: LegalChatBotProps = {}) {
   const { t } = useTranslation('ai');
   const [internalIsOpen, setInternalIsOpen] = useState(false);
   
@@ -83,6 +84,7 @@ export function LegalChatBot({ isOpen: controlledIsOpen, onOpenChange }: LegalCh
         body: JSON.stringify({
           message: userMessage,
           conversationHistory: messages.slice(1), // Skip greeting
+          ...(referencesText?.trim() ? { referencesText } : {}),
         }),
       });
 

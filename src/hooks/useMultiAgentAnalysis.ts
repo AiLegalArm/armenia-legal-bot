@@ -46,8 +46,8 @@ interface UseMultiAgentAnalysisReturn {
   deleteVolume: (volumeId: string) => Promise<void>;
   
   // Agent execution
-  runAgent: (caseId: string, agentType: AgentType) => Promise<AgentAnalysisRun | null>;
-  runAllAgents: (caseId: string) => Promise<void>;
+  runAgent: (caseId: string, agentType: AgentType, referencesText?: string) => Promise<AgentAnalysisRun | null>;
+  runAllAgents: (caseId: string, referencesText?: string) => Promise<void>;
   loadRuns: (caseId: string) => Promise<void>;
   
   // Evidence registry
@@ -164,7 +164,7 @@ export function useMultiAgentAnalysis(): UseMultiAgentAnalysisReturn {
   }, []);
 
   // Run a single agent
-  const runAgent = useCallback(async (caseId: string, agentType: AgentType): Promise<AgentAnalysisRun | null> => {
+  const runAgent = useCallback(async (caseId: string, agentType: AgentType, referencesText?: string): Promise<AgentAnalysisRun | null> => {
     setIsLoading(true);
     setCurrentAgent(agentType);
     
@@ -186,12 +186,17 @@ export function useMultiAgentAnalysis(): UseMultiAgentAnalysisReturn {
       }
       
       // Call the edge function
+      const requestBody: Record<string, unknown> = {
+        caseId,
+        agentType,
+        runId: run.id
+      };
+      if (referencesText?.trim()) {
+        requestBody.referencesText = referencesText;
+      }
+
       const { data, error } = await supabase.functions.invoke("multi-agent-analyze", {
-        body: {
-          caseId,
-          agentType,
-          runId: run.id
-        }
+        body: requestBody
       });
       
       if (error) {
@@ -284,7 +289,7 @@ export function useMultiAgentAnalysis(): UseMultiAgentAnalysisReturn {
   }, [t]);
 
   // Run all agents sequentially
-  const runAllAgents = useCallback(async (caseId: string) => {
+  const runAllAgents = useCallback(async (caseId: string, referencesText?: string) => {
     const agentOrder: AgentType[] = [
       "evidence_collector",
       "evidence_admissibility",
@@ -301,7 +306,7 @@ export function useMultiAgentAnalysis(): UseMultiAgentAnalysisReturn {
     
     try {
       for (const agentType of agentOrder) {
-        const result = await runAgent(caseId, agentType);
+        const result = await runAgent(caseId, agentType, referencesText);
         if (!result) {
           toast.error(`${t("ai:analysis_failed")}: ${agentType}`);
           break;
