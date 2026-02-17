@@ -503,7 +503,7 @@ serve(async (req) => {
     const budgetedRag = budgeted.ragLegislation || ragContext || "";
     // ====== PARSE USER-PROVIDED SOURCES ======
     let userSourcesBlock = "";
-    const parsedUserSources: UserSourceRef[] = [];
+    const parsedUserSources: Array<{ ref: UserSourceRef; snippet: string }> = [];
 
     if (referencesText?.trim()) {
       const VALID_SOURCES = new Set(["kb", "practice"]);
@@ -530,13 +530,20 @@ serve(async (req) => {
                   if (v != null) meta[k] = String(v);
                 }
               }
+              // Extract snippet from THIS block (text before the json fence)
+              const fenceIdx = block.indexOf("```json");
+              const snippet = fenceIdx > 0 ? block.substring(0, fenceIdx).trim() : "";
+
               parsedUserSources.push({
-                source: obj.source as "kb" | "practice",
-                docId: obj.docId,
-                chunkIndex: obj.chunkIndex,
-                title,
-                meta,
-                snippetOnly: obj.snippet_only === true || obj.chunkIndex === -1,
+                ref: {
+                  source: obj.source as "kb" | "practice",
+                  docId: obj.docId,
+                  chunkIndex: obj.chunkIndex,
+                  title,
+                  meta,
+                  snippetOnly: obj.snippet_only === true || obj.chunkIndex === -1,
+                },
+                snippet,
               });
               break; // first valid per block
             }
@@ -552,21 +559,16 @@ serve(async (req) => {
         userSourcesBlock += "Each citation must reference the source docId and chunkIndex. ";
         userSourcesBlock += "If these sources are insufficient for a complete analysis, explicitly state which areas lack source coverage.\n\n";
 
-        // Extract snippet text from blocks (text between header and json fence)
         for (let i = 0; i < parsedUserSources.length; i++) {
-          const ref = parsedUserSources[i];
-          const block = blocks[i] || "";
-          // Extract snippet: everything between the first line and the json fence
-          const fenceIdx = block.indexOf("```json");
-          const snippetText = fenceIdx > 0 ? block.substring(0, fenceIdx).trim() : "";
+          const { ref, snippet } = parsedUserSources[i];
 
           userSourcesBlock += `### Source ${i + 1}: ${ref.title}\n`;
           userSourcesBlock += `[docId: ${ref.docId}, chunkIndex: ${ref.chunkIndex}, type: ${ref.source}]\n`;
           if (Object.keys(ref.meta).length > 0) {
             userSourcesBlock += `Meta: ${JSON.stringify(ref.meta)}\n`;
           }
-          if (snippetText) {
-            userSourcesBlock += `Content:\n${snippetText}\n`;
+          if (snippet) {
+            userSourcesBlock += `Content:\n${snippet}\n`;
           }
           userSourcesBlock += "\n";
         }
