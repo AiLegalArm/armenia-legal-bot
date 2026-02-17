@@ -2237,6 +2237,7 @@ export type Database = {
         | "prime_minister_decisions"
         | "arlis_am"
         | "datalex_am"
+        | "ministry_of_health"
       practice_category:
         | "criminal"
         | "civil"
@@ -2477,6 +2478,7 @@ export const Constants = {
         "prime_minister_decisions",
         "arlis_am",
         "datalex_am",
+        "ministry_of_health",
       ],
       practice_category: [
         "criminal",
