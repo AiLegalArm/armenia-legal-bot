@@ -383,6 +383,8 @@ export function KBSearchPanel({ caseId, onInsertReference, onReferencesChange }:
   const clearAll = () => {
     clearPractice();
     setKbResults([]);
+    clearReferences(storeKey);
+    setCollectedRefs([]);
   };
 
   const hasAnyResults = documents.length > 0 || kbResults.length > 0;
