@@ -504,6 +504,7 @@ serve(async (req) => {
       if (refs.length > 10) {
         userSourcesBlock += "\nNOTE: Only first 10 of " + refs.length + " user-selected sources included due to token budget.\n";
       }
+      console.log(JSON.stringify({ ts: new Date().toISOString(), lvl: "info", fn: "ai-analyze", msg: "User sources parsed", meta: { count: capped.length, total: refs.length } }));
     }
 
     // Build user message
