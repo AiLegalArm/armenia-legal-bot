@@ -176,5 +176,12 @@
   "collapse": "Collapse",
   "practice_show_more": "Show excerpts",
   "practice_show_less": "Collapse",
-  "practice_load_full": "Load full text"
+  "practice_load_full": "Load full text",
+  "unified_search_title": "Search",
+  "filter_all": "All",
+  "filter_kb": "Legislation",
+  "filter_practice": "Practice",
+  "source_kb": "Legisl.",
+  "source_practice": "Pract.",
+  "no_results_in_filter": "No results in this section"
 }
