@@ -375,6 +375,7 @@ export function KBSearchPanel({ caseId, onInsertReference, onReferencesChange }:
         key_paragraphs: [],
         top_chunks: p.top_chunks || [],
         totalChunks: p.totalChunks || 0,
+        returnedChunks: p.returnedChunks || 0,
         max_score: Number(p.max_score) || 0,
       }));
       setPracticeDocuments(practiceItems);
