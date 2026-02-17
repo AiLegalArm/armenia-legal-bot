@@ -33,6 +33,7 @@ export const allowedCategories: KbCategory[] = [
   'prime_minister_decisions',
   'arlis_am',
   'datalex_am',
+  'ministry_of_health',
 ];
 
 export const kbCategoryOptions = allowedCategories.map((value) => ({
