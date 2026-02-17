@@ -59,21 +59,36 @@ function renderValue(val: unknown): string {
   return String(val);
 }
 
+/**
+ * Safely clean JSON artifacts from text that might contain raw JSON data.
+ * Only attempts JSON.parse when text is short (<5000 chars), starts with '{',
+ * and contains a known content key — avoiding false positives on legal text
+ * that may contain braces (e.g. "{...}" in Armenian legal citations).
+ */
 function cleanJsonArtifacts(text: string): string {
   if (!text) return "";
-  let cleaned = text;
-  if ((cleaned.startsWith("{") || cleaned.startsWith("[")) && (cleaned.endsWith("}") || cleaned.endsWith("]"))) {
+
+  const trimmed = text.trimStart();
+  const shouldTryParse =
+    trimmed.length < 5000 &&
+    trimmed.startsWith("{") &&
+    trimmed.endsWith("}") &&
+    /"(?:text|title|value|name|description)"\s*:/.test(trimmed);
+
+  if (shouldTryParse) {
     try {
-      const parsed = JSON.parse(cleaned);
-      return renderValue(parsed);
-    } catch { /* not valid JSON */ }
+      const parsed = JSON.parse(trimmed);
+      if (typeof parsed === "object" && parsed !== null) {
+        return renderValue(parsed);
+      }
+    } catch { /* not valid JSON, fall through */ }
   }
-  cleaned = cleaned
-    .replace(/^\s*[\[{]\s*"[^"]*"\s*:\s*/m, "")
+
+  // Minimal unescape only
+  return text
     .replace(/\\n/g, "\n")
     .replace(/\\"/g, '"')
     .replace(/\\t/g, "\t");
-  return cleaned;
 }
 
 // ================================================================
