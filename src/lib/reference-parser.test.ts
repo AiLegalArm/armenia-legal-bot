@@ -55,9 +55,11 @@ describe("parseReferences", () => {
     expect(parseReferences(text).sources).toHaveLength(0);
   });
 
-  it("skips blocks with non-finite chunkIndex", () => {
+  it("skips blocks with non-integer chunkIndex", () => {
     const text = mkBlock({ source: "kb", docId: "x", chunkIndex: NaN, title: "T", meta: {} });
     expect(parseReferences(text).sources).toHaveLength(0);
+    const text2 = mkBlock({ source: "kb", docId: "x", chunkIndex: 1.5, title: "T", meta: {} });
+    expect(parseReferences(text2).sources).toHaveLength(0);
   });
 
   it("skips malformed JSON", () => {
@@ -96,5 +98,25 @@ describe("parseReferences", () => {
     );
     const result = parseReferences(blocks.join("\n\n---\n\n"));
     expect(result.sources.map((s) => s.docId)).toEqual(["a", "b", "c"]);
+  });
+
+  it("parses with \\r\\n line endings", () => {
+    const json = { source: "kb", docId: "crlf-1", chunkIndex: 0, title: "CRLF", meta: {} };
+    const text = `[Header]\r\nSnippet\r\n\`\`\`json\r\n${JSON.stringify(json)}\r\n\`\`\``;
+    const result = parseReferences(text);
+    expect(result.sources).toHaveLength(1);
+    expect(result.sources[0].docId).toBe("crlf-1");
+  });
+
+  it("handles multiple json fences, first valid wins", () => {
+    const bad = `\`\`\`json\n{broken}\n\`\`\``;
+    const good = { source: "practice", docId: "multi-1", chunkIndex: 0, title: "OK", meta: {} };
+    const goodFence = `\`\`\`json\n${JSON.stringify(good)}\n\`\`\``;
+    const ignored = { source: "kb", docId: "multi-2", chunkIndex: 1, title: "Ignored", meta: {} };
+    const ignoredFence = `\`\`\`json\n${JSON.stringify(ignored)}\n\`\`\``;
+    const block = `[Header]\nText\n${bad}\n${goodFence}\n${ignoredFence}`;
+    const result = parseReferences(block);
+    expect(result.sources).toHaveLength(1);
+    expect(result.sources[0].docId).toBe("multi-1");
   });
 });
