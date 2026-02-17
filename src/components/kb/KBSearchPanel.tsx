@@ -13,6 +13,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useLegalPracticeKB, type KBDocument, type PracticeCategory } from "@/hooks/useLegalPracticeKB";
 import { supabase } from "@/integrations/supabase/client";
+import { toast } from "sonner";
 import { highlightTerms } from "@/lib/snippet-extractor";
 
 const CATEGORY_LABELS: Record<PracticeCategory, string> = {
@@ -635,9 +636,21 @@ export function KBSearchPanel({ onInsertReference }: KBSearchPanelProps) {
                       variant="outline"
                       size="sm"
                       className="h-7 text-xs gap-1"
-                      onClick={() => {
-                        navigator.clipboard.writeText(collectedRefs.join("\n\n---\n\n"));
-                        import("sonner").then(({ toast }) => toast.success(t("references_copied", "\u054A\u0561\u057F\u0573\u0565\u0576\u057E\u0565\u0581")));
+                      onClick={async () => {
+                        const text = collectedRefs.join("\n\n---\n\n");
+                        try {
+                          await navigator.clipboard.writeText(text);
+                          toast.success(t("references_copied", "\u054A\u0561\u057F\u0573\u0565\u0576\u057E\u0565\u0581"));
+                        } catch {
+                          // Fallback: select textarea content
+                          try {
+                            refsTextareaRef.current?.select();
+                            document.execCommand("copy");
+                            toast.success(t("references_copied", "\u054A\u0561\u057F\u0573\u0565\u0576\u057E\u0565\u0581"));
+                          } catch {
+                            toast.error("Copy failed");
+                          }
+                        }
                       }}
                     >
                       <Copy className="h-3 w-3" />
