@@ -4,6 +4,7 @@ import { MULTI_AGENT_ANALYSIS, buildModelParams } from "../_shared/model-config.
 import { redactForLog } from "../_shared/pii-redactor.ts";
 import { searchKB, searchPractice, formatKBContext, formatPracticeContext as formatPracticeCtx } from "../_shared/rag-search.ts";
 import { handleCors } from "../_shared/edge-security.ts";
+import { parseReferencesText, buildUserSourcesBlock } from "../_shared/reference-sources.ts";
 
 // ==============================
 // AI LEGAL ARMENIA \u2014 AGENT PROMPTS (PRODUCTION)
@@ -666,7 +667,9 @@ serve(async (req) => {
     }
     // === END AUTH GUARD ===
 
-    const { caseId, agentType, runId, generateReport } = await req.json();
+    const body = await req.json();
+    const { caseId, agentType, runId, generateReport } = body;
+    const referencesText: string = typeof body.referencesText === "string" ? body.referencesText : "";
 
     if (!caseId || !agentType) {
       return new Response(JSON.stringify({ error: "Missing caseId or agentType" }), {
@@ -802,8 +805,21 @@ serve(async (req) => {
       }
     }
 
-    const userMessage = contextParts.join("\n");
-    const systemPrompt = AGENT_PROMPTS[agentType] || AGENT_PROMPTS.evidence_collector;
+    // Parse user-selected sources (optional)
+    let userSourcesBlock = "";
+    if (referencesText.trim()) {
+      const { refs } = parseReferencesText(referencesText);
+      const capped = refs.slice(0, 10);
+      userSourcesBlock = buildUserSourcesBlock(capped);
+      if (refs.length > 10) {
+        userSourcesBlock += "\nNOTE: Only first 10 of " + refs.length + " user-selected sources included due to token budget.\n";
+      }
+      console.log(JSON.stringify({ ts: new Date().toISOString(), lvl: "info", fn: "multi-agent", msg: "User sources parsed", count: capped.length, total: refs.length }));
+    }
+
+    const userMessage = contextParts.join("\n") + (userSourcesBlock ? "\n" + userSourcesBlock : "");
+    const systemPrompt = (AGENT_PROMPTS[agentType] || AGENT_PROMPTS.evidence_collector) +
+      (userSourcesBlock ? "\n\nWhen user-selected sources are provided, you MUST cite them by docId and chunkIndex in your analysis. These sources are mandatory references.\n" : "");
 
     // Call AI
     const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
