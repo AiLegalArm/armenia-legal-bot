@@ -1,4 +1,5 @@
 import { useState, useCallback, useMemo, useRef } from "react";
+import { appendReferenceBlock, clearReferences, useReferencesText } from "@/lib/references-store";
 import { useTranslation } from "react-i18next";
 import { Search, FileText, ChevronDown, ChevronRight, Loader2, Scale, AlertTriangle, BookOpen, Gavel, Maximize2, Minimize2, Copy, ClipboardList } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -164,10 +165,12 @@ function normalizeScores(scores: number[]): number[] {
 
 interface KBSearchPanelProps {
   onInsertReference?: (docId: string, chunkIndex: number, text: string) => void;
+  /** @deprecated Use the centralized references store instead */
   onReferencesChange?: (referencesText: string) => void;
 }
 
 export function KBSearchPanel({ onInsertReference, onReferencesChange }: KBSearchPanelProps) {
+  const storeReferencesText = useReferencesText();
   const { t } = useTranslation("kb");
   const [query, setQuery] = useState("");
   const [viewFilter, setViewFilter] = useState<ViewFilter>("all");
@@ -365,17 +368,15 @@ export function KBSearchPanel({ onInsertReference, onReferencesChange }: KBSearc
     if (onInsertReference) {
       onInsertReference(docId, chunkIndex, text);
     } else {
-      // Internal collector
-      setCollectedRefs((prev) => {
-        const next = [...prev, text];
-        onReferencesChange?.(next.join("\n\n---\n\n"));
-        return next;
-      });
+      // Use centralized store
+      appendReferenceBlock(text);
+      // Also notify legacy callback if provided
+      onReferencesChange?.(storeReferencesText ? storeReferencesText + "\n\n---\n\n" + text : text);
+      setCollectedRefs((prev) => [...prev, text]);
       setRefsOpen(true);
-      // Scroll textarea into view after state update
       setTimeout(() => refsTextareaRef.current?.scrollIntoView({ behavior: "smooth", block: "nearest" }), 100);
     }
-  }, [onInsertReference, onReferencesChange]);
+  }, [onInsertReference, onReferencesChange, storeReferencesText]);
 
   const clearAll = () => {
     clearPractice();
@@ -633,7 +634,7 @@ export function KBSearchPanel({ onInsertReference, onReferencesChange }: KBSearc
                   <Textarea
                     ref={refsTextareaRef}
                     readOnly
-                    value={collectedRefs.join("\n\n---\n\n")}
+                    value={storeReferencesText || collectedRefs.join("\n\n---\n\n")}
                     className="text-xs min-h-[100px] max-h-[200px] resize-y"
                   />
                   <div className="flex gap-1.5">
@@ -665,7 +666,7 @@ export function KBSearchPanel({ onInsertReference, onReferencesChange }: KBSearc
                       variant="ghost"
                       size="sm"
                       className="h-7 text-xs text-destructive"
-                      onClick={() => { setCollectedRefs([]); onReferencesChange?.(""); }}
+                      onClick={() => { setCollectedRefs([]); clearReferences(); onReferencesChange?.(""); }}
                     >
                       {t("clear", "\u0544\u0561\u0584\u0580\u0565\u056C")}
                     </Button>
