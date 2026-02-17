@@ -465,11 +465,14 @@ export function KBSearchPanel({ onInsertReference }: KBSearchPanelProps) {
                       searchQuery={query}
                       onClick={() => handleMergedItemClick(item)}
                       onInsert={onInsertReference && item.insertText ? () => {
+                        const MAX_INSERT = 800;
                         const sourceLabel = item.source === "kb" ? t("source_kb", "\u0555\u0580\u0565\u0576\u057D\u0564\u0580.") : t("source_practice", "\u054A\u0580\u0561\u056F\u057F.");
                         const metaParts = [sourceLabel, item.title, ...Object.values(item.meta)].filter(Boolean);
                         const header = `[${metaParts.join(" | ")}]`;
-                        const text = header + "\n" + item.insertText!;
-                        onInsertReference!(item.id, item.chunkIndex ?? 0, text);
+                        const raw = item.insertText!;
+                        const body = raw.length > MAX_INSERT ? raw.substring(0, MAX_INSERT) + "\u2026" : raw;
+                        const text = header + "\n" + body;
+                        onInsertReference!(item.id, item.chunkIndex ?? -1, text);
                       } : undefined}
                     />
                   ))}
