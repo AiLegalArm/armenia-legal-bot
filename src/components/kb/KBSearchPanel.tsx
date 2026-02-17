@@ -361,7 +361,7 @@ export function KBSearchPanel({ caseId, onInsertReference, onReferencesChange }:
         id: string; title: string; practice_category: string; court_type: string;
         outcome: string; decision_date: string | null; source_url: string | null;
         max_score: number; top_chunks: Array<{ chunkIndex: number; text: string }>;
-        totalChunks: number;
+        returnedChunks: number; totalChunks: number; preview: string;
       }) => ({
         id: p.id,
         title: p.title,
@@ -370,7 +370,7 @@ export function KBSearchPanel({ caseId, onInsertReference, onReferencesChange }:
         outcome: p.outcome,
         applied_articles: [],
         key_violations: [],
-        legal_reasoning_summary: null,
+        legal_reasoning_summary: p.top_chunks?.[0]?.text ?? null,
         decision_map: null,
         key_paragraphs: [],
         top_chunks: p.top_chunks || [],
