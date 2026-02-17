@@ -5,6 +5,7 @@ import { COMPLAINT_GENERATION, buildModelParams } from "../_shared/model-config.
 import { SYSTEM_PROMPT, COURT_INSTRUCTIONS, LANGUAGE_INSTRUCTIONS } from "./prompts/index.ts";
 import { validateRequest } from "./validators.ts";
 import { dualSearch } from "../_shared/rag-search.ts";
+import { parseReferencesText, buildUserSourcesBlock } from "../_shared/reference-sources.ts";
 import { buildSearchQuery, mapCourtTypeToPracticeCategory } from "./rag-search.ts";
 import { redactForLog } from "../_shared/pii-redactor.ts";
 import { log, err } from "../_shared/safe-logger.ts";
@@ -45,6 +46,19 @@ serve(async (req) => {
     const body = await req.json();
     const request = validateRequest(body);
     const anonymize = body.anonymize === true;
+    const referencesText: string = typeof body.referencesText === "string" ? body.referencesText : "";
+
+    // Parse user-selected sources (optional)
+    let userSourcesBlock = "";
+    if (referencesText.trim()) {
+      const { refs } = parseReferencesText(referencesText);
+      const capped = refs.slice(0, 10);
+      userSourcesBlock = buildUserSourcesBlock(capped);
+      if (refs.length > 10) {
+        userSourcesBlock += "\nNOTE: Only first 10 of " + refs.length + " user-selected sources included due to token budget.\n";
+      }
+      log("generate-complaint", "User sources parsed", { count: capped.length, total: refs.length });
+    }
 
     const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
     if (!LOVABLE_API_KEY) {
@@ -194,11 +208,13 @@ NOTE: The above section is supplementary context. Do NOT cite case names, number
 
 ${precedentGuardBlock}
 
+${userSourcesBlock}
+
 Based on the above document content, legal sources, and analogous court practice, draft a complete judicial complaint ready for filing.
 
 Follow the strict template structure. If critical information is missing, state what is needed before drafting.
 Use the court practice examples above to strengthen legal argumentation with relevant precedents.
-REMINDER: Only cite precedents from the RETRIEVED_PRECEDENTS list above. Paraphrasing is forbidden — use verbatim quotes only. Any citation not traceable to that list is a violation. End your output with the "PRECEDENTS CITED" section.`;
+${userSourcesBlock ? "When user-selected sources are provided, you MUST cite them by docId and chunkIndex in your analysis.\n" : ""}REMINDER: Only cite precedents from the RETRIEVED_PRECEDENTS list above. Paraphrasing is forbidden — use verbatim quotes only. Any citation not traceable to that list is a violation. End your output with the "PRECEDENTS CITED" section.`;
 
     log("generate-complaint", "Generating complaint", { courtType: request.courtType, language: request.language, textLen: request.extractedText.length });
 
