@@ -472,15 +472,22 @@ export function KBSearchPanel({ onInsertReference }: KBSearchPanelProps) {
                         const raw = item.insertText!;
                         const body = raw.length > MAX_INSERT ? raw.substring(0, MAX_INSERT) + "\u2026" : raw;
                         const chunkIdx = item.chunkIndex ?? -1;
+                        const sanitizeMeta = (m: Record<string, string>): Record<string, string> => {
+                          const out: Record<string, string> = {};
+                          for (const [k, v] of Object.entries(m)) {
+                            if (v != null && v !== "") out[k] = String(v);
+                          }
+                          return out;
+                        };
                         const refJson: Record<string, unknown> = {
                           source: item.source,
                           docId: item.id,
                           chunkIndex: chunkIdx,
                           title: item.title,
-                          meta: item.meta,
+                          meta: sanitizeMeta(item.meta),
                         };
                         if (chunkIdx === -1) refJson.snippet_only = true;
-                        const jsonBlock = "```json\n" + JSON.stringify(refJson) + "\n```";
+                        const jsonBlock = "```json\n" + JSON.stringify(refJson, ["source","docId","chunkIndex","title","meta","snippet_only"]) + "\n```";
                         const text = header + "\n" + body + "\n" + jsonBlock;
                         onInsertReference!(item.id, chunkIdx, text);
                       } : undefined}
