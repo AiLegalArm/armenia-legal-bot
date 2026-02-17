@@ -17,6 +17,7 @@ import {
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import ReactMarkdown from 'react-markdown';
+import { useReferencesText } from '@/lib/references-store';
 
 interface Message {
   role: 'user' | 'assistant';
@@ -34,8 +35,10 @@ interface LegalChatBotProps {
   referencesText?: string;
 }
 
-export function LegalChatBot({ isOpen: controlledIsOpen, onOpenChange, referencesText }: LegalChatBotProps = {}) {
+export function LegalChatBot({ isOpen: controlledIsOpen, onOpenChange, referencesText: propReferencesText }: LegalChatBotProps = {}) {
   const { t } = useTranslation('ai');
+  const storeReferencesText = useReferencesText();
+  const effectiveReferencesText = propReferencesText || storeReferencesText;
   const [internalIsOpen, setInternalIsOpen] = useState(false);
   
   // Support both controlled and uncontrolled modes
@@ -84,7 +87,7 @@ export function LegalChatBot({ isOpen: controlledIsOpen, onOpenChange, reference
         body: JSON.stringify({
           message: userMessage,
           conversationHistory: messages.slice(1), // Skip greeting
-          ...(referencesText?.trim() ? { referencesText } : {}),
+          ...(effectiveReferencesText?.trim() ? { referencesText: effectiveReferencesText } : {}),
         }),
       });
 

@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { useReferencesText } from "@/lib/references-store";
 import { useTranslation } from "react-i18next";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -54,6 +55,7 @@ export function MultiAgentPanel({ caseId, caseFacts, caseType, partyRole }: Mult
   const { t } = useTranslation(["ai", "cases"]);
   const [activeTab, setActiveTab] = useState("volumes");
   const [selectedRole, setSelectedRole] = useState(partyRole || "");
+  const referencesText = useReferencesText();
   
   const {
     isLoading,
@@ -139,7 +141,7 @@ export function MultiAgentPanel({ caseId, caseFacts, caseType, partyRole }: Mult
             {/* Action Buttons - Stack vertically on mobile */}
             <div className="flex flex-col sm:flex-row gap-2 w-full pt-1">
               <Button
-                onClick={() => runAllAgents(caseId)}
+                onClick={() => runAllAgents(caseId, referencesText || undefined)}
                 disabled={isLoading || volumes.length === 0}
                 size="sm"
                 className="w-full sm:flex-1 h-9 rounded-lg text-xs font-medium"
@@ -188,7 +190,7 @@ export function MultiAgentPanel({ caseId, caseFacts, caseType, partyRole }: Mult
                 className={`cursor-pointer transition-all duration-200 active:scale-[0.96] w-14 sm:w-auto shrink-0 ${
                   isCurrentAgent ? "ring-1.5 ring-primary shadow-sm" : ""
                 } ${status === "completed" ? "bg-accent/50" : ""}`}
-                onClick={() => !isLoading && runAgent(caseId, agent.type)}
+                onClick={() => !isLoading && runAgent(caseId, agent.type, referencesText || undefined)}
               >
                 <CardContent className="p-1.5 sm:p-2 text-center flex flex-col items-center justify-center h-full min-h-[52px] sm:min-h-[60px]">
                   <div className="text-sm sm:text-lg mb-0.5">{agent.icon}</div>
@@ -252,7 +254,7 @@ export function MultiAgentPanel({ caseId, caseFacts, caseType, partyRole }: Mult
                     agent={agent}
                     run={latestRun}
                     isRunning={currentAgent === agent.type}
-                    onRun={() => runAgent(caseId, agent.type)}
+                    onRun={() => runAgent(caseId, agent.type, referencesText || undefined)}
                     disabled={isLoading}
                   />
                 );

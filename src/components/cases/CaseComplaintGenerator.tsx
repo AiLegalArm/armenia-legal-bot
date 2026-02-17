@@ -18,6 +18,7 @@ import { cn } from "@/lib/utils";
 import { useAuth } from "@/hooks/useAuth";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
+import { getReferencesText } from "@/lib/references-store";
 
 // =============================================================================
 // TYPES
@@ -277,14 +278,20 @@ export function CaseComplaintGenerator({
 
       setState(prev => ({ ...prev, progress: 30 }));
 
-      const { data, error } = await supabase.functions.invoke("generate-complaint", {
-        body: {
+      const requestBody: Record<string, unknown> = {
           courtType,
           category,
           complaintType: complaintTypeId,
-          extractedText: combinedText.slice(0, 80000), // Limit text size
+          extractedText: combinedText.slice(0, 80000),
           language: lang === "hy" ? "hy" : lang === "ru" ? "ru" : "en",
-        }
+        };
+      const currentRefsText = getReferencesText();
+      if (currentRefsText?.trim()) {
+        requestBody.referencesText = currentRefsText;
+      }
+
+      const { data, error } = await supabase.functions.invoke("generate-complaint", {
+        body: requestBody
       });
 
       setState(prev => ({ ...prev, progress: 90 }));

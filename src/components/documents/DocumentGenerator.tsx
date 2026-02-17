@@ -16,7 +16,7 @@ import { SenderForm } from "./SenderForm";
 import { SourceTextForm } from "./SourceTextForm";
 import { LanguageSelector } from "./LanguageSelector";
 import { useDocumentGenerator } from "./useDocumentGenerator";
-
+import { useReferencesText } from "@/lib/references-store";
 interface DocumentGeneratorProps {
   caseData?: {
     id: string;
@@ -34,6 +34,7 @@ interface DocumentGeneratorProps {
 
 export function DocumentGenerator({ caseData, preselectedType }: DocumentGeneratorProps) {
   const { t, i18n } = useTranslation(["cases", "common"]);
+  const storeReferencesText = useReferencesText();
 
   const {
     // Templates
@@ -106,7 +107,7 @@ export function DocumentGenerator({ caseData, preselectedType }: DocumentGenerat
     validationFields,
     showPreviewModal,
     setShowPreviewModal,
-  } = useDocumentGenerator(caseData, preselectedType);
+  } = useDocumentGenerator(caseData, preselectedType, storeReferencesText || undefined);
 
   const labels = {
     validate: getText("\u054d\u057f\u0578\u0582\u0563\u0565\u056c \u057f\u057e\u0575\u0561\u056c\u0576\u0565\u0580\u0568", "\u041f\u0440\u043e\u0432\u0435\u0440\u0438\u0442\u044c \u0434\u0430\u043d\u043d\u044b\u0435", "Validate data"),
