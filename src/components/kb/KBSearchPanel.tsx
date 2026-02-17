@@ -471,8 +471,18 @@ export function KBSearchPanel({ onInsertReference }: KBSearchPanelProps) {
                         const header = `[${metaParts.join(" | ")}]`;
                         const raw = item.insertText!;
                         const body = raw.length > MAX_INSERT ? raw.substring(0, MAX_INSERT) + "\u2026" : raw;
-                        const text = header + "\n" + body;
-                        onInsertReference!(item.id, item.chunkIndex ?? -1, text);
+                        const chunkIdx = item.chunkIndex ?? -1;
+                        const refJson: Record<string, unknown> = {
+                          source: item.source,
+                          docId: item.id,
+                          chunkIndex: chunkIdx,
+                          title: item.title,
+                          meta: item.meta,
+                        };
+                        if (chunkIdx === -1) refJson.snippet_only = true;
+                        const jsonBlock = "```json\n" + JSON.stringify(refJson) + "\n```";
+                        const text = header + "\n" + body + "\n" + jsonBlock;
+                        onInsertReference!(item.id, chunkIdx, text);
                       } : undefined}
                     />
                   ))}
