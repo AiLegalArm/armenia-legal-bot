@@ -3,6 +3,7 @@
  * retry failed, and error report export.
  */
 
+import React from 'react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Progress } from '@/components/ui/progress';
@@ -73,7 +74,7 @@ interface BulkImportQueueProps {
   onDownloadErrors: () => void;
 }
 
-export function BulkImportQueue({
+export const BulkImportQueue = React.forwardRef<HTMLDivElement, BulkImportQueueProps>(function BulkImportQueue({
   items,
   isRunning,
   completed,
@@ -83,14 +84,14 @@ export function BulkImportQueue({
   onAbort,
   onClearCompleted,
   onDownloadErrors,
-}: BulkImportQueueProps) {
+}, ref) {
   const overallProgress = total > 0 ? Math.round((completed / total) * 100) : 0;
   const processing = items.find(it =>
     it.stage !== 'queued' && it.stage !== 'inserted' && it.stage !== 'error'
   );
 
   return (
-    <div className="space-y-4">
+    <div ref={ref} className="space-y-4">
       {/* Overall progress */}
       <div className="space-y-2">
         <div className="flex items-center justify-between text-sm">
@@ -236,4 +237,4 @@ export function BulkImportQueue({
       </div>
     </div>
   );
-}
+});
