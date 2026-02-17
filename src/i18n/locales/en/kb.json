@@ -183,5 +183,8 @@
   "filter_practice": "Practice",
   "source_kb": "Legisl.",
   "source_practice": "Pract.",
-  "no_results_in_filter": "No results in this section"
+  "no_results_in_filter": "No results in this section",
+  "merged_show_more": "Show more",
+  "merged_show_less": "Collapse",
+  "merged_low_relevance_hidden": "{{count}} low-relevance results hidden"
 }
