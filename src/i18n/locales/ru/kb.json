@@ -186,5 +186,12 @@
   "kb_loading": "Загрузка...",
   "practice_show_more": "Показать фрагменты",
   "practice_show_less": "Свернуть",
-  "practice_load_full": "Загрузить полный текст"
+  "practice_load_full": "Загрузить полный текст",
+  "unified_search_title": "Поиск",
+  "filter_all": "Все",
+  "filter_kb": "Законодательство",
+  "filter_practice": "Практика",
+  "source_kb": "Закон.",
+  "source_practice": "Практ.",
+  "no_results_in_filter": "В этом разделе нет результатов"
 }
