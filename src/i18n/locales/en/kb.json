@@ -187,5 +187,10 @@
   "merged_show_more": "Show more",
   "merged_show_less": "Collapse",
   "merged_low_relevance_hidden": "{{count}} low-relevance results hidden",
-  "insert_reference": "Insert reference"
+  "insert_reference": "Insert reference",
+  "references_title": "References",
+  "copy_references": "Copy",
+  "references_copied": "Copied!",
+  "references_empty": "No references yet. Press Insert button.",
+  "clear": "Clear"
 }
