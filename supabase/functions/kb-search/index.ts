@@ -40,6 +40,7 @@ interface SearchResultDocument {
   key_paragraphs: unknown[];
   top_chunks: TopChunk[];
   totalChunks: number;
+  max_score?: number;
 }
 
 interface ChunksRpcDoc {
@@ -230,6 +231,7 @@ async function searchViaChunksRpc(
         text: c.excerpt,
       })),
       totalChunks: docChunks.length,
+      max_score: Number(doc.max_score) || 0,
     };
   });
 }
@@ -251,7 +253,7 @@ async function searchViaFallbackRpc(
   if (error) throw new Error(`fallback RPC: ${error.message}`);
   if (!data || !Array.isArray(data)) return [];
 
-  return data.map((r: Record<string, unknown>) => ({
+  return data.map((r: Record<string, unknown>, idx: number) => ({
     id: r.id as string,
     title: r.title as string,
     practice_category: (r.practice_category ?? "") as string,
@@ -264,6 +266,7 @@ async function searchViaFallbackRpc(
     key_paragraphs: [],
     top_chunks: [],
     totalChunks: 0,
+    max_score: Number(r.relevance_score ?? r.rank ?? 0) || 0,
   }));
 }
 

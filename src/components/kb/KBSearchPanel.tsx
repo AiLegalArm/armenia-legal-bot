@@ -206,13 +206,12 @@ export function KBSearchPanel({ onInsertReference }: KBSearchPanelProps) {
       });
     }
 
-    // Normalize Practice scores — use top_chunks[0] score or fallback to position-based
-    const practiceScores = documents.map((d, idx) => {
-      // Edge function returns docs ordered by max_score from RPC; position = rough rank
-      // We assign a decay score: first doc = 1.0, linear decay
-      return documents.length > 1 ? 1 - idx / documents.length : 1;
-    });
-    const practiceNorm = normalizeScores(practiceScores);
+    // Normalize Practice scores using real max_score from RPC
+    const practiceScores = documents.map((d) => Number(d.max_score) || 0);
+    const allZero = practiceScores.every((s) => s === 0);
+    const practiceNorm = allZero
+      ? documents.map((_, idx) => documents.length > 1 ? 1 - idx / documents.length : 1)
+      : normalizeScores(practiceScores);
 
     for (let i = 0; i < documents.length; i++) {
       const d = documents[i];
