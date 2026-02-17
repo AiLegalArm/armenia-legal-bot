@@ -63,4 +63,14 @@ describe("references-store (per-case)", () => {
     clearReferences(CASE_A);
     expect(getReferencesText(CASE_A)).toBe("");
   });
+
+  it("_global does not mix with per-case refs", () => {
+    appendReferenceBlock("_global", "GlobalRef");
+    appendReferenceBlock(CASE_A, "CaseRef");
+    expect(getReferencesText("_global")).toBe("GlobalRef");
+    expect(getReferencesText(CASE_A)).toBe("CaseRef");
+    clearReferences("_global");
+    expect(getReferencesText("_global")).toBe("");
+    expect(getReferencesText(CASE_A)).toBe("CaseRef");
+  });
 });
