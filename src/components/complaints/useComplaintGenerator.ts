@@ -21,6 +21,7 @@ interface GenerateParams {
   category: ComplaintCategory;
   files: UploadedFile[];
   additionalInfo: string;
+  referencesText?: string;
 }
 
 export function useComplaintGenerator({
@@ -35,7 +36,8 @@ export function useComplaintGenerator({
     complaintType,
     category,
     files,
-    additionalInfo
+    additionalInfo,
+    referencesText
   }: GenerateParams) => {
     if (!complaintType) {
       toast.error(getText(
@@ -71,14 +73,19 @@ export function useComplaintGenerator({
 
       const courtType = determineCourtType(complaintType.id);
 
+      const requestBody: Record<string, unknown> = {
+        courtType,
+        category,
+        complaintType: getComplaintTypeLabel(complaintType, lang),
+        extractedText,
+        language: lang === "hy" ? "hy" : lang === "ru" ? "ru" : "en"
+      };
+      if (referencesText?.trim()) {
+        requestBody.referencesText = referencesText;
+      }
+
       const { data, error } = await supabase.functions.invoke("generate-complaint", {
-        body: {
-          courtType,
-          category,
-          complaintType: getComplaintTypeLabel(complaintType, lang),
-          extractedText,
-          language: lang === "hy" ? "hy" : lang === "ru" ? "ru" : "en"
-        }
+        body: requestBody
       });
 
       if (error) throw error;
