@@ -92,9 +92,8 @@ serve(async (req) => {
       { global: { headers: { Authorization: authHeader } } },
     );
 
-    const token = authHeader.replace("Bearer ", "");
-    const { data: claimsData, error: claimsErr } = await sb.auth.getClaims(token);
-    if (claimsErr || !claimsData?.claims?.sub) {
+    const { data: userData, error: userErr } = await sb.auth.getUser();
+    if (userErr || !userData?.user?.id) {
       return jsonRes({ error: "Unauthorized" }, 401);
     }
 

@@ -248,6 +248,11 @@ export function useLegalPracticeKB() {
     });
   }, []);
 
+  /** Directly set documents from an external source (e.g. unified search) */
+  const setDocuments = useCallback((docs: KBDocument[]) => {
+    setState((s) => ({ ...s, documents: docs, isSearching: false, searchError: null }));
+  }, []);
+
   return {
     // State
     documents: state.documents,
@@ -262,5 +267,6 @@ export function useLegalPracticeKB() {
     loadChunk,
     getCachedChunk,
     clearSearch,
+    setDocuments,
   };
 }
