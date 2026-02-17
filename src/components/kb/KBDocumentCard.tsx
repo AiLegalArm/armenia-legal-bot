@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import React, { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -95,24 +95,24 @@ const categoryColors: Partial<Record<KbCategory, string>> = {
 };
 
 /** Inline expandable preview for documents without chunks */
-function FallbackContentPreview({
-  text,
-  searchQuery,
-  collapseLabel,
-  expandLabel,
-}: {
+const FallbackContentPreview = React.forwardRef<HTMLDivElement, {
   text: string;
   searchQuery?: string;
   collapseLabel: string;
   expandLabel: string;
-}) {
+}>(function FallbackContentPreview({
+  text,
+  searchQuery,
+  collapseLabel,
+  expandLabel,
+}, ref) {
   const [expanded, setExpanded] = useState(false);
   const previewLen = 300;
   const isLong = text.length > previewLen;
   const displayText = expanded ? text : text.substring(0, previewLen) + (isLong ? '...' : '');
 
   return (
-    <div className="mb-3 space-y-1">
+    <div ref={ref} className="mb-3 space-y-1">
       <p className="text-sm text-muted-foreground whitespace-pre-wrap break-words">
         {searchQuery
           ? highlightTerms(displayText, searchQuery).map((seg, i) =>
@@ -140,7 +140,7 @@ function FallbackContentPreview({
       )}
     </div>
   );
-}
+});
 
 const getCategoryColor = (category: KbCategory): string => {
   return categoryColors[category] || 'bg-gray-500/10 text-gray-700 dark:text-gray-400';
