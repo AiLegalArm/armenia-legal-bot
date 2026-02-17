@@ -499,7 +499,11 @@ serve(async (req) => {
     let userSourcesBlock = "";
     if (referencesText?.trim()) {
       const { refs } = parseReferencesText(referencesText);
-      userSourcesBlock = buildUserSourcesBlock(refs);
+      const capped = refs.slice(0, 10);
+      userSourcesBlock = buildUserSourcesBlock(capped);
+      if (refs.length > 10) {
+        userSourcesBlock += "\nNOTE: Only first 10 of " + refs.length + " user-selected sources included due to token budget.\n";
+      }
     }
 
     // Build user message
