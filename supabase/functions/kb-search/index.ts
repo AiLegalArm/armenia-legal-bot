@@ -1,7 +1,17 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.91.1";
-import { handleCors } from "../_shared/edge-security.ts";
 import { log, warn, err } from "../_shared/safe-logger.ts";
+
+// ─── CORS (browser-facing, JWT-protected → wildcard is safe) ─────────────────
+
+const corsHeaders: Record<string, string> = {
+  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Headers":
+    "authorization, x-client-info, apikey, content-type, " +
+    "x-supabase-client-platform, x-supabase-client-platform-version, " +
+    "x-supabase-client-runtime, x-supabase-client-runtime-version",
+  "Access-Control-Allow-Methods": "POST, OPTIONS",
+};
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -61,33 +71,49 @@ const ALLOWED_CATEGORIES = new Set([
   "criminal", "civil", "administrative", "echr", "constitutional",
 ]);
 
+/** Decode the minimal safe set of HTML entities that may appear in user input */
+const HTML_ENTITY_MAP: Record<string, string> = {
+  "&amp;": "&",
+  "&lt;": "<",
+  "&gt;": ">",
+  "&quot;": '"',
+  "&#34;": '"',
+  "&#39;": "'",
+  "&apos;": "'",
+};
+const HTML_ENTITY_RE = /&(?:amp|lt|gt|quot|apos|#34|#39);/gi;
+
 // ─── Handler ─────────────────────────────────────────────────────────────────
 
 serve(async (req) => {
-  const cors = handleCors(req);
-  if (cors.errorResponse) return cors.errorResponse;
-  const corsHeaders = cors.corsHeaders!;
+  // Preflight
+  if (req.method === "OPTIONS") {
+    return new Response(null, { status: 204, headers: corsHeaders });
+  }
+
   const requestId = crypto.randomUUID().slice(0, 8);
 
   try {
-    // === AUTH GUARD ===
+    // === AUTH GUARD (getUser via Authorization header) ===
     const authHeader = req.headers.get("Authorization") ?? "";
-    const token = authHeader.replace("Bearer ", "");
-    if (!token) {
-      return json(corsHeaders, { error: "Unauthorized" }, 401);
+    if (!authHeader.startsWith("Bearer ")) {
+      return jsonRes({ error: "Unauthorized" }, 401);
     }
+
     const sb = createClient(
       Deno.env.get("SUPABASE_URL")!,
       Deno.env.get("SUPABASE_ANON_KEY")!,
       { global: { headers: { Authorization: authHeader } } },
     );
-    const { data: claimsData, error: authError } = await sb.auth.getClaims(token);
-    if (authError || !claimsData?.claims?.sub) {
-      return json(corsHeaders, { error: "Unauthorized" }, 401);
+
+    const { data: userData, error: authError } = await sb.auth.getUser();
+    if (authError || !userData?.user?.id) {
+      return jsonRes({ error: "Unauthorized" }, 401);
     }
 
+    // === Method check ===
     if (req.method !== "POST") {
-      return json(corsHeaders, { error: "Method not allowed" }, 405);
+      return jsonRes({ error: "Method not allowed" }, 405);
     }
 
     // === Parse & validate ===
@@ -96,16 +122,16 @@ serve(async (req) => {
     const rawQuery = body.query;
 
     if (!rawQuery || typeof rawQuery !== "string") {
-      return json(corsHeaders, { error: "Query is required" }, 400);
+      return jsonRes({ error: "Query is required" }, 400);
     }
 
     const query = normalizeSearchQuery(rawQuery);
     if (query.length < 2) {
-      return json(corsHeaders, { error: "Query too short" }, 400);
+      return jsonRes({ error: "Query too short" }, 400);
     }
 
     if (category != null && !ALLOWED_CATEGORIES.has(category)) {
-      return json(corsHeaders, { error: "Invalid category" }, 400);
+      return jsonRes({ error: "Invalid category" }, 400);
     }
 
     const safeLimitDocs = Math.max(1, Math.min(Number(limitDocs) || 20, 20));
@@ -143,7 +169,7 @@ serve(async (req) => {
     );
   } catch (error) {
     err("kb-search", "Unhandled error", error, { requestId });
-    return json(corsHeaders, { error: "Search failed" }, 500);
+    return jsonRes({ error: "Search failed" }, 500);
   }
 });
 
@@ -183,6 +209,11 @@ async function searchViaChunksRpc(
 
   return docs.map((doc) => {
     const docChunks = chunksByDoc.get(doc.id) || [];
+    // Use first chunk excerpt as legal_reasoning_summary preview
+    const preview = docChunks.length > 0
+      ? docChunks[0].excerpt.substring(0, 500)
+      : null;
+
     return {
       id: doc.id,
       title: doc.title,
@@ -191,7 +222,7 @@ async function searchViaChunksRpc(
       outcome: doc.outcome,
       applied_articles: [],
       key_violations: [],
-      legal_reasoning_summary: null,
+      legal_reasoning_summary: preview,
       decision_map: null,
       key_paragraphs: [],
       top_chunks: docChunks.map((c) => ({
@@ -239,27 +270,27 @@ async function searchViaFallbackRpc(
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
 /**
- * Normalize search query: strip HTML, control chars, collapse whitespace,
- * cap length. Preserves Armenian (U+0531-U+058F) and Cyrillic.
+ * Normalize search query:
+ * - Strip HTML tags
+ * - Decode safe HTML entities (&quot; → ", &amp; → &, etc.)
+ * - Remove control chars (keep \n \r \t)
+ * - Collapse whitespace, cap at 200 chars
+ * - Preserves Armenian (U+0531–U+058F), Cyrillic, and quotes for phrase-mode
  */
 function normalizeSearchQuery(raw: string): string {
   let q = raw
-    .replace(/<[^>]*>/g, "")              // strip HTML tags
-    .replace(/&[a-zA-Z]+;/g, "")          // strip HTML entities
+    .replace(/<[^>]*>/g, "")                     // strip HTML tags
+    .replace(HTML_ENTITY_RE, (m) => HTML_ENTITY_MAP[m.toLowerCase()] ?? m) // decode safe entities
     // deno-lint-ignore no-control-regex
     .replace(/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/g, "") // control chars (keep \n \r \t)
-    .replace(/\s+/g, " ")                 // collapse whitespace
+    .replace(/\s+/g, " ")                         // collapse whitespace
     .trim();
 
   if (q.length > 200) q = q.substring(0, 200);
   return q;
 }
 
-function json(
-  corsHeaders: Record<string, string>,
-  body: Record<string, unknown>,
-  status: number,
-): Response {
+function jsonRes(body: Record<string, unknown>, status: number): Response {
   return new Response(JSON.stringify(body), {
     status,
     headers: { ...corsHeaders, "Content-Type": "application/json" },
