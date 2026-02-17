@@ -600,6 +600,7 @@ function KBDocumentCard({
   getCachedChunk,
   onInsertReference,
 }: KBDocumentCardProps) {
+  const { t } = useTranslation("kb");
   const [showDecisionMap, setShowDecisionMap] = useState(false);
   const hasMoreChunks = loadedChunkIndexes.length + document.top_chunks.length < document.totalChunks;
 
@@ -616,7 +617,7 @@ function KBDocumentCard({
             <div className="flex-1 min-w-0">
               <div className="flex items-center gap-2 flex-wrap">
                 <FileText className="h-3.5 w-3.5 text-muted-foreground" />
-                <span className="font-medium text-sm truncate">{document.title}</span>
+                <span className="font-medium text-sm whitespace-normal break-words">{document.title}</span>
               </div>
               <div className="flex items-center gap-1.5 mt-1 flex-wrap">
                 <Badge variant="outline" className="text-xs py-0">
@@ -625,7 +626,18 @@ function KBDocumentCard({
                 <Badge variant="secondary" className="text-xs py-0">
                   {OUTCOME_LABELS[document.outcome] || document.outcome}
                 </Badge>
+                {document.top_chunks.length > 0 && (
+                  <Badge variant="secondary" className="text-xs py-0">
+                    {document.top_chunks.length} {t("snippet", { count: document.top_chunks.length })}
+                  </Badge>
+                )}
               </div>
+              {/* Preview when collapsed */}
+              {!isExpanded && document.legal_reasoning_summary && (
+                <p className="mt-1.5 text-xs text-muted-foreground line-clamp-3 whitespace-normal break-words">
+                  {document.legal_reasoning_summary.substring(0, 400)}
+                </p>
+              )}
             </div>
           </button>
         </CollapsibleTrigger>
