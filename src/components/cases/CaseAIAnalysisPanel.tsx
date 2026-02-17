@@ -23,6 +23,7 @@ interface CaseAIAnalysisPanelProps {
   caseTitle: string;
   aiCreditsExhausted: boolean;
   onOpenComplaintGenerator: () => void;
+  referencesText?: string;
 }
 
 export function CaseAIAnalysisPanel({
@@ -32,7 +33,8 @@ export function CaseAIAnalysisPanel({
   caseNumber,
   caseTitle,
   aiCreditsExhausted,
-  onOpenComplaintGenerator
+  onOpenComplaintGenerator,
+  referencesText
 }: CaseAIAnalysisPanelProps) {
   const { t, i18n } = useTranslation(['ai', 'cases', 'common', 'disclaimer', 'errors']);
   const { user } = useAuth();
@@ -162,11 +164,11 @@ export function CaseAIAnalysisPanel({
     }
     
     for (const role of rolesToRun) {
-      await analyzeCase(role, caseId, facts, legalQuestion || '');
+      await analyzeCase(role, caseId, facts, legalQuestion || '', referencesText);
     }
     
     if (canRunAggregator) {
-      await analyzeCase('aggregator', caseId, facts, legalQuestion || '');
+      await analyzeCase('aggregator', caseId, facts, legalQuestion || '', referencesText);
     }
   };
 

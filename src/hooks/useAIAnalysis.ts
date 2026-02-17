@@ -17,7 +17,7 @@ interface UseAIAnalysisReturn {
   currentRole: AIRole | null;
   results: Record<AIRole, AnalysisResult | null>;
   creditsExhausted: boolean;
-  analyzeCase: (role: AIRole, caseId?: string, caseFacts?: string, legalQuestion?: string) => Promise<AnalysisResult | null>;
+  analyzeCase: (role: AIRole, caseId?: string, caseFacts?: string, legalQuestion?: string, referencesText?: string) => Promise<AnalysisResult | null>;
   runAllRoles: (caseId?: string, caseFacts?: string, legalQuestion?: string) => Promise<void>;
   clearResults: () => void;
   loadResults: (loadedResults: Partial<Record<AIRole, AnalysisResult | null>>) => void;
@@ -39,7 +39,8 @@ export function useAIAnalysis(): UseAIAnalysisReturn {
     role: AIRole,
     caseId?: string,
     caseFacts?: string,
-    legalQuestion?: string
+    legalQuestion?: string,
+    referencesText?: string
   ): Promise<AnalysisResult | null> => {
     setIsLoading(true);
     setCurrentRole(role);
@@ -54,6 +55,10 @@ export function useAIAnalysis(): UseAIAnalysisReturn {
       
       if (caseId) {
         body.caseId = caseId;
+      }
+
+      if (referencesText?.trim()) {
+        body.referencesText = referencesText;
       }
       
       // For aggregator, include previous responses

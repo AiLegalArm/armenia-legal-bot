@@ -80,6 +80,7 @@ const CaseDetail = () => {
   const [complaintGeneratorOpen, setComplaintGeneratorOpen] = useState(false);
   const [preselectedDocumentType, setPreselectedDocumentType] = useState<'appeal' | 'cassation' | null>(null);
   const [aiCreditsExhausted, setAiCreditsExhausted] = useState(false);
+  const [referencesText, setReferencesText] = useState("");
   
   const { toast } = useToast();
 
@@ -392,6 +393,7 @@ const CaseDetail = () => {
                   caseTitle={caseData.title}
                   aiCreditsExhausted={aiCreditsExhausted}
                   onOpenComplaintGenerator={() => setComplaintGeneratorOpen(true)}
+                  referencesText={referencesText}
                 />
               </TabsContent>
 
@@ -405,7 +407,7 @@ const CaseDetail = () => {
               </TabsContent>
 
               <TabsContent value="kb-search" className="mt-4">
-                <KBSearchPanel />
+                <KBSearchPanel onReferencesChange={setReferencesText} />
               </TabsContent>
             </Tabs>
           </div>

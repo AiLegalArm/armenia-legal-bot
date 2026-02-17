@@ -95,6 +95,15 @@ const SYSTEM_PROMPTS: Record<Role, string> = {
 \u054A\u0561\u0580\u057F\u0561\u0564\u056B\u0580 \u056F\u0561\u057A\u0565\u056C \u0561\u0572\u0562\u0575\u0578\u0582\u0580\u056B\u0576 \u0587 \u056B\u0580\u0561\u057E\u0561\u056F\u0561\u0576 \u0570\u056B\u0574\u0584\u056B\u0576\u055D`,
 };
 
+interface UserSourceRef {
+  source: "kb" | "practice";
+  docId: string;
+  chunkIndex: number;
+  title: string;
+  meta: Record<string, string>;
+  snippetOnly: boolean;
+}
+
 interface AnalysisRequest {
   role: "advocate" | "prosecutor" | "judge" | "aggregator" | "criminal_module";
   moduleId?: CriminalAnalysisModule;
@@ -104,6 +113,7 @@ interface AnalysisRequest {
   advocateResponse?: string;
   prosecutorResponse?: string;
   judgeResponse?: string;
+  referencesText?: string;
 }
 
 // formatPracticeResults and formatPracticeContext moved to _shared/rag-search.ts
@@ -137,7 +147,7 @@ serve(async (req) => {
     }
     // === END AUTH GUARD ===
 
-    const { role, moduleId, caseId, caseFacts, legalQuestion, advocateResponse, prosecutorResponse, judgeResponse } =
+    const { role, moduleId, caseId, caseFacts, legalQuestion, advocateResponse, prosecutorResponse, judgeResponse, referencesText } =
       (await req.json()) as AnalysisRequest;
 
     // Validate role - support both legacy roles and new analysis types
@@ -491,6 +501,81 @@ serve(async (req) => {
     const budgetedFacts = budgeted.userFacts || caseFacts || "";
     const budgetedOcr = budgeted.ocrText || caseFilesContext || "";
     const budgetedRag = budgeted.ragLegislation || ragContext || "";
+    // ====== PARSE USER-PROVIDED SOURCES ======
+    let userSourcesBlock = "";
+    const parsedUserSources: UserSourceRef[] = [];
+
+    if (referencesText?.trim()) {
+      const VALID_SOURCES = new Set(["kb", "practice"]);
+      const JSON_FENCE_RE = /```json\s*\n([\s\S]*?)\n```/g;
+      const norm = referencesText.replace(/\r\n/g, "\n");
+      const blocks = norm.split("\n\n---\n\n").filter((b: string) => b.trim().length > 0);
+
+      for (const block of blocks) {
+        const re = new RegExp(JSON_FENCE_RE.source, JSON_FENCE_RE.flags);
+        let m: RegExpExecArray | null;
+        while ((m = re.exec(block)) !== null) {
+          try {
+            const obj = JSON.parse(m[1]);
+            if (
+              typeof obj === "object" && obj !== null &&
+              typeof obj.source === "string" && VALID_SOURCES.has(obj.source) &&
+              typeof obj.docId === "string" && obj.docId.length > 0 &&
+              typeof obj.chunkIndex === "number" && Number.isInteger(obj.chunkIndex)
+            ) {
+              const title = typeof obj.title === "string" ? obj.title : "";
+              const meta: Record<string, string> = {};
+              if (typeof obj.meta === "object" && obj.meta !== null && !Array.isArray(obj.meta)) {
+                for (const [k, v] of Object.entries(obj.meta as Record<string, unknown>)) {
+                  if (v != null) meta[k] = String(v);
+                }
+              }
+              parsedUserSources.push({
+                source: obj.source as "kb" | "practice",
+                docId: obj.docId,
+                chunkIndex: obj.chunkIndex,
+                title,
+                meta,
+                snippetOnly: obj.snippet_only === true || obj.chunkIndex === -1,
+              });
+              break; // first valid per block
+            }
+          } catch { /* skip malformed */ }
+        }
+      }
+
+      if (parsedUserSources.length > 0) {
+        userSourcesBlock = "\n\n## ════════════════════════════════════════════════\n";
+        userSourcesBlock += "## USER-SELECTED SOURCES (MANDATORY REFERENCE)\n";
+        userSourcesBlock += "## ════════════════════════════════════════════════\n\n";
+        userSourcesBlock += "IMPORTANT: You MUST cite these sources in your analysis. ";
+        userSourcesBlock += "Each citation must reference the source docId and chunkIndex. ";
+        userSourcesBlock += "If these sources are insufficient for a complete analysis, explicitly state which areas lack source coverage.\n\n";
+
+        // Extract snippet text from blocks (text between header and json fence)
+        for (let i = 0; i < parsedUserSources.length; i++) {
+          const ref = parsedUserSources[i];
+          const block = blocks[i] || "";
+          // Extract snippet: everything between the first line and the json fence
+          const fenceIdx = block.indexOf("```json");
+          const snippetText = fenceIdx > 0 ? block.substring(0, fenceIdx).trim() : "";
+
+          userSourcesBlock += `### Source ${i + 1}: ${ref.title}\n`;
+          userSourcesBlock += `[docId: ${ref.docId}, chunkIndex: ${ref.chunkIndex}, type: ${ref.source}]\n`;
+          if (Object.keys(ref.meta).length > 0) {
+            userSourcesBlock += `Meta: ${JSON.stringify(ref.meta)}\n`;
+          }
+          if (snippetText) {
+            userSourcesBlock += `Content:\n${snippetText}\n`;
+          }
+          userSourcesBlock += "\n";
+        }
+
+        userSourcesBlock += "## ════════════════════════════════════════════════\n";
+        userSourcesBlock += "## END USER-SELECTED SOURCES\n";
+        userSourcesBlock += "## ════════════════════════════════════════════════\n\n";
+      }
+    }
 
     // Build user message
     let userMessage = "";
@@ -509,7 +594,8 @@ ${caseFilesContext}
 
 ${ragContext}
 
----
+${userSourcesBlock}
+
 
 ## Previous Role Analyses:
 
@@ -540,6 +626,8 @@ ${caseFilesContext}
 
 ${ragContext}
 
+${userSourcesBlock}
+
 Perform focused analysis as specified in the system prompt. Base your analysis ONLY on the provided case materials. If information is missing, state this explicitly.`;
     } else {
       userMessage = `## Legal Case for Analysis (RA Law):
@@ -554,6 +642,8 @@ ${sandboxUserInput("LEGAL_QUESTION", legalQuestion || "Not provided")}
 ${caseFilesContext}
 
 ${ragContext}
+
+${userSourcesBlock}
 
 Please provide your professional legal analysis from your designated role perspective, strictly based on Republic of Armenia legislation. Analyze all case documents and audio transcriptions provided above.`;
     }

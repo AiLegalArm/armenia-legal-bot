@@ -164,9 +164,10 @@ function normalizeScores(scores: number[]): number[] {
 
 interface KBSearchPanelProps {
   onInsertReference?: (docId: string, chunkIndex: number, text: string) => void;
+  onReferencesChange?: (referencesText: string) => void;
 }
 
-export function KBSearchPanel({ onInsertReference }: KBSearchPanelProps) {
+export function KBSearchPanel({ onInsertReference, onReferencesChange }: KBSearchPanelProps) {
   const { t } = useTranslation("kb");
   const [query, setQuery] = useState("");
   const [viewFilter, setViewFilter] = useState<ViewFilter>("all");
@@ -365,12 +366,16 @@ export function KBSearchPanel({ onInsertReference }: KBSearchPanelProps) {
       onInsertReference(docId, chunkIndex, text);
     } else {
       // Internal collector
-      setCollectedRefs((prev) => [...prev, text]);
+      setCollectedRefs((prev) => {
+        const next = [...prev, text];
+        onReferencesChange?.(next.join("\n\n---\n\n"));
+        return next;
+      });
       setRefsOpen(true);
       // Scroll textarea into view after state update
       setTimeout(() => refsTextareaRef.current?.scrollIntoView({ behavior: "smooth", block: "nearest" }), 100);
     }
-  }, [onInsertReference]);
+  }, [onInsertReference, onReferencesChange]);
 
   const clearAll = () => {
     clearPractice();
@@ -660,7 +665,7 @@ export function KBSearchPanel({ onInsertReference }: KBSearchPanelProps) {
                       variant="ghost"
                       size="sm"
                       className="h-7 text-xs text-destructive"
-                      onClick={() => setCollectedRefs([])}
+                      onClick={() => { setCollectedRefs([]); onReferencesChange?.(""); }}
                     >
                       {t("clear", "\u0544\u0561\u0584\u0580\u0565\u056C")}
                     </Button>
