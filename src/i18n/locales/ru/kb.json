@@ -193,5 +193,8 @@
   "filter_practice": "Практика",
   "source_kb": "Закон.",
   "source_practice": "Практ.",
-  "no_results_in_filter": "В этом разделе нет результатов"
+  "no_results_in_filter": "В этом разделе нет результатов",
+  "merged_show_more": "Показать ещё",
+  "merged_show_less": "Свернуть",
+  "merged_low_relevance_hidden": "{{count}} малорелевантных результатов скрыто"
 }

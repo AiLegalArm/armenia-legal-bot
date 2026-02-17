@@ -132,8 +132,15 @@ export interface MergedSearchItem {
 type ViewFilter = "all" | "kb" | "practice";
 
 // ================================================================
-// Score normalization
+// Score normalization & noise control
 // ================================================================
+
+/** Items with normalizedScore below this are hidden (unless in top MIN_VISIBLE) */
+const MERGED_SCORE_THRESHOLD = 0.15;
+/** Always show at least this many items regardless of score */
+const MERGED_MIN_VISIBLE = 10;
+/** Page size for "show more" */
+const MERGED_PAGE_SIZE = 30;
 
 /**
  * Normalize scores within a set to 0..1 range using max-normalization.
@@ -157,6 +164,7 @@ export function KBSearchPanel({ onInsertReference }: KBSearchPanelProps) {
   const { t } = useTranslation("kb");
   const [query, setQuery] = useState("");
   const [viewFilter, setViewFilter] = useState<ViewFilter>("all");
+  const [mergedVisibleCount, setMergedVisibleCount] = useState(MERGED_PAGE_SIZE);
 
   // Practice search state
   const [category, setCategory] = useState<PracticeCategory | "all">("all");
@@ -289,6 +297,7 @@ export function KBSearchPanel({ onInsertReference }: KBSearchPanelProps) {
 
   const handleSearch = async () => {
     if (!query.trim()) return;
+    setMergedVisibleCount(MERGED_PAGE_SIZE);
     await Promise.all([
       searchPractice(query, category === "all" ? null : category),
       searchKBLegislation(query),
@@ -424,17 +433,57 @@ export function KBSearchPanel({ onInsertReference }: KBSearchPanelProps) {
         <ScrollArea className="flex-1">
           <div className="space-y-3">
             {/* ─── ALL: merged view ─── */}
-            {viewFilter === "all" && mergedResults.length > 0 && (
-              <div className="space-y-1.5">
-                {mergedResults.map((item) => (
-                  <MergedResultCard
-                    key={`${item.source}-${item.id}`}
-                    item={item}
-                    onClick={() => handleMergedItemClick(item)}
-                  />
-                ))}
-              </div>
-            )}
+            {viewFilter === "all" && mergedResults.length > 0 && (() => {
+              // Apply noise threshold: keep items above threshold OR in top MIN_VISIBLE
+              const filtered = mergedResults.filter(
+                (item, idx) => idx < MERGED_MIN_VISIBLE || item.normalizedScore >= MERGED_SCORE_THRESHOLD
+              );
+              const visible = filtered.slice(0, mergedVisibleCount);
+              const hiddenCount = mergedResults.length - filtered.length;
+              const hasMore = mergedVisibleCount < filtered.length;
+
+              return (
+                <div className="space-y-1.5">
+                  {visible.map((item) => (
+                    <MergedResultCard
+                      key={`${item.source}-${item.id}`}
+                      item={item}
+                      onClick={() => handleMergedItemClick(item)}
+                    />
+                  ))}
+                  <div className="flex items-center gap-2 pt-1">
+                    {hasMore && (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="h-7 text-xs"
+                        onClick={() => setMergedVisibleCount((c) => c + MERGED_PAGE_SIZE)}
+                      >
+                        {t("merged_show_more", "\u0551\u0578\u0582\u0575\u0581 \u057f\u0561\u056c \u0561\u057e\u0565\u056c\u056b\u0576")} ({filtered.length - mergedVisibleCount})
+                      </Button>
+                    )}
+                    {!hasMore && mergedVisibleCount > MERGED_PAGE_SIZE && (
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="h-7 text-xs"
+                        onClick={() => setMergedVisibleCount(MERGED_PAGE_SIZE)}
+                      >
+                        {t("merged_show_less", "\u053f\u0580\u0573\u0565\u056c")}
+                      </Button>
+                    )}
+                  </div>
+                  {hiddenCount > 0 && (
+                    <p className="text-[11px] text-muted-foreground text-center pt-1">
+                      {t("merged_low_relevance_hidden", {
+                        defaultValue: "{{count}} \u0581\u0561\u056e\u0580 \u0570\u0561\u0574\u0561\u057a\u0561\u057f\u0561\u057d\u056d\u0561\u0576\u0578\u0582\u0569\u0575\u0561\u0576 \u0561\u0580\u0564\u0575\u0578\u0582\u0576\u0584 \u0569\u0561\u0584\u0576\u057e\u0561\u056e \u0565\u0576",
+                        count: hiddenCount,
+                      })}
+                    </p>
+                  )}
+                </div>
+              );
+            })()}
 
             {/* ─── KB: legislation results ─── */}
             {viewFilter === "kb" && kbResults.length > 0 && (
