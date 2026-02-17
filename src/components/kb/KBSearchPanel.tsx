@@ -196,6 +196,7 @@ export function KBSearchPanel({ caseId, onInsertReference, onReferencesChange }:
     getCachedChunk,
     searchKB: searchPractice,
     clearSearch: clearPractice,
+    setDocuments: setPracticeDocuments,
   } = useLegalPracticeKB();
 
   // KB legislation search state
@@ -338,7 +339,7 @@ export function KBSearchPanel({ caseId, onInsertReference, onReferencesChange }:
       if (error) throw error;
       if (!data || !data.merged) throw new Error("Invalid response");
 
-      // Parse KB results from unified response
+      // ── Hydrate KB state from unified response ──
       const kbDocs = data.kb?.documents || [];
       const kbChunksRaw = data.kb?.chunks || [];
       const chunksByDoc = new Map<string, KBChunkResult[]>();
@@ -355,16 +356,35 @@ export function KBSearchPanel({ caseId, onInsertReference, onReferencesChange }:
       });
       setKbResults(parsedKb);
 
-      // Parse practice results - map to KBDocument shape expected by useLegalPracticeKB
-      // We use searchPractice internally for state, but also set results directly
-      // For practice, the unified endpoint returns items compatible with existing cards
-      // We trigger the practice search in parallel as fallback data source
+      // ── Hydrate Practice state from unified response (Model 1) ──
+      const practiceItems: KBDocument[] = (data.practice || []).map((p: {
+        id: string; title: string; practice_category: string; court_type: string;
+        outcome: string; decision_date: string | null; source_url: string | null;
+        max_score: number; top_chunks: Array<{ chunkIndex: number; text: string }>;
+        totalChunks: number;
+      }) => ({
+        id: p.id,
+        title: p.title,
+        practice_category: p.practice_category as PracticeCategory,
+        court_type: p.court_type,
+        outcome: p.outcome,
+        applied_articles: [],
+        key_violations: [],
+        legal_reasoning_summary: null,
+        decision_map: null,
+        key_paragraphs: [],
+        top_chunks: p.top_chunks || [],
+        totalChunks: p.totalChunks || 0,
+        max_score: Number(p.max_score) || 0,
+      }));
+      setPracticeDocuments(practiceItems);
+
       return true;
     } catch (e) {
       console.warn("Unified search failed, falling back to parallel RPCs", e);
       return false;
     }
-  }, []);
+  }, [setPracticeDocuments]);
 
   const handleSearch = async () => {
     if (!query.trim()) return;
@@ -372,16 +392,15 @@ export function KBSearchPanel({ caseId, onInsertReference, onReferencesChange }:
 
     const cat = category === "all" ? null : category;
 
-    // Try unified endpoint first
-    const [unifiedOk] = await Promise.all([
-      searchUnified(query, cat),
-      // Always run practice search in parallel (used for Practice tab cards with expand/lazy load)
-      searchPractice(query, cat),
-    ]);
+    // Try unified endpoint first (single request for both KB + Practice)
+    const unifiedOk = await searchUnified(query, cat);
 
-    // If unified failed, fall back to separate KB search
+    // If unified failed, fall back to separate parallel searches
     if (!unifiedOk) {
-      await searchKBLegislation(query);
+      await Promise.all([
+        searchKBLegislation(query),
+        searchPractice(query, cat),
+      ]);
     }
   };
 
