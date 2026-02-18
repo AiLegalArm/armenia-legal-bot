@@ -1,7 +1,7 @@
 import { useState, useCallback } from "react";
 import { supabase } from "@/integrations/supabase/client";
 
-export type PracticeCategory = "criminal" | "civil" | "administrative" | "echr" | "constitutional";
+export type PracticeCategory = "criminal" | "civil" | "administrative" | "echr" | "constitutional" | "bankruptcy";
 export type CourtType = "first_instance" | "appeal" | "cassation" | "constitutional" | "echr";
 export type Outcome = "granted" | "rejected" | "partial" | "remanded" | "discontinued";
 

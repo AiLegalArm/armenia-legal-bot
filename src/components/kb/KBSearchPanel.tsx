@@ -23,6 +23,7 @@ const CATEGORY_LABELS: Record<PracticeCategory, string> = {
   administrative: "\u054E\u0561\u0580\u0579\u0561\u056F\u0561\u0576",
   echr: "\u0544\u053B\u0535\u0534",
   constitutional: "\u054D\u0561\u0570\u0574\u0561\u0576\u0561\u0564\u0580\u0561\u056F\u0561\u0576 \u0564\u0561\u057F\u0561\u0580\u0561\u0576",
+  bankruptcy: "\u054D\u0576\u0561\u0576\u056F\u0561\u0575\u056B\u0576",
 };
 
 const COURT_LABELS: Record<string, string> = {
