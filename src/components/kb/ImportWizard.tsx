@@ -48,6 +48,7 @@ const practiceCategoryOptions = [
   { value: 'administrative', label: 'Административное' },
   { value: 'echr', label: 'ЕСПЧ' },
   { value: 'constitutional', label: 'Конституционное' },
+  { value: 'bankruptcy', label: 'Банкротство' },
 ] as const;
 import { useBulkImport } from '@/hooks/useBulkImport';
 import { BulkImportQueue } from '@/components/kb/BulkImportQueue';
