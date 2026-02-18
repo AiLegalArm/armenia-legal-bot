@@ -2251,6 +2251,7 @@ export type Database = {
         | "administrative"
         | "echr"
         | "constitutional"
+        | "bankruptcy"
       reminder_status: "active" | "completed" | "dismissed"
       reminder_type: "court_hearing" | "deadline" | "task" | "meeting" | "other"
     }
@@ -2493,6 +2494,7 @@ export const Constants = {
         "administrative",
         "echr",
         "constitutional",
+        "bankruptcy",
       ],
       reminder_status: ["active", "completed", "dismissed"],
       reminder_type: ["court_hearing", "deadline", "task", "meeting", "other"],
