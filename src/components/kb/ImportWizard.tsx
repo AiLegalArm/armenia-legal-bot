@@ -59,10 +59,12 @@ import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 export type ImportSource = 'files' | 'url' | 'paste_text' | 'paste_jsonl';
 export type ImportTarget = 'knowledge_base' | 'legal_practice_kb';
 
+type PracticeCategory = typeof practiceCategoryOptions[number]['value'];
+
 interface ImportOptions {
   normalize: boolean;
   chunk: boolean;
-  category: KbCategory;
+  category: KbCategory | PracticeCategory;
   sourceName: string;
 }
 
