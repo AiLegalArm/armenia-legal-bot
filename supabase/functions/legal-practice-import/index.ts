@@ -722,7 +722,7 @@ serve(async (req) => {
             court_type: courtType,
             outcome,
             is_active: true,
-            is_anonymized: item.is_anonymized ?? true,
+            is_anonymized: item.is_anonymized ?? false,
             visibility: item.visibility || "ai_only",
             source_name: item.source_name || null,
             court_name: item.court_name || null,
