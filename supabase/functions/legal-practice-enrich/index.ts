@@ -146,6 +146,15 @@ QUALITY OBJECT:
   "notes": "string|null"
 }
 
+AGENT: ISSUE EXTRACTOR (mandatory pre-step before reasoning):
+Before any analysis, extract and output these fields inside the top-level JSON:
+1. Legal domain \u2192 doc.case_domain (civil|administrative|criminal|constitutional|unknown)
+2. 3\u201310 controlled issue tags \u2192 issues[] array
+3. All cited RA norms \u2192 norms_cited[] array
+4. Procedural stage \u2192 doc.procedure_stage (cassation|appeal|first_instance|unknown)
+5. Burden of proof side \u2192 each precedent_unit.burden_of_proof_hy / burden_of_proof_ru
+If insufficient facts to determine any field \u2192 set null and add reason to extraction_warnings.
+
 EXTRACTION LOGIC (DO THIS):
 1) Identify court, case number, date from header. If ambiguous, set null.
 2) Extract all explicit cited norms into norms_cited with exact as_written snippets.
