@@ -1304,7 +1304,6 @@ export type Database = {
       }
       legal_practice_kb: {
         Row: {
-          application_scope: string | null
           applied_articles: Json | null
           case_number_anonymized: string | null
           chunk_index_meta: Json | null
@@ -1317,9 +1316,6 @@ export type Database = {
           decision_date: string | null
           decision_map: Json | null
           description: string | null
-          echr_article: string[] | null
-          echr_principle_formula: string | null
-          echr_test_applied: string | null
           embedding: string | null
           embedding_attempts: number
           embedding_error: string | null
@@ -1327,31 +1323,21 @@ export type Database = {
           embedding_status: string
           id: string
           import_ref: string | null
-          interpreted_norms: Json | null
           is_active: boolean
           is_anonymized: boolean
           key_paragraphs: Json | null
           key_violations: string[] | null
-          keywords: string[] | null
-          legal_principle: string | null
           legal_reasoning_summary: string | null
-          limitations_of_application: string | null
           outcome: Database["public"]["Enums"]["case_outcome"]
           practice_category: Database["public"]["Enums"]["practice_category"]
-          precedent_authority_level: string | null
-          procedural_aspect: string | null
-          ratio_decidendi: string | null
-          related_cases: string[] | null
           source_name: string | null
           source_url: string | null
           title: string
           updated_at: string
           uploaded_by: string | null
-          violation_type: string | null
           visibility: string
         }
         Insert: {
-          application_scope?: string | null
           applied_articles?: Json | null
           case_number_anonymized?: string | null
           chunk_index_meta?: Json | null
@@ -1364,9 +1350,6 @@ export type Database = {
           decision_date?: string | null
           decision_map?: Json | null
           description?: string | null
-          echr_article?: string[] | null
-          echr_principle_formula?: string | null
-          echr_test_applied?: string | null
           embedding?: string | null
           embedding_attempts?: number
           embedding_error?: string | null
@@ -1374,31 +1357,21 @@ export type Database = {
           embedding_status?: string
           id?: string
           import_ref?: string | null
-          interpreted_norms?: Json | null
           is_active?: boolean
           is_anonymized?: boolean
           key_paragraphs?: Json | null
           key_violations?: string[] | null
-          keywords?: string[] | null
-          legal_principle?: string | null
           legal_reasoning_summary?: string | null
-          limitations_of_application?: string | null
           outcome: Database["public"]["Enums"]["case_outcome"]
           practice_category: Database["public"]["Enums"]["practice_category"]
-          precedent_authority_level?: string | null
-          procedural_aspect?: string | null
-          ratio_decidendi?: string | null
-          related_cases?: string[] | null
           source_name?: string | null
           source_url?: string | null
           title: string
           updated_at?: string
           uploaded_by?: string | null
-          violation_type?: string | null
           visibility?: string
         }
         Update: {
-          application_scope?: string | null
           applied_articles?: Json | null
           case_number_anonymized?: string | null
           chunk_index_meta?: Json | null
@@ -1411,9 +1384,6 @@ export type Database = {
           decision_date?: string | null
           decision_map?: Json | null
           description?: string | null
-          echr_article?: string[] | null
-          echr_principle_formula?: string | null
-          echr_test_applied?: string | null
           embedding?: string | null
           embedding_attempts?: number
           embedding_error?: string | null
@@ -1421,27 +1391,18 @@ export type Database = {
           embedding_status?: string
           id?: string
           import_ref?: string | null
-          interpreted_norms?: Json | null
           is_active?: boolean
           is_anonymized?: boolean
           key_paragraphs?: Json | null
           key_violations?: string[] | null
-          keywords?: string[] | null
-          legal_principle?: string | null
           legal_reasoning_summary?: string | null
-          limitations_of_application?: string | null
           outcome?: Database["public"]["Enums"]["case_outcome"]
           practice_category?: Database["public"]["Enums"]["practice_category"]
-          precedent_authority_level?: string | null
-          procedural_aspect?: string | null
-          ratio_decidendi?: string | null
-          related_cases?: string[] | null
           source_name?: string | null
           source_url?: string | null
           title?: string
           updated_at?: string
           uploaded_by?: string | null
-          violation_type?: string | null
           visibility?: string
         }
         Relationships: []
@@ -1964,7 +1925,6 @@ export type Database = {
       kb_docs_without_chunks: {
         Args: never
         Returns: {
-          application_scope: string | null
           applied_articles: Json | null
           case_number_anonymized: string | null
           chunk_index_meta: Json | null
@@ -1977,9 +1937,6 @@ export type Database = {
           decision_date: string | null
           decision_map: Json | null
           description: string | null
-          echr_article: string[] | null
-          echr_principle_formula: string | null
-          echr_test_applied: string | null
           embedding: string | null
           embedding_attempts: number
           embedding_error: string | null
@@ -1987,27 +1944,18 @@ export type Database = {
           embedding_status: string
           id: string
           import_ref: string | null
-          interpreted_norms: Json | null
           is_active: boolean
           is_anonymized: boolean
           key_paragraphs: Json | null
           key_violations: string[] | null
-          keywords: string[] | null
-          legal_principle: string | null
           legal_reasoning_summary: string | null
-          limitations_of_application: string | null
           outcome: Database["public"]["Enums"]["case_outcome"]
           practice_category: Database["public"]["Enums"]["practice_category"]
-          precedent_authority_level: string | null
-          procedural_aspect: string | null
-          ratio_decidendi: string | null
-          related_cases: string[] | null
           source_name: string | null
           source_url: string | null
           title: string
           updated_at: string
           uploaded_by: string | null
-          violation_type: string | null
           visibility: string
         }[]
         SetofOptions: {
