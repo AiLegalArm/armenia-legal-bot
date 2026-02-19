@@ -215,7 +215,48 @@ serve(async (req) => {
       docs = pending;
     }
 
-    const totalRemaining = docs.length;
+    // Count total docs without chunks to report accurate remaining count
+    let totalRemaining = docs.length;
+    if (!docId && docIds.length === 0) {
+      // For auto-discover mode, count all docs without chunks
+      if (isKB) {
+        const { count: totalActive } = await supabase
+          .from(sourceTable)
+          .select("id", { count: "exact", head: true })
+          .eq("is_active", true);
+        const { count: withChunks } = await supabase
+          .from(chunksTable)
+          .select(fkColumn, { count: "exact", head: true });
+        // Approximate: total active minus those with chunks
+        const docsWithChunks = new Set<string>();
+        const { data: chunkDocs } = await supabase
+          .from(chunksTable)
+          .select(fkColumn)
+          .limit(50000);
+        if (chunkDocs) {
+          for (const row of chunkDocs) {
+            docsWithChunks.add((row as Record<string, string>)[fkColumn]);
+          }
+        }
+        totalRemaining = (totalActive ?? 0) - docsWithChunks.size;
+      } else {
+        const { count: totalActive } = await supabase
+          .from(sourceTable)
+          .select("id", { count: "exact", head: true })
+          .eq("is_active", true);
+        const { data: chunkDocs } = await supabase
+          .from(chunksTable)
+          .select(fkColumn)
+          .limit(50000);
+        const docsWithChunks = new Set<string>();
+        if (chunkDocs) {
+          for (const row of chunkDocs) {
+            docsWithChunks.add((row as Record<string, string>)[fkColumn]);
+          }
+        }
+        totalRemaining = (totalActive ?? 0) - docsWithChunks.size;
+      }
+    }
 
     // 2) Plan chunks
     const plan = [];
