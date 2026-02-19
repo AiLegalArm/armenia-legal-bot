@@ -61,11 +61,23 @@ export type ImportTarget = 'knowledge_base' | 'legal_practice_kb';
 
 type PracticeCategory = typeof practiceCategoryOptions[number]['value'];
 
+interface PracticeMetadata {
+  courtType: string;
+  outcome: string;
+  courtName: string;
+  caseNumber: string;
+  decisionDate: string;
+  appliedArticles: string;
+  keywords: string;
+  legalReasoningSummary: string;
+}
+
 interface ImportOptions {
   normalize: boolean;
   chunk: boolean;
   category: KbCategory | PracticeCategory;
   sourceName: string;
+  practiceMetadata?: PracticeMetadata;
 }
 
 interface PreviewRecord {
@@ -143,6 +155,16 @@ export function ImportWizard({ open, onOpenChange, onImport }: ImportWizardProps
     chunk: true,
     category: 'other' as KbCategory,
     sourceName: '',
+    practiceMetadata: {
+      courtType: 'cassation',
+      outcome: 'granted',
+      courtName: '',
+      caseNumber: '',
+      decisionDate: '',
+      appliedArticles: '[]',
+      keywords: '',
+      legalReasoningSummary: '',
+    },
   });
   const [dedupMode, setDedupMode] = useState<'skip' | 'upsert'>('skip');
 
@@ -166,7 +188,7 @@ export function ImportWizard({ open, onOpenChange, onImport }: ImportWizardProps
     setJsonlRecords([]);
     setJsonlError(null);
     setTarget('knowledge_base');
-    setOptions({ normalize: true, chunk: true, category: 'other' as KbCategory, sourceName: '' });
+    setOptions({ normalize: true, chunk: true, category: 'other' as KbCategory, sourceName: '', practiceMetadata: { courtType: 'cassation', outcome: 'granted', courtName: '', caseNumber: '', decisionDate: '', appliedArticles: '[]', keywords: '', legalReasoningSummary: '' } });
     setPreviewRecords([]);
     setImporting(false);
     bulkClearAll();
@@ -633,6 +655,129 @@ export function ImportWizard({ open, onOpenChange, onImport }: ImportWizardProps
                     onChange={(e) => setOptions(prev => ({ ...prev, sourceName: e.target.value }))}
                   />
                 </div>
+
+                {/* Practice-specific metadata fields */}
+                {target === 'legal_practice_kb' && options.practiceMetadata && (
+                  <>
+                    <div className="grid grid-cols-2 gap-3">
+                      <div className="space-y-2">
+                        <Label>Тип суда</Label>
+                        <Select
+                          value={options.practiceMetadata.courtType}
+                          onValueChange={(v) => setOptions(prev => ({
+                            ...prev,
+                            practiceMetadata: { ...prev.practiceMetadata!, courtType: v }
+                          }))}
+                        >
+                          <SelectTrigger><SelectValue /></SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="first_instance">Первая инстанция</SelectItem>
+                            <SelectItem value="appellate">Апелляционный</SelectItem>
+                            <SelectItem value="cassation">Кассационный</SelectItem>
+                            <SelectItem value="constitutional">Конституционный</SelectItem>
+                            <SelectItem value="echr">ЕСПЧ</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      <div className="space-y-2">
+                        <Label>Исход</Label>
+                        <Select
+                          value={options.practiceMetadata.outcome}
+                          onValueChange={(v) => setOptions(prev => ({
+                            ...prev,
+                            practiceMetadata: { ...prev.practiceMetadata!, outcome: v }
+                          }))}
+                        >
+                          <SelectTrigger><SelectValue /></SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="granted">Удовлетворено</SelectItem>
+                            <SelectItem value="rejected">Отклонено</SelectItem>
+                            <SelectItem value="partial">Частично</SelectItem>
+                            <SelectItem value="remanded">Возвращено</SelectItem>
+                            <SelectItem value="dismissed">Прекращено</SelectItem>
+                            <SelectItem value="other">Иное</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-3">
+                      <div className="space-y-2">
+                        <Label>Название суда</Label>
+                        <Input
+                          placeholder="Напр.: ВКС РА"
+                          value={options.practiceMetadata.courtName}
+                          onChange={(e) => setOptions(prev => ({
+                            ...prev,
+                            practiceMetadata: { ...prev.practiceMetadata!, courtName: e.target.value }
+                          }))}
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <Label>Номер дела (аноним.)</Label>
+                        <Input
+                          placeholder="Напр.: ԵԴ/0000/00/00"
+                          value={options.practiceMetadata.caseNumber}
+                          onChange={(e) => setOptions(prev => ({
+                            ...prev,
+                            practiceMetadata: { ...prev.practiceMetadata!, caseNumber: e.target.value }
+                          }))}
+                        />
+                      </div>
+                    </div>
+
+                    <div className="space-y-2">
+                      <Label>Дата решения</Label>
+                      <Input
+                        type="date"
+                        value={options.practiceMetadata.decisionDate}
+                        onChange={(e) => setOptions(prev => ({
+                          ...prev,
+                          practiceMetadata: { ...prev.practiceMetadata!, decisionDate: e.target.value }
+                        }))}
+                      />
+                    </div>
+
+                    <div className="space-y-2">
+                      <Label>Применённые статьи (JSON)</Label>
+                      <Textarea
+                        placeholder='[]'
+                        value={options.practiceMetadata.appliedArticles}
+                        onChange={(e) => setOptions(prev => ({
+                          ...prev,
+                          practiceMetadata: { ...prev.practiceMetadata!, appliedArticles: e.target.value }
+                        }))}
+                        className="min-h-[60px] font-mono text-xs"
+                      />
+                    </div>
+
+                    <div className="space-y-2">
+                      <Label>Ключевые слова (через запятую)</Label>
+                      <Input
+                        placeholder="Напр.: надлежащее уведомление, право на защиту"
+                        value={options.practiceMetadata.keywords}
+                        onChange={(e) => setOptions(prev => ({
+                          ...prev,
+                          practiceMetadata: { ...prev.practiceMetadata!, keywords: e.target.value }
+                        }))}
+                      />
+                    </div>
+
+                    <div className="space-y-2">
+                      <Label>Правовое обоснование (резюме)</Label>
+                      <Textarea
+                        placeholder="Краткое описание правовой позиции суда..."
+                        value={options.practiceMetadata.legalReasoningSummary}
+                        onChange={(e) => setOptions(prev => ({
+                          ...prev,
+                          practiceMetadata: { ...prev.practiceMetadata!, legalReasoningSummary: e.target.value }
+                        }))}
+                        className="min-h-[80px]"
+                      />
+                    </div>
+                  </>
+                )}
+
                 <div className="rounded-lg border bg-muted/50 p-3 space-y-2">
                   <p className="text-sm font-medium">Сводка</p>
                   <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-xs">
