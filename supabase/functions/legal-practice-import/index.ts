@@ -173,6 +173,20 @@ interface ExtractedData {
   key_violations: string[];
   legal_reasoning_summary: string | null;
   content_text: string;
+  // Precedent intelligence fields
+  ratio_decidendi?: string | null;
+  interpreted_norms?: Record<string, unknown>[];
+  legal_principle?: string | null;
+  procedural_aspect?: string | null;
+  application_scope?: string | null;
+  limitations_of_application?: string | null;
+  precedent_authority_level?: string | null;
+  keywords?: string[];
+  // ECHR-specific
+  echr_article?: string[];
+  violation_type?: string | null;
+  echr_test_applied?: string | null;
+  echr_principle_formula?: string | null;
 }
 
 // =======================================
@@ -464,6 +478,18 @@ async function extractMissingWithAI(
     applied_articles: '"applied_articles": {"sources":[{"act":"<legal act name>","articles":[{"article":"<number>","part":"<number or empty>","point":"<number or empty>","context":"<max 300 chars>"}]}]}',
     key_violations: '"key_violations": ["..."] — explicit violation phrases from text',
     legal_reasoning_summary: '"legal_reasoning_summary": string — 2-3 sentences of explicit reasoning',
+    ratio_decidendi: '"ratio_decidendi": string — exact legal position formulated by the court (not summary, not facts). The binding legal rule or principle the court applied to reach its conclusion. null if not a precedent-type decision.',
+    interpreted_norms: '"interpreted_norms": [{"code":"<legal act e.g. Civil Code RA>","article":"<number>","part":"<number or empty>","point":"<number or empty>","norm_type":"mandatory|dispositive"}] — norms explicitly interpreted by the court. Empty array if none.',
+    legal_principle: '"legal_principle": string — abstract legal principle derived from the decision. null if none.',
+    procedural_aspect: '"procedural_aspect": "material_law"|"procedural_law"|"mixed"|null — whether the decision addresses material law, procedural law, or both.',
+    application_scope: '"application_scope": string — types of disputes where this position may apply. null if unclear.',
+    limitations_of_application: '"limitations_of_application": string — factual or doctrinal limits of applying this precedent. null if none.',
+    precedent_authority_level: '"precedent_authority_level": "binding_position"|"guiding_practice"|"individual_case"|null — binding for cassation/constitutional, guiding for appeal patterns, individual for first_instance.',
+    keywords: '"keywords": ["..."] — legal keywords/tags for search. Empty array if none.',
+    echr_article: '"echr_article": ["Article 6", "Article 1 Protocol 1", ...] — ECHR articles referenced. Empty array if not ECHR case.',
+    violation_type: '"violation_type": string — type of violation (e.g. fair trial, legal certainty, proportionality). null if not ECHR.',
+    echr_test_applied: '"echr_test_applied": string — test applied (e.g. proportionality test, three-part test, margin of appreciation). null if not ECHR.',
+    echr_principle_formula: '"echr_principle_formula": string — concise doctrinal formula from ECHR judgment. null if not ECHR.',
   };
 
   const schema = missingFields.map((f) => fieldInstructions[f] || `"${f}": unknown`).join(",\n  ");
