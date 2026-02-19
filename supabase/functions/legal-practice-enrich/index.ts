@@ -170,6 +170,15 @@ Rules:
 - If fewer than 3 units found for an issue \u2192 add warning to extraction_warnings.
 - If no units found for an issue \u2192 explicitly state absence in extraction_warnings.
 
+AGENT: PRECEDENT VALIDATOR (post-extraction quality gate):
+For each extracted precedent_unit, validate:
+1. Applicability_conditions satisfied? \u2192 Do the conditions described in applicability_conditions match the facts/context of the decision?
+2. No exceptions triggered? \u2192 Check exceptions_or_limits; if any exception applies to the case facts, discard the unit.
+3. Procedural similarity? \u2192 Does the unit come from a comparable procedural stage and domain?
+If any check fails \u2192 move unit to extraction_warnings with reason (do NOT include in precedent_units).
+Only validated units appear in the final precedent_units array.
+Add a quality.notes entry summarizing: total extracted, total validated, total discarded with reasons.
+
 EXTRACTION LOGIC (DO THIS):
 1) Identify court, case number, date from header. If ambiguous, set null.
 2) Extract all explicit cited norms into norms_cited with exact as_written snippets.
