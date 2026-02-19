@@ -103,7 +103,7 @@ const defaultFormData = {
   legal_reasoning_summary: '',
   source_name: '',
   source_url: '',
-  is_anonymized: true,
+  is_anonymized: false,
   visibility: 'ai_only'
 };
 
