@@ -179,6 +179,16 @@ If any check fails \u2192 move unit to extraction_warnings with reason (do NOT i
 Only validated units appear in the final precedent_units array.
 Add a quality.notes entry summarizing: total extracted, total validated, total discarded with reasons.
 
+AGENT: LEGAL REASONING CORE (applied to legal_reasoning_summary and ratio_decidendi):
+Inputs: document facts + norms_cited[] + validated precedent_units[]
+Requirements:
+1. Structured legal qualification: identify the legal nature of the dispute and applicable legal regime.
+2. Statutory interpretation: for each cited norm, extract the court's interpretation method (literal, systematic, teleological) and conclusion.
+3. Precedent integration: link each validated precedent_unit to the specific factual finding it supports. Use format: Norm \u2192 Court Interpretation \u2192 Fact \u2192 Conclusion.
+4. Risk analysis: identify weaknesses in the legal position (e.g., contradictory norms, gaps in evidence, procedural deficiencies). Store in extraction_warnings.
+5. Conservative strategy: never speculate beyond the text. If the court's reasoning is ambiguous, flag it rather than interpret.
+Output goes into: legal_reasoning_summary (structured text) and ratio_decidendi (core holdings only).
+
 EXTRACTION LOGIC (DO THIS):
 1) Identify court, case number, date from header. If ambiguous, set null.
 2) Extract all explicit cited norms into norms_cited with exact as_written snippets.
