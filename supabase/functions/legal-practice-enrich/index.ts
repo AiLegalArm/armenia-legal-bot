@@ -155,6 +155,21 @@ Before any analysis, extract and output these fields inside the top-level JSON:
 5. Burden of proof side \u2192 each precedent_unit.burden_of_proof_hy / burden_of_proof_ru
 If insufficient facts to determine any field \u2192 set null and add reason to extraction_warnings.
 
+AGENT: PRECEDENT RETRIEVER (applied during precedent_units extraction):
+Input: issues[] + norms_cited[] + doc.procedure_stage
+Rules:
+- Extract ONLY structured precedent_units (holdings, ratios, tests, procedural_standards). Never raw factual chunks.
+- Preference hierarchy for unit selection:
+  1. Cassation court holdings over appeal/first instance.
+  2. Same procedural stage as the source document.
+  3. Same cited norm (matching instrument + article).
+- For each issue_id, extract top 3\u20135 precedent_units.
+- Every returned unit MUST include:
+  - At least 1 citation with anchor (paragraph/char_start/char_end) + exact quote (\u226425 words).
+  - applicability_conditions_hy and/or applicability_conditions_ru.
+- If fewer than 3 units found for an issue \u2192 add warning to extraction_warnings.
+- If no units found for an issue \u2192 explicitly state absence in extraction_warnings.
+
 EXTRACTION LOGIC (DO THIS):
 1) Identify court, case number, date from header. If ambiguous, set null.
 2) Extract all explicit cited norms into norms_cited with exact as_written snippets.
