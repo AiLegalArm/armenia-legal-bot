@@ -3,6 +3,16 @@
 // Used by: ai-analyze, legal-chat, multi-agent-analyze, generate-complaint,
 //          generate-document, vector-search
 // =============================================================================
+//
+// INDEX SEPARATION RULE (MANDATORY):
+// 1. Normative KB (knowledge_base) → laws/legislation ONLY
+// 2. Practice KB (legal_practice_kb) → RA court decisions ONLY
+// 3. ECHR KB → ECHR decisions ONLY (filtered by practice_category='echr')
+// NEVER mix indexes across these boundaries.
+// NEVER embed entire documents for generation — use precedent_units only.
+// When Practice results contain key_paragraphs (precedent_units), prefer them
+// over full content_text for AI prompt injection.
+// =============================================================================
 
 import type { KBSearchResult, PracticeSearchResult, VectorSearchResponse } from "./rag-types.ts";
 
@@ -312,7 +322,10 @@ export function formatKBContext(results: KBSearchResult[], snippetLength = 4000)
     .join("\n\n---\n\n");
 }
 
-/** Format practice results into context string for AI prompt */
+/** Format practice results into context string for AI prompt.
+ * INDEX SEPARATION: Only RA court decisions appear here. ECHR is filtered separately.
+ * Prefers precedent_units (key_paragraphs) over full document text per INDEX SEPARATION RULE.
+ */
 export function formatPracticeContext(results: PracticeSearchResult[], fullText = true): string {
   if (results.length === 0) return "";
 
@@ -342,9 +355,25 @@ export function formatPracticeContext(results: PracticeSearchResult[], fullText 
       const violations = r.key_violations?.join(", ") || "\u0546/\u0531";
       const court = courtLabels[r.court_type || ""] || r.court_type || "";
       const outcome = outcomeLabels[r.outcome || ""] || r.outcome || "";
-      const contentBlock = fullText
-        ? `\n\n**\u0548\u0550\u0548\u0547\u0544\u0531\u0546 \u053C\u053B\u0531\u0550\u053A\u0531\u053F\u0531\u0546 \u054F\u0535\u053F\u054D\u054F:**\n${r.content_text || r.content_snippet || ""}`
-        : `\n${(r.content_snippet || r.content_text || "").substring(0, 1500)}`;
+
+      // INDEX SEPARATION: Prefer precedent_units over full document embedding
+      let contentBlock = "";
+      const keyParas = r.key_paragraphs;
+      if (keyParas && Array.isArray(keyParas) && keyParas.length > 0) {
+        // Use precedent_units embeddings only (not entire documents)
+        const units = keyParas.slice(0, 6).map((u: Record<string, unknown>, idx: number) => {
+          const ruleText = u.rule_text || u.holding || "";
+          const quote = u.quote || u.exact_quote || "";
+          const anchor = u.anchor || u.paragraph || "";
+          const issueId = u.issue_id || "";
+          return `  ${idx + 1}) ${ruleText}${quote ? `\n     \u00AB${quote}\u00BB` : ""}${anchor ? ` [\u00A7${anchor}]` : ""}${issueId ? ` [${issueId}]` : ""}`;
+        }).join("\n");
+        contentBlock = `\n\nPRECEDENT UNITS:\n${units}`;
+      } else if (fullText) {
+        contentBlock = `\n\n${r.legal_reasoning_summary || (r.content_text || r.content_snippet || "").substring(0, 2000)}`;
+      } else {
+        contentBlock = `\n${(r.content_snippet || r.content_text || "").substring(0, 1500)}`;
+      }
 
       return `[\u054A\u0580\u0561\u056F\u057F\u056B\u056F\u0561 ${i + 1}] ${r.title}
 \u0534\u0561\u057F\u0561\u0580\u0561\u0576: ${court} | \u053F\u0561\u057F\u0565\u0563\u0578\u0580\u056B\u0561: ${r.practice_category || ""} | \u0535\u056C\u0584: ${outcome}

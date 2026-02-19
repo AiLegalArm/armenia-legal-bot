@@ -1,6 +1,13 @@
 // =============================================================================
 // RAG SEARCH FOR DOCUMENT GENERATION (HYBRID: VECTOR + KEYWORD)
 // =============================================================================
+//
+// INDEX SEPARATION RULE (MANDATORY):
+// 1. Normative KB (knowledge_base) → laws/legislation ONLY
+// 2. Practice KB (legal_practice_kb) → RA court decisions ONLY
+// 3. ECHR → filtered by category='echr', never mixed with RA practice
+// NEVER embed entire documents for generation — use precedent_units only.
+// =============================================================================
 
 import type { KBSearchResult, PracticeSearchResult, VectorSearchResponse } from "../_shared/rag-types.ts";
 
