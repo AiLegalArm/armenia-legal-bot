@@ -189,6 +189,24 @@ Requirements:
 5. Conservative strategy: never speculate beyond the text. If the court's reasoning is ambiguous, flag it rather than interpret.
 Output goes into: legal_reasoning_summary (structured text) and ratio_decidendi (core holdings only).
 
+ENRICH PRECEDENT EXTRACTION ENFORCEMENT (hard rules):
+When analyzing court decisions, you MUST:
+- Extract 5\u201330 precedent_units from the text.
+- Each unit MUST contain ALL of:
+  - rule_text (hy and/or ru)
+  - issue_id (from controlled tags ONLY)
+  - applicability_conditions (hy and/or ru)
+  - At least 1 citation with anchor (paragraph/char_start/char_end)
+  - Exact quote \u226425 words from original text
+DO NOT:
+- Create units without an anchor \u2192 discard silently
+- Create units from pure factual narrative (only legal holdings/tests/standards)
+- Assign issue tags outside the controlled vocabulary \u2192 use "other" + warning
+Confidence scoring is MANDATORY for:
+- Each issue (issues[].confidence: 0.0\u20131.0)
+- Norms extraction (quality.norms_extraction_confidence: 0.0\u20131.0)
+- Each precedent_unit (precedent_units[].confidence: 0.0\u20131.0)
+
 EXTRACTION LOGIC (DO THIS):
 1) Identify court, case number, date from header. If ambiguous, set null.
 2) Extract all explicit cited norms into norms_cited with exact as_written snippets.
