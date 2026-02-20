@@ -19,7 +19,7 @@ import { DocumentGeneratorDialog } from '@/components/documents/DocumentGenerato
 import { CaseComplaintGenerator } from '@/components/cases/CaseComplaintGenerator';
 import { CaseReminders, CourtDateReminderSuggestion } from '@/components/reminders';
 import { MultiAgentPanel } from '@/components/agents/MultiAgentPanel';
-import { KBSearchPanel } from '@/components/kb/KBSearchPanel';
+
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
@@ -36,7 +36,6 @@ import {
   Music,
   Bell,
   Bot,
-  BookOpen
 } from 'lucide-react';
 import {
   AlertDialog,
@@ -305,13 +304,6 @@ const CaseDetail = () => {
                     <Bot className="h-4 w-4 mr-1 sm:mr-2 shrink-0" />
                     <span>{t('ai:multi_agent_analysis', 'Multi-Agent')}</span>
                   </TabsTrigger>
-                  <TabsTrigger 
-                    value="kb-search"
-                    className="min-h-[44px] px-3 sm:px-4 rounded-lg text-mobile-sm sm:text-sm font-medium data-[state=active]:shadow-soft whitespace-nowrap"
-                  >
-                    <BookOpen className="h-4 w-4 mr-1 sm:mr-2 shrink-0" />
-                    <span>{t('kb:search', '\u0578\u0580\u0578\u0576\u0578\u0582\u0574')}</span>
-                  </TabsTrigger>
                 </TabsList>
               </div>
 
@@ -405,9 +397,6 @@ const CaseDetail = () => {
                 />
               </TabsContent>
 
-              <TabsContent value="kb-search" className="mt-4">
-                <KBSearchPanel caseId={id} />
-              </TabsContent>
             </Tabs>
           </div>
 
