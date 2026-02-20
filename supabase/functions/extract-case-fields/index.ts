@@ -74,7 +74,7 @@ serve(async (req) => {
     // Get case data
     const { data: caseData, error: caseError } = await supabase
       .from("cases")
-      .select("id, title, description, facts, legal_question")
+      .select("id, title, description, facts, legal_question, case_number, case_type, court_name, court_date, notes")
       .eq("id", caseId)
       .single();
 
@@ -105,11 +105,23 @@ serve(async (req) => {
       .in("file_type", ["application/pdf", "image/jpeg", "image/png", "image/jpg"])
       .limit(3);
 
-    // Build text context
+    // Build text context — always include available case metadata
     let context = "";
-    
+
+    // Always include title and known fields as baseline context
+    context += `\n\n=== CASE METADATA ===`;
+    context += `\nTitle: ${caseData.title}`;
+    if (caseData.case_number) context += `\nCase Number: ${caseData.case_number}`;
+    if (caseData.case_type) context += `\nCase Type: ${caseData.case_type}`;
+    if (caseData.court_name) context += `\nCourt: ${caseData.court_name}`;
+    if (caseData.court_date) context += `\nCourt Date: ${caseData.court_date}`;
+
     if (caseData.description) {
       context += `\n\n=== CASE DESCRIPTION ===\n${caseData.description}`;
+    }
+
+    if (caseData.notes) {
+      context += `\n\n=== CASE NOTES ===\n${caseData.notes}`;
     }
 
     if (ocrResults && ocrResults.length > 0) {
