@@ -1,6 +1,7 @@
 // =============================================================================
-// AI LEGAL ARMENIA — MASTER SYSTEM PROMPT (VERSION 2 · FULL · ALL ROLES)
+// AI LEGAL ARMENIA — MASTER SYSTEM PROMPT (VERSION 3 · FULL · ALL ROLES)
 // Jurisdiction: Republic of Armenia (RA)
+// Enhanced: Deep Criminal Analysis Mode (Homicide / Violent Crimes)
 // =============================================================================
 
 import { ANTI_INJECTION_RULES } from "../_shared/prompt-armor.ts";
