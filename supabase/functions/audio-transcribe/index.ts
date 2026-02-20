@@ -111,14 +111,22 @@ serve(async (req) => {
             content: [
               {
                 type: "text",
-                text: `You are a professional transcription service specializing in Armenian and Russian legal proceedings. 
-Transcribe the audio file accurately. 
+                text: `You are a professional transcription service specializing in Armenian and Russian legal proceedings.
+Transcribe the audio file as a dialogue with speaker labels.
+
+IMPORTANT RULES:
+- Identify different speakers and label them as "Спикер 1:", "Спикер 2:", "Спикер 3:" etc. (use Russian labels)
+- Each new speaker turn starts on a new line with the speaker label
+- If only one speaker, still use "Спикер 1:"
 - Preserve all spoken words exactly as said
 - Include legal terminology correctly
-- Do not add punctuation that wasn't clearly spoken
-- Output ONLY the transcription text, nothing else
 - If multiple languages are spoken, transcribe each in its original language
-- Detected language should be: armenian, russian, or mixed`,
+- Output ONLY the dialogue transcription, nothing else
+
+Example format:
+Спикер 1: Добрый день, суд заседание начинается.
+Спикер 2: Ваша честь, защита готова.
+Спикер 1: Хорошо, приступаем.`,
               },
               {
                 type: "image_url",

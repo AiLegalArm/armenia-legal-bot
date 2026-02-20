@@ -9,7 +9,8 @@ import {
   AlertTriangle, 
   CheckCircle2,
   BookOpen,
-  Loader2
+  Loader2,
+  MessageSquare
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -56,6 +57,35 @@ const KB_CATEGORIES: KBCategory[] = [
   'other',
 ];
 
+// Speaker color palettes using CSS variables for theme support
+const SPEAKER_STYLES = [
+  { label: 'text-blue-600 dark:text-blue-400', bubble: 'bg-blue-50 dark:bg-blue-950/40 border-blue-200 dark:border-blue-800' },
+  { label: 'text-emerald-600 dark:text-emerald-400', bubble: 'bg-emerald-50 dark:bg-emerald-950/40 border-emerald-200 dark:border-emerald-800' },
+  { label: 'text-purple-600 dark:text-purple-400', bubble: 'bg-purple-50 dark:bg-purple-950/40 border-purple-200 dark:border-purple-800' },
+  { label: 'text-orange-600 dark:text-orange-400', bubble: 'bg-orange-50 dark:bg-orange-950/40 border-orange-200 dark:border-orange-800' },
+  { label: 'text-rose-600 dark:text-rose-400', bubble: 'bg-rose-50 dark:bg-rose-950/40 border-rose-200 dark:border-rose-800' },
+];
+
+function parseDialogue(text: string) {
+  const lines = text.split('\n');
+  const speakerMap: Record<string, number> = {};
+  let speakerCount = 0;
+
+  return lines.map((line) => {
+    const match = line.match(/^((?:Спикер|Speaker|Говорящий|Խոսող)\s*\d+)\s*:\s*(.*)$/i);
+    if (match) {
+      const speaker = match[1];
+      const content = match[2];
+      if (!(speaker in speakerMap)) {
+        speakerMap[speaker] = speakerCount % SPEAKER_STYLES.length;
+        speakerCount++;
+      }
+      return { type: 'dialogue' as const, speaker, content, styleIdx: speakerMap[speaker] };
+    }
+    return { type: 'plain' as const, content: line };
+  });
+}
+
 export function AudioTranscriptionResult({ transcription, caseId }: AudioTranscriptionResultProps) {
   const { t } = useTranslation(['audio', 'kb', 'common']);
   const { updateTranscription, addToKnowledgeBase } = useAudioTranscriptions(caseId);
@@ -73,6 +103,16 @@ export function AudioTranscriptionResult({ transcription, caseId }: AudioTranscr
   const isReviewed = !!transcription.reviewed_by;
   const canEdit = isAdmin || isClient;
   const canAddToKB = (isAdmin || isClient) && Number(confidenceScore) >= 0.5;
+
+  const durationMinutes = transcription.duration_seconds 
+    ? Math.floor(transcription.duration_seconds / 60) 
+    : 0;
+  const durationSecs = transcription.duration_seconds 
+    ? Math.floor(transcription.duration_seconds % 60) 
+    : 0;
+
+  const dialogueLines = parseDialogue(transcription.transcription_text);
+  const isDialogue = dialogueLines.some(l => l.type === 'dialogue');
 
   const getConfidenceBadge = () => {
     const score = Number(confidenceScore);
@@ -132,14 +172,6 @@ export function AudioTranscriptionResult({ transcription, caseId }: AudioTranscr
     setKbTitle('');
   };
 
-  const displayText = transcription.transcription_text;
-  const durationMinutes = transcription.duration_seconds 
-    ? Math.floor(transcription.duration_seconds / 60) 
-    : 0;
-  const durationSeconds = transcription.duration_seconds 
-    ? Math.floor(transcription.duration_seconds % 60) 
-    : 0;
-
   return (
     <>
       <Card className="w-full overflow-hidden">
@@ -154,13 +186,13 @@ export function AudioTranscriptionResult({ transcription, caseId }: AudioTranscr
                   <Clock className="h-3 w-3 shrink-0" />
                   {format(new Date(transcription.created_at), 'dd.MM.yyyy HH:mm')}
                 </span>
-                {transcription.duration_seconds ? (
-                  <span>
-                    {t('audio:duration')}: {durationMinutes}:{durationSeconds.toString().padStart(2, '0')}
-                  </span>
-                ) : (
-                  <span>
-                    {t('audio:duration')}: 0:00
+                <span>
+                  {t('audio:duration')}: {durationMinutes}:{durationSecs.toString().padStart(2, '0')}
+                </span>
+                {isDialogue && (
+                  <span className="flex items-center gap-1 text-primary">
+                    <MessageSquare className="h-3 w-3 shrink-0" />
+                    Диалог
                   </span>
                 )}
               </div>
@@ -183,13 +215,33 @@ export function AudioTranscriptionResult({ transcription, caseId }: AudioTranscr
             <Textarea
               value={editedText}
               onChange={(e) => setEditedText(e.target.value)}
-              rows={8}
+              rows={10}
               className="font-mono text-sm w-full"
               aria-label={t('audio:edit_transcription')}
             />
+          ) : isDialogue ? (
+            <div className="rounded-md border bg-muted/20 p-3 sm:p-4 max-h-80 overflow-y-auto space-y-2">
+              {dialogueLines.map((line, idx) => {
+                if (line.type === 'dialogue') {
+                  const style = SPEAKER_STYLES[line.styleIdx];
+                  return (
+                    <div key={idx} className={`rounded-lg border p-2.5 ${style.bubble}`}>
+                      <span className={`text-xs font-semibold uppercase tracking-wide ${style.label}`}>
+                        {line.speaker}
+                      </span>
+                      <p className="text-sm mt-1 break-words">{line.content}</p>
+                    </div>
+                  );
+                }
+                if (!line.content.trim()) return null;
+                return (
+                  <p key={idx} className="text-sm text-muted-foreground px-1 break-words">{line.content}</p>
+                );
+              })}
+            </div>
           ) : (
             <div className="bg-muted/50 rounded-md p-3 sm:p-4 max-h-64 overflow-y-auto">
-              <p className="text-sm whitespace-pre-wrap break-words">{displayText}</p>
+              <p className="text-sm whitespace-pre-wrap break-words">{transcription.transcription_text}</p>
             </div>
           )}
 
