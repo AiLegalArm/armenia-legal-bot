@@ -121,7 +121,8 @@ export function LegalPracticeKB() {
   const [aiImportOpen, setAiImportOpen] = useState(false);
   const [bulkImportOpen, setBulkImportOpen] = useState(false);
   const [enrichingIds, setEnrichingIds] = useState<Set<string>>(new Set());
-  const [openFolders, setOpenFolders] = useState<Set<string>>(new Set());
+  // Start with all folders open so data is immediately visible
+  const [openFolders, setOpenFolders] = useState<Set<string>>(new Set(['echr', 'criminal', 'civil', 'administrative', 'constitutional', 'bankruptcy']));
   const [echrImportOpen, setEchrImportOpen] = useState(false);
 
   // Fetch documents in batches to overcome 1000-row limit
@@ -835,6 +836,8 @@ export function LegalPracticeKB() {
         onOpenChange={setEchrImportOpen}
         onSuccess={() => {
           queryClient.invalidateQueries({ queryKey: ['legal-practice-kb'] });
+          setFilterCategory('echr');
+          setOpenFolders(prev => new Set([...prev, 'echr']));
         }}
       />
     </Card>
