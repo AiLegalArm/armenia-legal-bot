@@ -16,13 +16,18 @@ const SYSTEM_PROMPT = `You are an expert legal analyst for Armenian (RA) law cas
    - Also look for: "գործ N", "գործ թիվ", "case N", "дело N"
    - Extract the EXACT case number as written in the document
 
-2. FACTS (Փաստեր): 
+2. DESCRIPTION (Նկարագրություն):
+   - A brief summary of the case in 2-4 sentences
+   - Who are the parties, what is the dispute or incident about
+   - The general context and nature of the case
+
+3. FACTS (Փաստեր): 
    - Concrete facts of what happened
    - When and where it occurred
    - Involved parties: victim, defendant, plaintiff, body
    - Amounts, damages involved
 
-3. LEGAL QUESTION (Իրավաբանական հարց):
+4. LEGAL QUESTION (Իրավաբանական հարց):
    - What legal issue needs to be resolved
    - Which articles or laws may apply
    - What documents to collect, what questions to answer for lawyers
@@ -127,7 +132,7 @@ serve(async (req) => {
     if (context.trim()) {
       userMessageContent.push({
         type: "text",
-        text: `Extract case number, facts and legal question from the following case materials:\n${context}`
+        text: `Extract case number, description, facts and legal question from the following case materials:\n${context}`
       });
     }
 
@@ -175,7 +180,7 @@ serve(async (req) => {
           if (!hasTextContext && userMessageContent.length === 0) {
             userMessageContent.push({
               type: "text",
-              text: `Extract case number, facts and legal question from this uploaded document: "${file.original_filename}"`
+              text: `Extract case number, description, facts and legal question from this uploaded document: "${file.original_filename}"`
             });
           } else if (hasTextContext) {
             userMessageContent.push({
@@ -224,13 +229,17 @@ serve(async (req) => {
             type: "function",
             function: {
               name: "extract_case_fields",
-              description: "Extract case number, facts and legal question from provided materials",
+              description: "Extract case number, description, facts and legal question from provided materials",
               parameters: {
                 type: "object",
                 properties: {
                   case_number: {
                     type: "string",
                     description: "Case number found in documents. Return empty string if not found."
+                  },
+                  description: {
+                    type: "string",
+                    description: "Brief case description in Armenian (2-4 sentences) - who are the parties, what is the dispute or incident about, general context"
                   },
                   facts: {
                     type: "string",
@@ -241,7 +250,7 @@ serve(async (req) => {
                     description: "Legal question in Armenian - what legal issue needs resolution, which laws apply"
                   }
                 },
-                required: ["case_number", "facts", "legal_question"]
+                required: ["case_number", "description", "facts", "legal_question"]
               }
             }
           }
@@ -281,6 +290,10 @@ serve(async (req) => {
       updateData.case_number = extractedFields.case_number.trim();
     }
 
+    if (extractedFields.description && extractedFields.description.trim()) {
+      updateData.description = extractedFields.description.trim();
+    }
+
     const { error: updateError } = await supabase
       .from("cases")
       .update(updateData)
@@ -294,6 +307,7 @@ serve(async (req) => {
       JSON.stringify({
         success: true,
         case_number: extractedFields.case_number || null,
+        description: extractedFields.description || null,
         facts: extractedFields.facts,
         legal_question: extractedFields.legal_question
       }),
