@@ -82,7 +82,7 @@ export function AgentRunCard({ agent, run, isRunning, onRun, disabled }: AgentRu
   const findings = (run?.findings || []) as AgentFinding[];
 
   return (
-    <Card className={`${agent.color.replace("bg-", "border-l-4 border-l-")} overflow-hidden w-full min-w-0`}>
+    <Card className={`${agent.color.replace("bg-", "border-l-4 border-l-")} w-full min-w-0`}>
       <CardHeader className="pb-2 p-3 sm:p-4">
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
           <div className="flex items-start sm:items-center gap-3 min-w-0">
@@ -196,7 +196,7 @@ export function AgentRunCard({ agent, run, isRunning, onRun, disabled }: AgentRu
       
       {run?.status === "failed" && run.error_message && (
         <CardContent className="pt-0">
-          <div className="p-3 bg-red-50 dark:bg-red-950/20 rounded-lg text-sm text-red-800 dark:text-red-200">
+          <div className="p-3 bg-red-50 dark:bg-red-950/20 rounded-lg text-sm text-red-800 dark:text-red-200 break-words overflow-wrap-anywhere whitespace-pre-wrap">
             {run.error_message}
           </div>
         </CardContent>
