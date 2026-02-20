@@ -9,6 +9,7 @@ import { CaseForm } from '@/components/cases/CaseForm';
 import { UsageMonitor } from '@/components/UsageMonitor';
 import { TeamStats } from '@/components/team/TeamStats';
 import { LegalChatBot } from '@/components/chat/LegalChatBot';
+import { ChatBubble } from '@/components/chat/ChatBubble';
 import { TelegramUploads } from '@/components/profile/TelegramUploads';
 import { TelegramSettings } from '@/components/profile/TelegramSettings';
 import { Button } from '@/components/ui/button';
@@ -78,7 +79,6 @@ const Dashboard = () => {
   const [docGeneratorOpen, setDocGeneratorOpen] = useState(false);
   const [complaintWizardOpen, setComplaintWizardOpen] = useState(false);
   const [kbSearchOpen, setKbSearchOpen] = useState(false);
-  const [legalChatOpen, setLegalChatOpen] = useState(false);
   const [notesOpen, setNotesOpen] = useState(false);
   
   const [kbFilters, setKbFilters] = useState<KBFiltersType>({ page: 1, pageSize: 10 });
@@ -192,18 +192,7 @@ const Dashboard = () => {
             )}
           </div>
           <div className="grid grid-cols-3 sm:flex sm:flex-wrap gap-2">
-            {/* AI Legal Chat - Available for all users (replaces KB Search for non-admins) */}
-            {!isAdmin && (
-              <Button 
-                variant="outline" 
-                size="sm" 
-                onClick={() => setLegalChatOpen(true)}
-                className="flex-col sm:flex-row h-auto py-2 sm:py-2 sm:h-9"
-              >
-                <MessageCircle className="h-4 w-4 sm:mr-2" />
-                <span className="text-xs sm:text-sm mt-1 sm:mt-0">{t('ai:ai_name', 'AI Legal')}</span>
-              </Button>
-            )}
+            {/* AI Legal Chat bubble is always visible as floating button */}
             {/* Unified Search */}
             <Sheet open={kbSearchOpen} onOpenChange={setKbSearchOpen}>
               <SheetTrigger asChild>
@@ -501,8 +490,8 @@ const Dashboard = () => {
         </AlertDialogContent>
       </AlertDialog>
 
-      {/* Legal AI Chatbot */}
-      <LegalChatBot isOpen={legalChatOpen} onOpenChange={setLegalChatOpen} />
+      {/* Persistent Legal AI Chat Bubble */}
+      <ChatBubble />
 
       {/* Document Generator Dialog */}
       <DocumentGeneratorDialog
