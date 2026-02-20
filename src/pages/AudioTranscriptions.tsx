@@ -21,7 +21,8 @@ import {
   FileAudio,
   CheckCircle,
   AlertCircle,
-  Download
+  Save,
+  FileText
 } from 'lucide-react';
 
 const SUPPORTED_AUDIO_FORMATS = [
@@ -59,6 +60,7 @@ const AudioTranscriptions = () => {
   const [selectedCaseId, setSelectedCaseId] = useState<string>('');
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [isUploading, setIsUploading] = useState(false);
+  const [isSavingDoc, setIsSavingDoc] = useState(false);
   const [transcriptionResult, setTranscriptionResult] = useState<{
     success: boolean;
     transcription?: string;
@@ -67,6 +69,68 @@ const AudioTranscriptions = () => {
     duration_seconds?: number;
     error?: string;
   } | null>(null);
+
+  const handleSaveToDocuments = async () => {
+    if (!transcriptionResult?.transcription || !user) return;
+
+    setIsSavingDoc(true);
+    try {
+      const caseTitle = cases.find(c => c.id === selectedCaseId)?.title || '';
+      const date = new Date().toLocaleDateString('ru-RU');
+      const fileName = selectedFile?.name || 'audio';
+
+      const metaLines = [
+        `Файл: ${fileName}`,
+        `Язык: ${transcriptionResult.language_detected || '—'}`,
+        `Точность: ${Math.round((transcriptionResult.confidence_score || 0) * 100)}%`,
+        transcriptionResult.duration_seconds
+          ? `Длительность: ${Math.floor(transcriptionResult.duration_seconds / 60)}:${String(Math.floor(transcriptionResult.duration_seconds % 60)).padStart(2, '0')}`
+          : null,
+      ].filter(Boolean).join('\n');
+
+      const contentText = `${metaLines}\n\n${transcriptionResult.transcription}`;
+      const title = `Транскрипция: ${fileName} (${date})${caseTitle ? ` — ${caseTitle}` : ''}`;
+
+      const { error } = await supabase.from('generated_documents').insert({
+        user_id: user.id,
+        title,
+        content_text: contentText,
+        status: 'draft',
+        case_id: selectedCaseId || null,
+        metadata: {
+          type: 'transcription',
+          language: transcriptionResult.language_detected,
+          confidence: transcriptionResult.confidence_score,
+          duration_seconds: transcriptionResult.duration_seconds,
+          source_file: fileName,
+        },
+      });
+
+      if (error) throw error;
+
+      toast({
+        title: 'Транскрипция сохранена',
+        description: 'Документ добавлен в «Мои документы»',
+        action: (
+          <button
+            onClick={() => navigate('/my-documents')}
+            className="text-primary underline text-sm font-medium"
+          >
+            Открыть
+          </button>
+        ) as unknown as React.ReactElement,
+      });
+    } catch (err) {
+      console.error('Save transcription error:', err);
+      toast({
+        title: t('common:error'),
+        description: 'Не удалось сохранить транскрипцию',
+        variant: 'destructive',
+      });
+    } finally {
+      setIsSavingDoc(false);
+    }
+  };
 
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -370,36 +434,24 @@ const AudioTranscriptions = () => {
 
                     <div className="flex flex-wrap gap-2">
                       <Button
-                        variant="outline"
-                        onClick={() => {
-                          const text = [
-                            `Язык: ${transcriptionResult.language_detected || '—'}`,
-                            `Точность: ${Math.round((transcriptionResult.confidence_score || 0) * 100)}%`,
-                            transcriptionResult.duration_seconds
-                              ? `Длительность: ${Math.floor(transcriptionResult.duration_seconds / 60)}:${String(Math.floor(transcriptionResult.duration_seconds % 60)).padStart(2, '0')}`
-                              : '',
-                            '',
-                            transcriptionResult.transcription || '',
-                          ].filter(Boolean).join('\n');
-
-                          const blob = new Blob([text], { type: 'text/plain;charset=utf-8' });
-                          const url = URL.createObjectURL(blob);
-                          const a = document.createElement('a');
-                          a.href = url;
-                          a.download = `transcription_${new Date().toISOString().slice(0, 10)}.txt`;
-                          a.click();
-                          URL.revokeObjectURL(url);
-                        }}
+                        onClick={handleSaveToDocuments}
+                        disabled={isSavingDoc}
+                        className="gap-2"
                       >
-                        <Download className="mr-2 h-4 w-4" />
-                        {t('audio:save_transcription', 'Сохранить транскрипцию')}
+                        {isSavingDoc
+                          ? <Loader2 className="h-4 w-4 animate-spin" />
+                          : <Save className="h-4 w-4" />
+                        }
+                        {t('audio:save_transcription', 'Сохранить в Мои документы')}
                       </Button>
 
                       <Button
                         variant="outline"
-                        onClick={() => navigate(`/cases/${selectedCaseId}/transcriptions`)}
+                        onClick={() => navigate('/my-documents')}
+                        className="gap-2"
                       >
-                        {t('audio:view_all_transcriptions', 'View All Transcriptions')}
+                        <FileText className="h-4 w-4" />
+                        {t('audio:view_all_transcriptions', 'Мои документы')}
                       </Button>
                     </div>
                   </div>
