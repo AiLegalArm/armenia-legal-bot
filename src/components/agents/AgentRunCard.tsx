@@ -115,15 +115,11 @@ export function AgentRunCard({ agent, run, isRunning, onRun, disabled }: AgentRu
         <CardContent className="pt-0 overflow-hidden min-w-0 w-full">
           <Collapsible>
             <CollapsibleTrigger asChild>
-              <Button variant="ghost" className="w-full justify-between h-auto py-2 min-w-0">
-                <span className="text-sm min-w-0 flex-1 overflow-hidden text-left">
-                  {run.summary ? (
-                    <span className="block truncate w-full">{run.summary}</span>
-                  ) : (
-                    t("ai:view_analysis")
-                  )}
+              <Button variant="ghost" className="w-full justify-between h-auto py-2 min-w-0 items-start">
+                <span className="text-sm min-w-0 flex-1 text-left break-words whitespace-normal overflow-wrap-anywhere">
+                  {run.summary ? run.summary : t("ai:view_analysis")}
                 </span>
-                <ChevronDown className="h-4 w-4 shrink-0 ml-2" />
+                <ChevronDown className="h-4 w-4 shrink-0 ml-2 mt-0.5" />
               </Button>
             </CollapsibleTrigger>
             <CollapsibleContent>
@@ -203,7 +199,7 @@ export function AgentRunCard({ agent, run, isRunning, onRun, disabled }: AgentRu
       
       {run?.status === "failed" && run.error_message && (
         <CardContent className="pt-0">
-          <div className="p-3 bg-red-50 dark:bg-red-950/20 rounded-lg text-sm text-red-800 dark:text-red-200 break-words overflow-wrap-anywhere whitespace-pre-wrap">
+          <div className="p-3 bg-destructive/10 rounded-lg text-sm text-destructive break-words whitespace-normal overflow-wrap-anywhere w-full">
             {run.error_message}
           </div>
         </CardContent>
