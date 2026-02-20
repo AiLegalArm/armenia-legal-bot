@@ -276,30 +276,36 @@ serve(async (req) => {
       });
     }
 
-    // Body: { rawContent: string, storeInHyFields: boolean, generateJsonl: boolean, practiceCategory: string }
+    // Body: { rawContent: string | object[], storeInHyFields: boolean, generateJsonl: boolean, practiceCategory: string }
     const body = await req.json();
-    const rawContent: string = body.rawContent ?? "";
     const storeInHyFields: boolean = body.storeInHyFields !== false; // default true
     const generateJsonl: boolean = body.generateJsonl !== false; // default true
     const practiceCategory: string = body.practiceCategory ?? "echr";
-    const batchIndex: number = body.batchIndex ?? 0;
-    const batchSize: number = body.batchSize ?? 5;
 
-    if (!rawContent.trim()) {
-      return new Response(JSON.stringify({ error: "rawContent is required" }), {
-        status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
+    // rawContent can be either a pre-parsed array (from frontend batching) or a raw string
+    let batchCases: Record<string, unknown>[] = [];
+    let parseSkipped = 0;
+
+    if (Array.isArray(body.rawContent)) {
+      // Frontend already parsed and batched — use directly
+      batchCases = body.rawContent.filter((x: unknown) => x && typeof x === "object") as Record<string, unknown>[];
+    } else {
+      const rawContent: string = body.rawContent ?? "";
+      if (!rawContent.trim()) {
+        return new Response(JSON.stringify({ error: "rawContent is required" }), {
+          status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+      const parsed = parseInput(rawContent);
+      batchCases = parsed.cases;
+      parseSkipped = parsed.skipped;
     }
 
-    const { cases, skipped: parseSkipped } = parseInput(rawContent);
-    if (cases.length === 0) {
+    if (batchCases.length === 0) {
       return new Response(JSON.stringify({ error: "No valid cases found", parseSkipped }), {
         status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
-
-    // Process only this batch
-    const batchCases = cases.slice(batchIndex, batchIndex + batchSize);
     let processed = 0;
     let translated = 0;
     let partial = 0;
