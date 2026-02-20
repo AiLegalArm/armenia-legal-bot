@@ -660,12 +660,9 @@ Please provide your professional legal analysis from your designated role perspe
       throw new Error("Legal AI router error");
     }
 
-    // Wrap response to match existing parsing logic
-    const response = { ok: true, text: async () => JSON.stringify({ choices: [{ message: { content: aiResponseText } }] }) };
-    if (!response.ok) { // always false; kept for type compatibility below
-
     // Robust JSON parsing to handle truncated/malformed responses
     let aiResponse;
+    const response = { ok: true, text: async () => JSON.stringify({ choices: [{ message: { content: aiResponseText } }] }) };
     try {
       const responseText = await response.text();
 
