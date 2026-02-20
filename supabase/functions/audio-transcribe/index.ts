@@ -4,6 +4,7 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2.91.1";
 const CONFIDENCE_THRESHOLD = 0.50;
 const MAX_FILE_SIZE_MB = 25; // Whisper API limit is 25MB
 const MAX_FILE_SIZE_BYTES = MAX_FILE_SIZE_MB * 1024 * 1024;
+const MAX_RETRIES = 4;
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -19,6 +20,72 @@ function getMimeType(fileName: string): string {
     mkv: "video/x-matroska",
   };
   return map[ext || ""] || "audio/mpeg";
+}
+
+function buildFormData(
+  audioBuffer: ArrayBuffer,
+  mimeType: string,
+  fileName: string,
+  ext: string
+): FormData {
+  const form = new FormData();
+  const blob = new Blob([audioBuffer], { type: mimeType });
+  form.append("file", blob, fileName || `audio.${ext}`);
+  form.append("model", "whisper-1");
+  form.append("response_format", "verbose_json");
+  form.append("prompt", "Armenian, Russian, legal terminology, court hearing");
+  return form;
+}
+
+async function callWhisperWithRetry(
+  apiKey: string,
+  audioBuffer: ArrayBuffer,
+  mimeType: string,
+  fileName: string,
+  ext: string
+): Promise<Record<string, unknown>> {
+  let lastError: Error | null = null;
+
+  for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
+    // Rebuild FormData each attempt (consumed after fetch)
+    const formData = buildFormData(audioBuffer, mimeType, fileName, ext);
+
+    const response = await fetch("https://api.openai.com/v1/audio/transcriptions", {
+      method: "POST",
+      headers: { Authorization: `Bearer ${apiKey}` },
+      body: formData,
+    });
+
+    if (response.ok) {
+      return await response.json() as Record<string, unknown>;
+    }
+
+    const errText = await response.text();
+    console.error(
+      `Whisper API attempt ${attempt + 1}/${MAX_RETRIES + 1} failed (${response.status}): ${errText.substring(0, 200)}`
+    );
+
+    if (response.status === 429) {
+      if (attempt < MAX_RETRIES) {
+        const retryAfter = response.headers.get("retry-after");
+        const waitMs = retryAfter
+          ? parseInt(retryAfter, 10) * 1000
+          : Math.pow(2, attempt) * 2000 + Math.random() * 1000;
+        console.log(`Rate limited. Waiting ${Math.round(waitMs / 1000)}s before retry...`);
+        await new Promise((r) => setTimeout(r, waitMs));
+        continue;
+      }
+      // Exhausted retries on rate limit
+      const err = new Error("OpenAI rate limit exceeded after retries. Please wait a moment and try again.");
+      (err as { status?: number }).status = 429;
+      throw err;
+    }
+
+    lastError = new Error(`Whisper API error ${response.status}: ${errText.substring(0, 300)}`);
+    throw lastError;
+  }
+
+  throw lastError ?? new Error("Whisper API failed after all retries");
 }
 
 serve(async (req) => {
@@ -65,22 +132,21 @@ serve(async (req) => {
 
     console.log(`Processing audio transcription for: ${fileName}`);
 
-    // Check file size first
+    // Check file size
     const headResponse = await fetch(audioUrl, { method: "HEAD" });
     const contentLength = headResponse.headers.get("content-length");
     const fileSize = contentLength ? parseInt(contentLength, 10) : 0;
     console.log(`File size: ${(fileSize / 1024 / 1024).toFixed(2)} MB`);
 
     if (fileSize > MAX_FILE_SIZE_BYTES) {
-      const errorMsg = `File size (${(fileSize / 1024 / 1024).toFixed(1)} MB) exceeds Whisper API limit (${MAX_FILE_SIZE_MB} MB). Please compress the audio or extract just the audio track.`;
       return new Response(JSON.stringify({
-        error: errorMsg,
+        error: `File size (${(fileSize / 1024 / 1024).toFixed(1)} MB) exceeds Whisper API limit (${MAX_FILE_SIZE_MB} MB). Please compress the audio or extract just the audio track.`,
         error_code: "file_too_large",
         error_ru: `Размер файла превышает лимит Whisper API ${MAX_FILE_SIZE_MB} MB. Сожмите аудио или извлеките только аудиодорожку.`
       }), { status: 413, headers: { ...corsHeaders, "Content-Type": "application/json" } });
     }
 
-    // Download the audio file
+    // Download the audio
     console.log("Downloading audio file...");
     const audioResponse = await fetch(audioUrl);
     if (!audioResponse.ok) throw new Error(`Failed to fetch audio: ${audioResponse.status}`);
@@ -88,56 +154,39 @@ serve(async (req) => {
     const audioBuffer = await audioResponse.arrayBuffer();
     console.log(`Downloaded ${(audioBuffer.byteLength / 1024 / 1024).toFixed(2)} MB`);
 
-    // Determine MIME type and extension for Whisper
     const ext = fileName?.split(".").pop()?.toLowerCase() || "mp3";
     const mimeType = getMimeType(fileName);
 
-    // Build multipart form for Whisper API
-    const formData = new FormData();
-    const audioBlob = new Blob([audioBuffer], { type: mimeType });
-    formData.append("file", audioBlob, fileName || `audio.${ext}`);
-    formData.append("model", "whisper-1");
-    formData.append("response_format", "verbose_json");
-    // Hint that we may have Armenian — Whisper will auto-detect but this helps
-    formData.append("prompt", "Armenian, Russian, legal terminology, court hearing");
-
+    // Call Whisper with retry logic
     console.log("Sending to OpenAI Whisper API...");
-    const whisperResponse = await fetch("https://api.openai.com/v1/audio/transcriptions", {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${apiKey}`,
-      },
-      body: formData,
-    });
-
-    if (!whisperResponse.ok) {
-      const errText = await whisperResponse.text();
-      console.error(`Whisper API error ${whisperResponse.status}: ${errText}`);
-
-      if (whisperResponse.status === 429) {
-        return new Response(JSON.stringify({ error: "Rate limit exceeded. Please try again later.", error_code: "rate_limit" }), {
-          status: 429, headers: { ...corsHeaders, "Content-Type": "application/json" },
-        });
+    let whisperResult: Record<string, unknown>;
+    try {
+      whisperResult = await callWhisperWithRetry(apiKey, audioBuffer, mimeType, fileName, ext);
+    } catch (transcErr) {
+      const errStatus = (transcErr as { status?: number })?.status;
+      if (errStatus === 429) {
+        return new Response(JSON.stringify({
+          error: "OpenAI rate limit exceeded. Please wait a moment and try again.",
+          error_code: "rate_limit"
+        }), { status: 429, headers: { ...corsHeaders, "Content-Type": "application/json" } });
       }
-      throw new Error(`Whisper API error ${whisperResponse.status}: ${errText.substring(0, 300)}`);
+      throw transcErr;
     }
 
-    const whisperResult = await whisperResponse.json();
     console.log("Whisper response received, language:", whisperResult.language);
 
-    const transcription = whisperResult.text || "";
-    const language_detected = whisperResult.language || "unknown";
-    const duration_seconds = whisperResult.duration || 0;
+    const transcription = (whisperResult.text as string) || "";
+    const language_detected = (whisperResult.language as string) || "unknown";
+    const duration_seconds = (whisperResult.duration as number) || 0;
     const word_count = transcription.split(/\s+/).filter(Boolean).length;
 
-    // Estimate confidence from avg_logprob if available in segments
-    let confidence_score = 0.8; // default
-    if (whisperResult.segments && whisperResult.segments.length > 0) {
-      const avgLogprob = whisperResult.segments.reduce(
-        (sum: number, seg: { avg_logprob?: number }) => sum + (seg.avg_logprob ?? -0.5),
-        0
-      ) / whisperResult.segments.length;
-      // Convert log probability to 0-1 scale (logprob 0 = perfect, -1 = ~37%, -2 = ~13%)
+    // Estimate confidence from segment avg_logprob
+    let confidence_score = 0.8;
+    const segments = whisperResult.segments as Array<{ avg_logprob?: number }> | undefined;
+    if (segments && segments.length > 0) {
+      const avgLogprob = segments.reduce(
+        (sum, seg) => sum + (seg.avg_logprob ?? -0.5), 0
+      ) / segments.length;
       confidence_score = Math.min(1, Math.max(0, Math.exp(avgLogprob)));
     }
 
@@ -156,10 +205,10 @@ serve(async (req) => {
         transcription_text: transcription,
         confidence: confidence_score,
         language: language_detected,
-        duration_seconds: duration_seconds,
+        duration_seconds,
         needs_review: needsReview,
         reviewed_by: null,
-        speaker_labels: null
+        speaker_labels: null,
       })
       .select()
       .single();
