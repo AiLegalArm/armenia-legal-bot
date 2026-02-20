@@ -20,7 +20,8 @@ import {
   Loader2,
   FileAudio,
   CheckCircle,
-  AlertCircle
+  AlertCircle,
+  Download
 } from 'lucide-react';
 
 const SUPPORTED_AUDIO_FORMATS = [
@@ -334,7 +335,7 @@ const AudioTranscriptions = () => {
               {transcriptionResult ? (
                 transcriptionResult.success ? (
                   <div className="space-y-4">
-                    <div className="flex items-center gap-2 text-green-600">
+                    <div className="flex items-center gap-2 text-primary">
                       <CheckCircle className="h-5 w-5" />
                       <span className="font-medium">{t('audio:processing_complete')}</span>
                     </div>
@@ -367,12 +368,40 @@ const AudioTranscriptions = () => {
                       </p>
                     </div>
 
-                    <Button
-                      variant="outline"
-                      onClick={() => navigate(`/cases/${selectedCaseId}/transcriptions`)}
-                    >
-                      {t('audio:view_all_transcriptions', 'View All Transcriptions')}
-                    </Button>
+                    <div className="flex flex-wrap gap-2">
+                      <Button
+                        variant="outline"
+                        onClick={() => {
+                          const text = [
+                            `Язык: ${transcriptionResult.language_detected || '—'}`,
+                            `Точность: ${Math.round((transcriptionResult.confidence_score || 0) * 100)}%`,
+                            transcriptionResult.duration_seconds
+                              ? `Длительность: ${Math.floor(transcriptionResult.duration_seconds / 60)}:${String(Math.floor(transcriptionResult.duration_seconds % 60)).padStart(2, '0')}`
+                              : '',
+                            '',
+                            transcriptionResult.transcription || '',
+                          ].filter(Boolean).join('\n');
+
+                          const blob = new Blob([text], { type: 'text/plain;charset=utf-8' });
+                          const url = URL.createObjectURL(blob);
+                          const a = document.createElement('a');
+                          a.href = url;
+                          a.download = `transcription_${new Date().toISOString().slice(0, 10)}.txt`;
+                          a.click();
+                          URL.revokeObjectURL(url);
+                        }}
+                      >
+                        <Download className="mr-2 h-4 w-4" />
+                        {t('audio:save_transcription', 'Сохранить транскрипцию')}
+                      </Button>
+
+                      <Button
+                        variant="outline"
+                        onClick={() => navigate(`/cases/${selectedCaseId}/transcriptions`)}
+                      >
+                        {t('audio:view_all_transcriptions', 'View All Transcriptions')}
+                      </Button>
+                    </div>
                   </div>
                 ) : (
                   <div className="flex items-center gap-2 text-destructive">
