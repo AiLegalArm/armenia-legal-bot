@@ -154,9 +154,13 @@ export function AudioTranscriptionResult({ transcription, caseId }: AudioTranscr
                   <Clock className="h-3 w-3 shrink-0" />
                   {format(new Date(transcription.created_at), 'dd.MM.yyyy HH:mm')}
                 </span>
-                {transcription.duration_seconds && (
+                {transcription.duration_seconds ? (
                   <span>
                     {t('audio:duration')}: {durationMinutes}:{durationSeconds.toString().padStart(2, '0')}
+                  </span>
+                ) : (
+                  <span>
+                    {t('audio:duration')}: 0:00
                   </span>
                 )}
               </div>
