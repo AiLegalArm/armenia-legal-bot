@@ -344,10 +344,12 @@ export async function callText(
   const safeMessages = prependSafetyHeader(functionName, messages);
   const timeoutMs = options.timeoutMs ?? defaultTimeout(false);
 
+  // OpenAI models use max_completion_tokens; Gemini/others use max_tokens
+  const tokenKey = cfg.model.startsWith("openai/") ? "max_completion_tokens" : "max_tokens";
   const body: Record<string, unknown> = {
     model: cfg.model,
     temperature: cfg.temperature,
-    max_tokens: cfg.max_tokens,
+    [tokenKey]: cfg.max_tokens,
     messages: safeMessages,
   };
 
@@ -381,10 +383,12 @@ export async function callJSON<T = Record<string, unknown>>(
   const safeMessages = prependSafetyHeader(functionName, messages);
   const timeoutMs = options.timeoutMs ?? defaultTimeout(false);
 
+  // OpenAI models use max_completion_tokens; Gemini/others use max_tokens
+  const tokenKey = cfg.model.startsWith("openai/") ? "max_completion_tokens" : "max_tokens";
   const body: Record<string, unknown> = {
     model: cfg.model,
     temperature: cfg.temperature,
-    max_tokens: cfg.max_tokens,
+    [tokenKey]: cfg.max_tokens,
     messages: safeMessages,
   };
 
@@ -480,10 +484,11 @@ export async function callTranscription(
   const requestId = newRequestId();
   const timeoutMs = options.timeoutMs ?? defaultTimeout(true);
 
+  const tokenKey = cfg.model.startsWith("openai/") ? "max_completion_tokens" : "max_tokens";
   const body: Record<string, unknown> = {
     model: cfg.model,
     temperature: cfg.temperature,
-    max_tokens: cfg.max_tokens,
+    [tokenKey]: cfg.max_tokens,
     messages,
   };
 
