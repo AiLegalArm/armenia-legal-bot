@@ -78,6 +78,7 @@ interface ImportOptions {
   category: KbCategory | PracticeCategory;
   sourceName: string;
   practiceMetadata?: PracticeMetadata;
+  translateToArmenian?: boolean;
 }
 
 interface PreviewRecord {
@@ -155,6 +156,7 @@ export function ImportWizard({ open, onOpenChange, onImport }: ImportWizardProps
     chunk: true,
     category: 'other' as KbCategory,
     sourceName: '',
+    translateToArmenian: false,
     practiceMetadata: {
       courtType: 'cassation',
       outcome: 'granted',
@@ -369,6 +371,7 @@ export function ImportWizard({ open, onOpenChange, onImport }: ImportWizardProps
       normalize: options.normalize,
       chunk: options.chunk,
       dedupMode,
+      translateToArmenian: options.translateToArmenian,
     });
   }, [source, target, options, previewRecords, files, url, pastedText, jsonlRecords, onImport, bulk, parseUrls]);
 
@@ -588,12 +591,24 @@ export function ImportWizard({ open, onOpenChange, onImport }: ImportWizardProps
                 </div>
                 <div className="flex items-center justify-between rounded-lg border p-3">
                   <div>
-                    <p className="text-sm font-medium">Чанкирование</p>
-                    <p className="text-xs text-muted-foreground">Разбивка на семантические блоки для RAG</p>
+                    <p className="text-sm font-medium">\u0427\u0430\u043d\u043a\u0438\u0440\u043e\u0432\u0430\u043d\u0438\u0435</p>
+                    <p className="text-xs text-muted-foreground">\u0420\u0430\u0437\u0431\u0438\u0432\u043a\u0430 \u043d\u0430 \u0441\u0435\u043c\u0430\u043d\u0442\u0438\u0447\u0435\u0441\u043a\u0438\u0435 \u0431\u043b\u043e\u043a\u0438 \u0434\u043b\u044f RAG</p>
                   </div>
                   <Switch
                     checked={options.chunk}
                     onCheckedChange={(v) => setOptions(prev => ({ ...prev, chunk: v }))}
+                  />
+                </div>
+                <div className="flex items-center justify-between rounded-lg border-2 border-primary/30 bg-primary/5 p-3">
+                  <div>
+                    <p className="text-sm font-medium flex items-center gap-2">
+                      🇦🇲 \u041f\u0435\u0440\u0435\u0432\u0435\u0441\u0442\u0438 \u043d\u0430 \u0430\u0440\u043c\u044f\u043d\u0441\u043a\u0438\u0439
+                    </p>
+                    <p className="text-xs text-muted-foreground">\u0410\u0432\u0442\u043e\u043f\u0435\u0440\u0435\u0432\u043e\u0434 \u0441\u043e\u0434\u0435\u0440\u0436\u0438\u043c\u043e\u0433\u043e \u0447\u0435\u0440\u0435\u0437 AI (\u0435\u0441\u043b\u0438 \u0442\u0435\u043a\u0441\u0442 \u043d\u0435 \u043d\u0430 \u0430\u0440\u043c\u044f\u043d\u0441\u043a\u043e\u043c)</p>
+                  </div>
+                  <Switch
+                    checked={!!options.translateToArmenian}
+                    onCheckedChange={(v) => setOptions(prev => ({ ...prev, translateToArmenian: v }))}
                   />
                 </div>
                 <div className="space-y-2">

@@ -82,6 +82,7 @@ export interface BulkImportOptions {
   normalize: boolean;
   chunk: boolean;
   dedupMode: 'skip' | 'upsert';
+  translateToArmenian?: boolean;
 }
 
 export interface ErrorReportEntry {
@@ -201,6 +202,42 @@ export function useBulkImport() {
       // Sanitize text for PostgreSQL compatibility
       rawText = sanitizeString(rawText);
       fileName = sanitizeString(fileName);
+
+      // ── Optional: Translate to Armenian ──────────────────────
+      if (options.translateToArmenian) {
+        updateItem(item.id, { stage: 'normalized' });
+        // Detect if text is already Armenian (contains Armenian Unicode range)
+        const armenianCharCount = (rawText.match(/[\u0531-\u058F]/g) || []).length;
+        const totalChars = rawText.replace(/\s/g, '').length;
+        const armenianRatio = totalChars > 0 ? armenianCharCount / totalChars : 0;
+
+        if (armenianRatio < 0.3) {
+          // Text is not predominantly Armenian — translate it
+          // Split into chunks of ~3000 chars to avoid context limits
+          const CHUNK_SIZE = 3000;
+          const textChunks: string[] = [];
+          for (let i = 0; i < rawText.length; i += CHUNK_SIZE) {
+            textChunks.push(rawText.slice(i, i + CHUNK_SIZE));
+          }
+
+          const translatedChunks: string[] = [];
+          for (const chunk of textChunks) {
+            const { data: transData, error: transErr } = await supabase.functions.invoke(
+              'translate-to-armenian',
+              { body: { text: chunk } }
+            );
+
+            if (transErr) {
+              console.warn('Translation chunk failed, keeping original:', transErr.message);
+              translatedChunks.push(chunk);
+            } else {
+              const translated = transData?.translated || chunk;
+              translatedChunks.push(translated);
+            }
+          }
+          rawText = translatedChunks.join('\n');
+        }
+      }
 
       // Stage 2: Normalize
       updateItem(item.id, { stage: 'normalized' });
