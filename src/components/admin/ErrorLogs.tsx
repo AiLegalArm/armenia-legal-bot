@@ -5,7 +5,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { AlertTriangle, CheckCircle, RefreshCw, Search, Loader2, ChevronDown, ChevronUp } from "lucide-react";
+import { AlertTriangle, CheckCircle, RefreshCw, Search, Loader2, ChevronDown, ChevronUp, ShieldAlert } from "lucide-react";
 import { toast } from "sonner";
 import { format } from "date-fns";
 
@@ -26,6 +26,7 @@ interface ErrorLog {
 export function ErrorLogs() {
   const [logs, setLogs] = useState<ErrorLog[]>([]);
   const [loading, setLoading] = useState(true);
+  const [fetchError, setFetchError] = useState<string | null>(null);
   const [search, setSearch] = useState("");
   const [typeFilter, setTypeFilter] = useState<string>("all");
   const [statusFilter, setStatusFilter] = useState<string>("all");
@@ -35,35 +36,46 @@ export function ErrorLogs() {
 
   const fetchLogs = async () => {
     setLoading(true);
-    let query = supabase
-      .from("error_logs")
-      .select("*")
-      .order("created_at", { ascending: false })
-      .range(page * PAGE_SIZE, (page + 1) * PAGE_SIZE - 1);
+    setFetchError(null);
+    try {
+      let query = supabase
+        .from("error_logs")
+        .select("*")
+        .order("created_at", { ascending: false })
+        .range(page * PAGE_SIZE, (page + 1) * PAGE_SIZE - 1);
 
-    if (typeFilter !== "all") {
-      query = query.eq("error_type", typeFilter);
-    }
-    if (statusFilter === "resolved") {
-      query = query.eq("resolved", true);
-    } else if (statusFilter === "unresolved") {
-      query = query.eq("resolved", false);
-    }
-    if (search.length >= 2) {
-      query = query.ilike("error_message", `%${search}%`);
-    }
+      if (typeFilter !== "all") {
+        query = query.eq("error_type", typeFilter);
+      }
+      if (statusFilter === "resolved") {
+        query = query.eq("resolved", true);
+      } else if (statusFilter === "unresolved") {
+        query = query.eq("resolved", false);
+      }
+      if (search.length >= 2) {
+        query = query.ilike("error_message", `%${search}%`);
+      }
 
-    const { data, error } = await query;
-    if (error) {
-      toast.error("Ошибка загрузки логов");
-    } else {
-      setLogs((data as ErrorLog[]) || []);
+      const { data, error } = await query;
+      if (error) {
+        console.error("Error fetching error_logs:", error);
+        setFetchError(`${error.code}: ${error.message}`);
+        setLogs([]);
+      } else {
+        setLogs((data as ErrorLog[]) || []);
+      }
+    } catch (e) {
+      console.error("Unexpected error fetching logs:", e);
+      setFetchError(String(e));
+      setLogs([]);
+    } finally {
+      setLoading(false);
     }
-    setLoading(false);
   };
 
   useEffect(() => {
     fetchLogs();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [page, typeFilter, statusFilter]);
 
   const handleSearch = () => {
@@ -77,7 +89,7 @@ export function ErrorLogs() {
       .update({ resolved: true, resolved_at: new Date().toISOString() })
       .eq("id", id);
     if (error) {
-      toast.error("Не удалось обновить");
+      toast.error(`Не удалось обновить: ${error.message}`);
     } else {
       toast.success("Отмечено как решённое");
       fetchLogs();
@@ -128,17 +140,28 @@ export function ErrorLogs() {
               <SelectItem value="resolved">Решённые</SelectItem>
             </SelectContent>
           </Select>
-          <Button variant="outline" size="icon" onClick={fetchLogs}>
+          <Button variant="outline" size="icon" onClick={fetchLogs} title="Обновить">
             <RefreshCw className="h-4 w-4" />
           </Button>
         </div>
+
+        {/* Error state */}
+        {fetchError && (
+          <div className="flex items-start gap-2 rounded-lg border border-destructive/50 bg-destructive/10 p-3 text-sm text-destructive">
+            <ShieldAlert className="h-4 w-4 mt-0.5 shrink-0" />
+            <div>
+              <p className="font-medium">Ошибка загрузки логов</p>
+              <p className="text-xs mt-0.5 opacity-80">{fetchError}</p>
+            </div>
+          </div>
+        )}
 
         {/* Logs */}
         {loading ? (
           <div className="flex justify-center py-8">
             <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
           </div>
-        ) : logs.length === 0 ? (
+        ) : !fetchError && logs.length === 0 ? (
           <div className="flex flex-col items-center py-8 text-muted-foreground">
             <CheckCircle className="h-10 w-10 mb-2" />
             <p>Ошибок не найдено</p>
