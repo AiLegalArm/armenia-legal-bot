@@ -102,6 +102,7 @@ function getPartyRolesForCaseType(caseType: string) {
 
 // Court list as per requirements
 const COURTS = [
+  { value: 'Մարդու իրավունքների եվրոպական դատարան (ՄԻԵԴ)', label: 'court_echr' },
   { value: 'Սահմանադրական դատարան', label: 'court_constitutional' },
   { value: 'Վճռաբեկ դատարան', label: 'court_cassation' },
   { value: 'Վերաքննիչ քաղաքացիական դատարան', label: 'court_civil_appeal' },
@@ -117,10 +118,10 @@ const COURTS = [
   { value: 'Գեղարքունիքի մարզի ընդհանուր իրավասության դատարան', label: 'court_gegharkunik' },
   { value: 'Լոռու մարզի ընդհանուր իրավասության դատարան', label: 'court_lori' },
   { value: 'Կոտայքի մարզի ընդհանուր իրավասության դատարան', label: 'court_kotayk' },
-  { value: 'Շիրակի մարզի ընդհանուր իրավասության դատարան', label: 'court_shirak' },
-  { value: 'Սյունիքի մարզի ընդհանուր իրավասության դատարան', label: 'court_syunik' },
-  { value: 'Տավուշի մարզի ընդհանուր իրավասության դատարան', label: 'court_tavush' },
-  { value: 'Արմավիրի մարզի ընդհանուր իրավասության դատարան', label: 'court_armavir' },
+  { value: 'Շիրակի մարزի ընդհանուր իրավասության դատարան', label: 'court_shirak' },
+  { value: 'Սյունիքի մарзի ընդհանուր իրավасության դатаран', label: 'court_syunik' },
+  { value: 'Տавушի марзи ընдhanur иравасутян датаран', label: 'court_tavush' },
+  { value: 'Արмавири марзи ընдhanur иравасутян датаран', label: 'court_armavir' },
 ] as const;
 
 interface CaseFormProps {

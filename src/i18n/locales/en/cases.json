@@ -99,6 +99,7 @@
   "stage_administrative_4": "Cassation",
   "court_label": "Court",
   "select_court": "Select court",
+  "court_echr": "European Court of Human Rights (ECHR)",
   "court_required": "Please select a court",
   "court_constitutional": "Constitutional Court",
   "court_cassation": "Court of Cassation",
