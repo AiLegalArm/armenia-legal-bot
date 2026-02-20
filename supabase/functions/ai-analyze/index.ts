@@ -8,6 +8,7 @@ import {
   type AnalysisType,
   PROMPT_REGISTRY,
 } from "./prompts/index.ts";
+import { PRECEDENT_CITATION_PROMPT, PRECEDENT_CITATION_SCHEMA } from "./prompts/precedent-citation.ts";
 import { BASE_SYSTEM_PROMPT } from "./system.ts";
 import { sandboxUserInput, secureSandbox, logInjectionAttempt, ANTI_INJECTION_RULES } from "../_shared/prompt-armor.ts";
 import { applyBudgets, logTokenUsage, type RankedContent } from "../_shared/token-budget.ts";
@@ -104,7 +105,7 @@ const SYSTEM_PROMPTS: Record<Role, string> = {
 // UserSourceRef moved to _shared/reference-sources.ts
 
 interface AnalysisRequest {
-  role: "advocate" | "prosecutor" | "judge" | "aggregator" | "criminal_module";
+  role: "advocate" | "prosecutor" | "judge" | "aggregator" | "criminal_module" | "precedent_citation";
   moduleId?: CriminalAnalysisModule;
   caseId?: string;
   caseFacts?: string;
@@ -150,7 +151,7 @@ serve(async (req) => {
       (await req.json()) as AnalysisRequest;
 
     // Validate role - support both legacy roles and new analysis types
-    const legacyRoles = ["advocate", "prosecutor", "judge", "aggregator", "criminal_module"];
+    const legacyRoles = ["advocate", "prosecutor", "judge", "aggregator", "criminal_module", "precedent_citation"];
     const isLegacyRole = legacyRoles.includes(role);
     const isNewAnalysisType = isValidAnalysisType(role as AnalysisType);
 
@@ -587,7 +588,9 @@ Please provide your professional legal analysis from your designated role perspe
 
     // Determine which system prompt to use
     let systemPrompt: string;
-    if (role === "criminal_module" && moduleId) {
+    if (role === "precedent_citation") {
+      systemPrompt = PRECEDENT_CITATION_PROMPT;
+    } else if (role === "criminal_module" && moduleId) {
       // Legacy criminal module support
       systemPrompt = CRIMINAL_MODULE_PROMPTS[moduleId];
     } else if (isValidAnalysisType(role)) {
@@ -636,17 +639,28 @@ Please provide your professional legal analysis from your designated role perspe
     }
 
     // Route via centralized OpenAI router (supports multimodal content arrays)
-    const { callText } = await import("../_shared/openai-router.ts");
+    const { callText, callJSON } = await import("../_shared/openai-router.ts");
 
     let aiResponseText: string;
+    let precedentJson: unknown = null;
+
     try {
       const routerMessages = [
         { role: "system" as const, content: systemPrompt },
         { role: "user" as const, content: messageContent as string | unknown[] },
       ];
-      const result = await callText("ai-analyze", routerMessages);
-      aiResponseText = result.text;
-      console.log(JSON.stringify({ ts: new Date().toISOString(), lvl: "info", fn: "ai-analyze", model: result.model_used, latency_ms: result.latency_ms }));
+
+      if (role === "precedent_citation") {
+        // Use JSON extraction for structured precedent output
+        const result = await callJSON("ai-analyze", routerMessages, PRECEDENT_CITATION_SCHEMA);
+        precedentJson = result.json;
+        aiResponseText = JSON.stringify(result.json, null, 2);
+        console.log(JSON.stringify({ ts: new Date().toISOString(), lvl: "info", fn: "ai-analyze", mode: "precedent_citation", model: result.model_used, latency_ms: result.latency_ms }));
+      } else {
+        const result = await callText("ai-analyze", routerMessages);
+        aiResponseText = result.text;
+        console.log(JSON.stringify({ ts: new Date().toISOString(), lvl: "info", fn: "ai-analyze", model: result.model_used, latency_ms: result.latency_ms }));
+      }
     } catch (routerErr) {
       const status = (routerErr as { status?: number })?.status;
       if (status === 429) {
@@ -658,6 +672,32 @@ Please provide your professional legal analysis from your designated role perspe
       }
       await supabase.rpc("log_error", { _error_type: "llm", _error_message: "Legal AI router error: " + String(routerErr), _error_details: { role }, _case_id: caseId || null });
       throw new Error("Legal AI router error");
+    }
+
+    // For precedent_citation, return structured JSON directly
+    if (role === "precedent_citation" && precedentJson) {
+      // Save to database if caseId provided
+      if (caseId) {
+        await supabase.from("ai_analysis").insert({
+          case_id: caseId,
+          role: "precedent_citation",
+          prompt_used: redactPII(userMessage.substring(0, 2000)),
+          response_text: aiResponseText,
+          sources_used: sourcesUsed.length > 0 ? sourcesUsed : null,
+          created_by: user.id,
+        });
+      }
+
+      return new Response(
+        JSON.stringify({
+          role: "precedent_citation",
+          analysis: aiResponseText,
+          precedent_data: precedentJson,
+          sources: sourcesUsed,
+          model: "Legal AI (openai/gpt-5)",
+        }),
+        { headers: { ...corsHeaders, "Content-Type": "application/json" } },
+      );
     }
 
     // Robust JSON parsing to handle truncated/malformed responses
