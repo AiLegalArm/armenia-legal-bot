@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
@@ -176,7 +176,7 @@ export function KBSearchPanel({ caseId, onInsertReference, onReferencesChange }:
   const storeReferencesText = useReferencesText(storeKey);
   const { t } = useTranslation("kb");
   const [query, setQuery] = useState("");
-  const [viewFilter, setViewFilter] = useState<ViewFilter>("practice");
+  const [viewFilter, setViewFilter] = useState<ViewFilter>("all");
   const [mergedVisibleCount, setMergedVisibleCount] = useState(MERGED_PAGE_SIZE);
 
   // Internal references collector (used when no external consumer)
@@ -184,7 +184,6 @@ export function KBSearchPanel({ caseId, onInsertReference, onReferencesChange }:
   const [refsOpen, setRefsOpen] = useState(false);
   const refsTextareaRef = useRef<HTMLTextAreaElement>(null);
   // Practice search state
-  const [category, setCategory] = useState<PracticeCategory | "all">("all");
   const [expandedDocs, setExpandedDocs] = useState<Set<string>>(new Set());
   const [loadedChunkIndexes, setLoadedChunkIndexes] = useState<Map<string, number[]>>(new Map());
 
@@ -422,26 +421,37 @@ export function KBSearchPanel({ caseId, onInsertReference, onReferencesChange }:
     return () => { cancelled = true; };
   }, [setPracticeDocuments]);
 
-  const handleSearch = async () => {
-    if (!query.trim()) return;
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const runSearch = useCallback(async (searchQuery: string) => {
+    if (!searchQuery.trim() || searchQuery.trim().length < 2) return;
     setMergedVisibleCount(MERGED_PAGE_SIZE);
 
-    const cat = category === "all" ? null : category;
-
     // Try unified endpoint first (single request for both KB + Practice)
-    const unifiedOk = await searchUnified(query, cat);
+    const unifiedOk = await searchUnified(searchQuery, null);
 
     // If unified failed, fall back to separate parallel searches
     if (!unifiedOk) {
       await Promise.all([
-        searchKBLegislation(query),
-        searchPractice(query, cat),
+        searchKBLegislation(searchQuery),
+        searchPractice(searchQuery, null),
       ]);
     }
-  };
+  }, [searchUnified, searchKBLegislation, searchPractice]);
 
-  const handleKeyDown = (e: React.KeyboardEvent) => {
-    if (e.key === "Enter") handleSearch();
+  const handleQueryChange = (value: string) => {
+    setQuery(value);
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+    if (!value.trim()) {
+      clearPractice();
+      setKbResults([]);
+      clearReferences(storeKey);
+      setCollectedRefs([]);
+      return;
+    }
+    debounceRef.current = setTimeout(() => {
+      runSearch(value);
+    }, 500);
   };
 
   const toggleDocExpanded = (docId: string) => {
@@ -525,32 +535,18 @@ export function KBSearchPanel({ caseId, onInsertReference, onReferencesChange }:
       </CardHeader>
 
       <CardContent className="flex-1 flex flex-col gap-3 overflow-hidden">
-        {/* Search controls */}
-        <div className="flex gap-2">
-          <div className="relative flex-1">
-            <Search className="absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-            <Input
-              placeholder={"\u0548\u0580\u0578\u0576\u0565\u056C \u0570\u0578\u0564\u057E\u0561\u056E, \u057D\u057F\u0561\u057F\u057B\u0561, \u0562\u0561\u0576\u0561\u056C\u056B \u0562\u0561\u057C..."}
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
-              onKeyDown={handleKeyDown}
-              className="pl-8 h-9"
-            />
-          </div>
-          <Select value={category} onValueChange={(v) => setCategory(v as PracticeCategory | "all")}>
-            <SelectTrigger className="w-[130px] h-9">
-              <SelectValue placeholder={"\u053F\u0561\u057F\u0565\u0563\u0578\u0580\u056B\u0561"} />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">{"\u0532\u0578\u056C\u0578\u0580\u0568"}</SelectItem>
-              {(Object.keys(CATEGORY_LABELS) as PracticeCategory[]).map((key) => (
-                <SelectItem key={key} value={key}>{CATEGORY_LABELS[key]}</SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-          <Button onClick={handleSearch} disabled={isLoading} size="sm" className="h-9">
-            {isLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : "\u0548\u0580\u0578\u0576\u0565\u056C"}
-          </Button>
+        {/* Search controls — single input only */}
+        <div className="relative">
+          <Search className="absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+          <Input
+            placeholder={t("search_kb", "Поиск по законодательству и судебной практике...")}
+            value={query}
+            onChange={(e) => handleQueryChange(e.target.value)}
+            className="pl-8 pr-8 h-9"
+          />
+          {isLoading && (
+            <Loader2 className="absolute right-2.5 top-1/2 h-4 w-4 -translate-y-1/2 animate-spin text-muted-foreground" />
+          )}
         </div>
 
         {/* View filter tabs */}
