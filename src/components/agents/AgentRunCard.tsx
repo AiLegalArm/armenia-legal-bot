@@ -176,8 +176,8 @@ export function AgentRunCard({ agent, run, isRunning, onRun, disabled }: AgentRu
                 {run.analysis_result && (
                   <div className="min-w-0 overflow-hidden">
                     <h4 className="text-sm font-medium mb-2">{t("ai:full_analysis")}</h4>
-                    <div className="h-[500px] overflow-y-auto border rounded-lg p-4">
-                      <div className="prose prose-sm max-w-none dark:prose-invert break-words overflow-wrap-anywhere">
+                    <div className="max-h-[200px] overflow-y-auto border rounded-lg p-3">
+                      <div className="prose prose-sm max-w-none dark:prose-invert break-words whitespace-pre-wrap text-sm leading-relaxed">
                         <ReactMarkdown>{run.analysis_result}</ReactMarkdown>
                       </div>
                     </div>
