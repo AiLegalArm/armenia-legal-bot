@@ -150,11 +150,11 @@ export function StepResult({
 
       {/* Missing Data Form */}
       {hasMissingData && onRegenerate && (
-        <div className="border border-amber-500/40 rounded-xl bg-amber-500/5 p-4 space-y-3">
+      <div className="border border-warning/40 rounded-xl bg-warning/5 p-4 space-y-3">
           <div className="flex items-start gap-2">
-            <AlertCircle className="h-5 w-5 text-amber-500 shrink-0 mt-0.5" />
+            <AlertCircle className="h-5 w-5 text-warning shrink-0 mt-0.5" />
             <div>
-              <p className="text-sm font-semibold text-amber-600 dark:text-amber-400">
+              <p className="text-sm font-semibold text-warning">
                 {getText(
                   "ԱI-ն պահանջում է լրացուցիչ տվյալներ",
                   "AI запрашивает дополнительные данные",
@@ -175,7 +175,7 @@ export function StepResult({
           <div className="space-y-1 pl-1">
             {missingItems.slice(0, 5).map((item, idx) => (
               <p key={idx} className="text-xs text-muted-foreground flex items-start gap-1">
-                <span className="text-amber-500 shrink-0">•</span>
+                <span className="text-warning shrink-0">•</span>
                 <span>{item}</span>
               </p>
             ))}
