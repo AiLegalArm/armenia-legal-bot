@@ -9,16 +9,25 @@ import { parseReferencesText, buildUserSourcesBlock } from "../_shared/reference
 import { buildSearchQuery, mapCourtTypeToPracticeCategory } from "./rag-search.ts";
 import { redactForLog } from "../_shared/pii-redactor.ts";
 import { log, err } from "../_shared/safe-logger.ts";
-import { handleCors } from "../_shared/edge-security.ts";
+
+// =============================================================================
+// CORS HEADERS (wildcard for browser compatibility)
+// =============================================================================
+
+const corsHeaders = {
+  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-internal-key",
+  "Access-Control-Allow-Methods": "POST, OPTIONS",
+};
 
 // =============================================================================
 // MAIN HANDLER
 // =============================================================================
 
 serve(async (req) => {
-  const cors = handleCors(req);
-  if (cors.errorResponse) return cors.errorResponse;
-  const corsHeaders = cors.corsHeaders!;
+  if (req.method === "OPTIONS") {
+    return new Response(null, { status: 204, headers: corsHeaders });
+  }
 
   try {
     // === AUTH GUARD (Audit Fix: Stage 2/5 — Critical) ===
