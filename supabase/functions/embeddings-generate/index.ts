@@ -15,7 +15,7 @@ import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.91.1";
 
 // ─── Config ────────────────────────────────────────────────────────────────
-const OPENROUTER_BASE_URL = "https://openrouter.ai/api/v1";
+const OPENAI_BASE_URL = "https://api.openai.com/v1";
 const DEFAULT_MODEL = "text-embedding-3-large";
 const MAX_BATCH_SIZE = 100;
 const MAX_CHARS_PER_TEXT = 32_000; // ~8k tokens
@@ -76,14 +76,14 @@ async function withRetry<T>(
   throw lastError;
 }
 
-// ─── OpenRouter embedding call ─────────────────────────────────────────────
-async function callOpenRouterEmbeddings(
+// ─── OpenAI embedding call ─────────────────────────────────────────────────
+async function callOpenAIEmbeddings(
   texts: string[],
   model: string,
   dimensions?: number,
 ): Promise<{ vectors: number[][]; totalTokens: number }> {
-  const apiKey = Deno.env.get("OPENROUTER_API_KEY");
-  if (!apiKey) throw new Error("OPENROUTER_API_KEY not configured");
+  const apiKey = Deno.env.get("OPENAI_API_KEY");
+  if (!apiKey) throw new Error("OPENAI_API_KEY not configured");
 
   const body: Record<string, unknown> = {
     model,
@@ -92,20 +92,18 @@ async function callOpenRouterEmbeddings(
   if (dimensions) body.dimensions = dimensions;
 
   const response = await withRetry(async () => {
-    const res = await fetch(`${OPENROUTER_BASE_URL}/embeddings`, {
+    const res = await fetch(`${OPENAI_BASE_URL}/embeddings`, {
       method: "POST",
       headers: {
         Authorization: `Bearer ${apiKey}`,
         "Content-Type": "application/json",
-        "HTTP-Referer": "https://ailegalarmenia.lovable.app",
-        "X-Title": "AI Legal Armenia",
       },
       body: JSON.stringify(body),
     });
 
     if (!res.ok) {
       const errText = await res.text();
-      throw new Error(`OpenRouter embeddings error ${res.status}: ${errText}`);
+      throw new Error(`OpenAI embeddings error ${res.status}: ${errText}`);
     }
 
     return res;
@@ -114,7 +112,7 @@ async function callOpenRouterEmbeddings(
   const json = await response.json();
 
   if (!json.data || !Array.isArray(json.data)) {
-    throw new Error("Unexpected response format from OpenRouter embeddings");
+    throw new Error("Unexpected response format from OpenAI embeddings");
   }
 
   // Sort by index to preserve order
@@ -185,7 +183,7 @@ serve(async (req) => {
       `[embeddings-generate] batch=${texts.length} model=${resolvedModel}${dimensions ? ` dims=${dimensions}` : ""}`,
     );
 
-    const { vectors, totalTokens } = await callOpenRouterEmbeddings(
+    const { vectors, totalTokens } = await callOpenAIEmbeddings(
       texts,
       resolvedModel,
       dimensions,
