@@ -530,7 +530,7 @@ export function KBSearchPanel({ caseId, onInsertReference, onReferencesChange }:
         </CardTitle>
         <CardDescription className="flex items-center gap-1.5 text-xs text-destructive">
           <AlertTriangle className="h-3 w-3" />
-          {"\u0540\u0572\u0578\u0582\u0574\u0561\u0575\u056B\u0576 \u0576\u0575\u0578\u0582\u0569 \u0567\u0589 \u0549\u056B \u0570\u0561\u0576\u0564\u056B\u057D\u0561\u0576\u0578\u0582\u0574 \u0563\u0578\u0580\u056E\u056B \u0583\u0561\u057D\u057F"}
+          {t("disclaimer", "Справочная информация. Не является юридической консультацией.")}
         </CardDescription>
       </CardHeader>
 
