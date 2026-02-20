@@ -59,3 +59,6 @@ verify_jwt = false
 
 [functions.kb-unified-search]
 verify_jwt = false
+
+[functions.embeddings-generate]
+verify_jwt = false
