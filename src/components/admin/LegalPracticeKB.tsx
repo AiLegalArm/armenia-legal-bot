@@ -836,8 +836,8 @@ export function LegalPracticeKB() {
         onOpenChange={setEchrImportOpen}
         onSuccess={() => {
           queryClient.invalidateQueries({ queryKey: ['legal-practice-kb'] });
-          setFilterCategory('echr');
-          setOpenFolders(prev => new Set([...prev, 'echr']));
+          setFilterCategory('all');
+          setOpenFolders(new Set(['echr', 'criminal', 'civil', 'administrative', 'constitutional', 'bankruptcy']));
         }}
       />
     </Card>
