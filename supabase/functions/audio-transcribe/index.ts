@@ -2,91 +2,13 @@ import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.91.1";
 
 const CONFIDENCE_THRESHOLD = 0.50;
-const MAX_FILE_SIZE_MB = 25; // Whisper API limit is 25MB
+const MAX_FILE_SIZE_MB = 25;
 const MAX_FILE_SIZE_BYTES = MAX_FILE_SIZE_MB * 1024 * 1024;
-const MAX_RETRIES = 4;
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
-
-function getMimeType(fileName: string): string {
-  const ext = fileName?.split(".").pop()?.toLowerCase();
-  const map: Record<string, string> = {
-    mp3: "audio/mpeg", wav: "audio/wav", m4a: "audio/mp4",
-    ogg: "audio/ogg", flac: "audio/flac", webm: "audio/webm",
-    mp4: "video/mp4", avi: "video/x-msvideo", mov: "video/quicktime",
-    mkv: "video/x-matroska",
-  };
-  return map[ext || ""] || "audio/mpeg";
-}
-
-function buildFormData(
-  audioBuffer: ArrayBuffer,
-  mimeType: string,
-  fileName: string,
-  ext: string
-): FormData {
-  const form = new FormData();
-  const blob = new Blob([audioBuffer], { type: mimeType });
-  form.append("file", blob, fileName || `audio.${ext}`);
-  form.append("model", "whisper-1");
-  form.append("response_format", "verbose_json");
-  form.append("prompt", "Armenian, Russian, legal terminology, court hearing");
-  return form;
-}
-
-async function callWhisperWithRetry(
-  apiKey: string,
-  audioBuffer: ArrayBuffer,
-  mimeType: string,
-  fileName: string,
-  ext: string
-): Promise<Record<string, unknown>> {
-  let lastError: Error | null = null;
-
-  for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
-    // Rebuild FormData each attempt (consumed after fetch)
-    const formData = buildFormData(audioBuffer, mimeType, fileName, ext);
-
-    const response = await fetch("https://api.openai.com/v1/audio/transcriptions", {
-      method: "POST",
-      headers: { Authorization: `Bearer ${apiKey}` },
-      body: formData,
-    });
-
-    if (response.ok) {
-      return await response.json() as Record<string, unknown>;
-    }
-
-    const errText = await response.text();
-    console.error(
-      `Whisper API attempt ${attempt + 1}/${MAX_RETRIES + 1} failed (${response.status}): ${errText.substring(0, 200)}`
-    );
-
-    if (response.status === 429) {
-      if (attempt < MAX_RETRIES) {
-        const retryAfter = response.headers.get("retry-after");
-        const waitMs = retryAfter
-          ? parseInt(retryAfter, 10) * 1000
-          : Math.pow(2, attempt) * 2000 + Math.random() * 1000;
-        console.log(`Rate limited. Waiting ${Math.round(waitMs / 1000)}s before retry...`);
-        await new Promise((r) => setTimeout(r, waitMs));
-        continue;
-      }
-      // Exhausted retries on rate limit
-      const err = new Error("OpenAI rate limit exceeded after retries. Please wait a moment and try again.");
-      (err as { status?: number }).status = 429;
-      throw err;
-    }
-
-    lastError = new Error(`Whisper API error ${response.status}: ${errText.substring(0, 300)}`);
-    throw lastError;
-  }
-
-  throw lastError ?? new Error("Whisper API failed after all retries");
-}
 
 serve(async (req) => {
   if (req.method === "OPTIONS") {
@@ -117,9 +39,9 @@ serve(async (req) => {
       });
     }
 
-    const apiKey = Deno.env.get("OPENAI_API_KEY");
-    if (!apiKey) {
-      return new Response(JSON.stringify({ error: "OPENAI_API_KEY not configured" }), {
+    const lovableApiKey = Deno.env.get("LOVABLE_API_KEY");
+    if (!lovableApiKey) {
+      return new Response(JSON.stringify({ error: "LOVABLE_API_KEY not configured" }), {
         status: 500,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
@@ -140,9 +62,8 @@ serve(async (req) => {
 
     if (fileSize > MAX_FILE_SIZE_BYTES) {
       return new Response(JSON.stringify({
-        error: `File size (${(fileSize / 1024 / 1024).toFixed(1)} MB) exceeds Whisper API limit (${MAX_FILE_SIZE_MB} MB). Please compress the audio or extract just the audio track.`,
+        error: `File size (${(fileSize / 1024 / 1024).toFixed(1)} MB) exceeds limit (${MAX_FILE_SIZE_MB} MB).`,
         error_code: "file_too_large",
-        error_ru: `Размер файла превышает лимит Whisper API ${MAX_FILE_SIZE_MB} MB. Сожмите аудио или извлеките только аудиодорожку.`
       }), { status: 413, headers: { ...corsHeaders, "Content-Type": "application/json" } });
     }
 
@@ -154,49 +75,109 @@ serve(async (req) => {
     const audioBuffer = await audioResponse.arrayBuffer();
     console.log(`Downloaded ${(audioBuffer.byteLength / 1024 / 1024).toFixed(2)} MB`);
 
-    const ext = fileName?.split(".").pop()?.toLowerCase() || "mp3";
-    const mimeType = getMimeType(fileName);
+    // Convert to base64
+    const uint8Array = new Uint8Array(audioBuffer);
+    let binary = '';
+    const chunkSize = 8192;
+    for (let i = 0; i < uint8Array.length; i += chunkSize) {
+      binary += String.fromCharCode(...uint8Array.subarray(i, i + chunkSize));
+    }
+    const base64Audio = btoa(binary);
 
-    // Call Whisper with retry logic
-    console.log("Sending to OpenAI Whisper API...");
-    let whisperResult: Record<string, unknown>;
-    try {
-      whisperResult = await callWhisperWithRetry(apiKey, audioBuffer, mimeType, fileName, ext);
-    } catch (transcErr) {
-      const errStatus = (transcErr as { status?: number })?.status;
-      if (errStatus === 429) {
+    // Determine MIME type
+    const ext = fileName?.split(".").pop()?.toLowerCase() || "mp3";
+    const mimeMap: Record<string, string> = {
+      mp3: "audio/mpeg", wav: "audio/wav", m4a: "audio/mp4",
+      ogg: "audio/ogg", flac: "audio/flac", webm: "audio/webm",
+      mp4: "video/mp4", avi: "video/x-msvideo", mov: "video/quicktime",
+      mkv: "video/x-matroska",
+    };
+    const mimeType = mimeMap[ext] || "audio/mpeg";
+
+    // Call Gemini 2.5 Flash via Lovable AI Gateway
+    console.log("Sending to Gemini 2.5 Flash via Lovable AI Gateway...");
+
+    const geminiResponse = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+      method: "POST",
+      headers: {
+        "Authorization": `Bearer ${lovableApiKey}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        model: "google/gemini-2.5-flash",
+        messages: [
+          {
+            role: "user",
+            content: [
+              {
+                type: "text",
+                text: `You are a professional transcription service specializing in Armenian and Russian legal proceedings. 
+Transcribe the audio file accurately. 
+- Preserve all spoken words exactly as said
+- Include legal terminology correctly
+- Do not add punctuation that wasn't clearly spoken
+- Output ONLY the transcription text, nothing else
+- If multiple languages are spoken, transcribe each in its original language
+- Detected language should be: armenian, russian, or mixed`,
+              },
+              {
+                type: "image_url",
+                image_url: {
+                  url: `data:${mimeType};base64,${base64Audio}`,
+                },
+              },
+            ],
+          },
+        ],
+        max_completion_tokens: 4096,
+      }),
+    });
+
+    if (!geminiResponse.ok) {
+      const errText = await geminiResponse.text();
+      console.error(`Gemini API error (${geminiResponse.status}):`, errText.substring(0, 300));
+
+      if (geminiResponse.status === 429) {
         return new Response(JSON.stringify({
-          error: "OpenAI rate limit exceeded. Please wait a moment and try again.",
+          error: "AI rate limit exceeded. Please wait a moment and try again.",
           error_code: "rate_limit"
         }), { status: 429, headers: { ...corsHeaders, "Content-Type": "application/json" } });
       }
-      throw transcErr;
+
+      throw new Error(`Gemini API error ${geminiResponse.status}: ${errText.substring(0, 200)}`);
     }
 
-    console.log("Whisper response received, language:", whisperResult.language);
+    const geminiResult = await geminiResponse.json() as Record<string, unknown>;
+    console.log("Gemini response received");
 
-    const transcription = (whisperResult.text as string) || "";
-    const language_detected = (whisperResult.language as string) || "unknown";
-    const duration_seconds = (whisperResult.duration as number) || 0;
+    const choices = geminiResult.choices as Array<{ message?: { content?: string } }> | undefined;
+    const transcription = choices?.[0]?.message?.content?.trim() || "";
+
+    if (!transcription) {
+      throw new Error("Empty transcription result from Gemini");
+    }
+
+    // Detect language from content
+    const armenianChars = (transcription.match(/[\u0531-\u058F]/g) || []).length;
+    const russianChars = (transcription.match(/[\u0400-\u04FF]/g) || []).length;
+    const totalChars = transcription.length;
+
+    let language_detected = "unknown";
+    if (armenianChars / totalChars > 0.3) {
+      language_detected = russianChars / totalChars > 0.2 ? "mixed" : "armenian";
+    } else if (russianChars / totalChars > 0.3) {
+      language_detected = "russian";
+    }
+
     const word_count = transcription.split(/\s+/).filter(Boolean).length;
-
-    // Estimate confidence from segment avg_logprob
-    let confidence_score = 0.8;
-    const segments = whisperResult.segments as Array<{ avg_logprob?: number }> | undefined;
-    if (segments && segments.length > 0) {
-      const avgLogprob = segments.reduce(
-        (sum, seg) => sum + (seg.avg_logprob ?? -0.5), 0
-      ) / segments.length;
-      confidence_score = Math.min(1, Math.max(0, Math.exp(avgLogprob)));
-    }
-
-    const confidence_reason = confidence_score >= 0.8
-      ? "High confidence transcription"
-      : confidence_score >= 0.5
-      ? "Medium confidence — review recommended"
-      : "Low confidence — manual review required";
+    const confidence_score = 0.85; // Gemini is generally high-confidence
+    const duration_seconds = 0; // Not available from Gemini
 
     const needsReview = confidence_score < CONFIDENCE_THRESHOLD;
+
+    const confidence_reason = confidence_score >= 0.8
+      ? "High confidence transcription (Gemini 2.5 Flash)"
+      : "Medium confidence — review recommended";
 
     const { data: transcriptionRecord, error: insertError } = await supabase
       .from("audio_transcriptions")
@@ -205,7 +186,7 @@ serve(async (req) => {
         transcription_text: transcription,
         confidence: confidence_score,
         language: language_detected,
-        duration_seconds: Math.round(duration_seconds),
+        duration_seconds: 0,
         needs_review: needsReview,
         reviewed_by: null,
         speaker_labels: null,
@@ -220,10 +201,10 @@ serve(async (req) => {
     try {
       await supabase.rpc("log_api_usage", {
         _service_type: "audio",
-        _model_name: "openai/whisper-1",
+        _model_name: "google/gemini-2.5-flash",
         _tokens_used: 0,
         _estimated_cost: 0,
-        _metadata: { fileName, fileId: fileId || null, duration_seconds: Math.round(duration_seconds), fileSizeMB: (fileSize / 1024 / 1024).toFixed(2) }
+        _metadata: { fileName, fileId: fileId || null, fileSizeMB: (fileSize / 1024 / 1024).toFixed(2) }
       });
     } catch (_) { /* non-critical */ }
 
