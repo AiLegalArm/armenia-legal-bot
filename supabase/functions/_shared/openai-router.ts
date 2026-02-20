@@ -332,6 +332,28 @@ async function fetchWithRetry(
 // ── Public API ───────────────────────────────────────────────────────────────
 
 /**
+ * Build a clean request body for the AI gateway.
+ * OpenAI gpt-5 / gpt-5-mini do NOT support custom temperature (only default=1 is accepted).
+ * We omit temperature entirely for openai/ models to avoid 400 errors.
+ */
+function buildRequestBody(
+  cfg: ModelConfig,
+  messages: RouterMessage[]
+): Record<string, unknown> {
+  const tokenKey = cfg.model.startsWith("openai/") ? "max_completion_tokens" : "max_tokens";
+  const body: Record<string, unknown> = {
+    model: cfg.model,
+    [tokenKey]: cfg.max_tokens,
+    messages,
+  };
+  // Only pass temperature for non-OpenAI models (Gemini etc.)
+  if (!cfg.model.startsWith("openai/")) {
+    body.temperature = cfg.temperature;
+  }
+  return body;
+}
+
+/**
  * callText — Standard text completion (streaming disabled, waits for full response).
  */
 export async function callText(
@@ -344,14 +366,7 @@ export async function callText(
   const safeMessages = prependSafetyHeader(functionName, messages);
   const timeoutMs = options.timeoutMs ?? defaultTimeout(false);
 
-  // OpenAI models use max_completion_tokens; Gemini/others use max_tokens
-  const tokenKey = cfg.model.startsWith("openai/") ? "max_completion_tokens" : "max_tokens";
-  const body: Record<string, unknown> = {
-    model: cfg.model,
-    temperature: cfg.temperature,
-    [tokenKey]: cfg.max_tokens,
-    messages: safeMessages,
-  };
+  const body = buildRequestBody(cfg, safeMessages);
 
   const { data, latency_ms } = await fetchWithRetry(
     functionName,
@@ -383,14 +398,7 @@ export async function callJSON<T = Record<string, unknown>>(
   const safeMessages = prependSafetyHeader(functionName, messages);
   const timeoutMs = options.timeoutMs ?? defaultTimeout(false);
 
-  // OpenAI models use max_completion_tokens; Gemini/others use max_tokens
-  const tokenKey = cfg.model.startsWith("openai/") ? "max_completion_tokens" : "max_tokens";
-  const body: Record<string, unknown> = {
-    model: cfg.model,
-    temperature: cfg.temperature,
-    [tokenKey]: cfg.max_tokens,
-    messages: safeMessages,
-  };
+  const body = buildRequestBody(cfg, safeMessages);
 
   const { data, latency_ms } = await fetchWithRetry(
     functionName,
