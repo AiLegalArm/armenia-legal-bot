@@ -34,6 +34,7 @@ import { toast } from 'sonner';
 import { Plus, Trash2, Edit, Search, FileText, Scale, AlertTriangle, Sparkles, FolderUp, Wand2, Loader2, Folder, FolderOpen, ChevronRight, Layers } from 'lucide-react';
 import { LegalPracticeAIImport } from './LegalPracticeAIImport';
 import { LegalPracticeBulkImport } from './LegalPracticeBulkImport';
+import { EchrImportWizard } from '@/components/kb/EchrImportWizard';
 
 // Types matching database schema
 type CourtType = 'first_instance' | 'appeal' | 'cassation' | 'constitutional' | 'echr';
@@ -121,6 +122,7 @@ export function LegalPracticeKB() {
   const [bulkImportOpen, setBulkImportOpen] = useState(false);
   const [enrichingIds, setEnrichingIds] = useState<Set<string>>(new Set());
   const [openFolders, setOpenFolders] = useState<Set<string>>(new Set());
+  const [echrImportOpen, setEchrImportOpen] = useState(false);
 
   // Fetch documents in batches to overcome 1000-row limit
   const { data: documents, isLoading } = useQuery({
@@ -534,6 +536,14 @@ export function LegalPracticeKB() {
             <Sparkles className="h-4 w-4 mr-2" />
             {t('lp_ai_import')}
           </Button>
+          <Button 
+            variant="outline" 
+            onClick={() => setEchrImportOpen(true)}
+            className="border-green-500/50 text-green-600 hover:bg-green-500/10"
+          >
+            <FileText className="h-4 w-4 mr-2" />
+            ECHR + HY
+          </Button>
           <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
             <DialogTrigger asChild>
               <Button onClick={() => { resetForm(); setIsDialogOpen(true); }}>
@@ -814,6 +824,15 @@ export function LegalPracticeKB() {
       <LegalPracticeAIImport 
         open={aiImportOpen} 
         onOpenChange={setAiImportOpen} 
+      />
+
+      {/* ECHR Import Dialog */}
+      <EchrImportWizard
+        open={echrImportOpen}
+        onOpenChange={setEchrImportOpen}
+        onSuccess={() => {
+          queryClient.invalidateQueries({ queryKey: ['legal-practice-kb'] });
+        }}
       />
     </Card>
   );
