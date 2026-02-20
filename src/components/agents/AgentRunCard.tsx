@@ -20,6 +20,19 @@ export function AgentRunCard({ agent, run, isRunning, onRun, disabled }: AgentRu
   const { t, i18n } = useTranslation(["ai"]);
   const lang = i18n.language;
 
+  const getAgentName = () => {
+    if (lang === 'hy') return agent.nameHy;
+    if (lang === 'ru') return agent.nameRu;
+    return agent.name;
+  };
+
+  const getAgentDescription = () => {
+    if (lang === 'hy') return agent.descriptionHy;
+    if (lang === 'ru') return agent.descriptionRu;
+    return agent.description;
+  };
+
+
   const getStatusBadge = () => {
     if (isRunning) {
       return (
@@ -87,9 +100,10 @@ export function AgentRunCard({ agent, run, isRunning, onRun, disabled }: AgentRu
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
           <div className="flex items-start sm:items-center gap-3 min-w-0">
             <span className="text-2xl shrink-0">{agent.icon}</span>
-            <div className="min-w-0">
-              <CardTitle className="text-base break-words">{agent.nameHy}</CardTitle>
-              <p className="text-sm text-muted-foreground break-words">{agent.descriptionHy}</p>
+              <div className="min-w-0">
+                <CardTitle className="text-base break-words">{getAgentName()}</CardTitle>
+                <p className="text-sm text-muted-foreground break-words">{getAgentDescription()}</p>
+
             </div>
           </div>
           <div className="flex items-center gap-2 shrink-0">

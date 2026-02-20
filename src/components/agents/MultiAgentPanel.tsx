@@ -56,10 +56,19 @@ interface MultiAgentPanelProps {
 }
 
 export function MultiAgentPanel({ caseId, caseFacts, caseType, partyRole }: MultiAgentPanelProps) {
-  const { t } = useTranslation(["ai", "cases"]);
+  const { t, i18n } = useTranslation(["ai", "cases"]);
+  const lang = i18n.language;
   const [activeTab, setActiveTab] = useState("volumes");
   const [selectedRole, setSelectedRole] = useState(partyRole || "");
+
+  const getAgentName = (agent: typeof AGENT_CONFIGS[0]) => {
+    if (lang === 'hy') return agent.nameHy;
+    if (lang === 'ru') return agent.nameRu;
+    return agent.name;
+  };
+
   const referencesText = useReferencesText(caseId);
+
   
   const {
     isLoading,
@@ -198,8 +207,9 @@ export function MultiAgentPanel({ caseId, caseFacts, caseType, partyRole }: Mult
               >
                 <CardContent className="p-1.5 sm:p-2 text-center flex flex-col items-center justify-center h-full min-h-[52px] sm:min-h-[60px]">
                   <div className="text-sm sm:text-lg mb-0.5">{agent.icon}</div>
-                  <div className="text-[8px] sm:text-[10px] font-medium truncate w-full leading-tight" title={agent.nameHy}>
-                    {agent.nameHy.split(" ")[0]}
+                  <div className="text-[8px] sm:text-[10px] font-medium truncate w-full leading-tight" title={getAgentName(agent)}>
+                    {getAgentName(agent).split(" ")[0]}
+
                   </div>
                   <div className="mt-0.5 flex justify-center">
                     {status ? getStatusIcon(status) : (
