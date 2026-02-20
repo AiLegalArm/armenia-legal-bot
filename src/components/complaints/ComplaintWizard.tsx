@@ -1,4 +1,4 @@
-import { useState, useCallback } from "react";
+import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { getText } from "@/lib/i18n-utils";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -9,7 +9,7 @@ import { Sparkles, Check, ChevronRight, ArrowLeft } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 // Internal modules
-import type { WizardState, ComplaintCategory, ComplaintType, UploadedFile } from "./types";
+import type { WizardState, ComplaintCategory, ComplaintType } from "./types";
 import { getComplaintTypeLabel } from "./constants";
 import { useComplaintFiles } from "./useComplaintFiles";
 import { useComplaintGenerator } from "./useComplaintGenerator";
