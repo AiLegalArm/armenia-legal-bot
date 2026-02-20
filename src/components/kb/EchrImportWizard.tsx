@@ -59,49 +59,139 @@ const PRACTICE_CATEGORIES = [
 ];
 
 /**
- * Extract top-level JSON objects from a large JSON array using brace-matching.
- * Works even when JSON.parse fails due to file size.
- * Returns each {...} block as a parsed object.
+ * Stream-parse a File using brace-matching to extract top-level JSON objects.
+ * Reads the file in 4 MB chunks so it works for files of any size.
+ * Calls onCase(obj) for each complete object found.
  */
-function extractObjectsByBraceMatch(text: string): { cases: ParsedCase[]; skipped: number } {
-  const cases: ParsedCase[] = [];
+async function streamParseCases(
+  file: File,
+  onCase: (obj: ParsedCase) => void,
+  onProgress?: (bytesRead: number) => void
+): Promise<{ total: number; skipped: number }> {
+  const CHUNK_SIZE = 4 * 1024 * 1024; // 4 MB per read
+  let total = 0;
   let skipped = 0;
+
   let depth = 0;
   let inString = false;
   let escape = false;
   let objStart = -1;
+  let buffer = ""; // accumulate chars of the current object
+  let bytesRead = 0;
 
-  for (let i = 0; i < text.length; i++) {
-    const ch = text[i];
+  const decoder = new TextDecoder("utf-8");
 
-    if (escape) { escape = false; continue; }
-    if (ch === '\\' && inString) { escape = true; continue; }
-    if (ch === '"') { inString = !inString; continue; }
-    if (inString) continue;
+  // Read using FileReader slice → ArrayBuffer for memory efficiency
+  async function readSlice(start: number, end: number): Promise<string> {
+    return new Promise((resolve, reject) => {
+      const slice = file.slice(start, end);
+      const reader = new FileReader();
+      reader.onload = () => resolve(decoder.decode(reader.result as ArrayBuffer));
+      reader.onerror = () => reject(reader.error);
+      reader.readAsArrayBuffer(slice);
+    });
+  }
 
-    if (ch === '{') {
-      if (depth === 0) objStart = i;
-      depth++;
-    } else if (ch === '}') {
-      depth--;
-      if (depth === 0 && objStart !== -1) {
-        const chunk = text.slice(objStart, i + 1);
-        try {
-          const obj = JSON.parse(chunk);
-          if (obj && typeof obj === 'object' && !Array.isArray(obj)) {
-            cases.push(obj);
-          } else {
+  let pos = 0;
+  const size = file.size;
+
+  while (pos < size) {
+    const end = Math.min(pos + CHUNK_SIZE, size);
+    const text = await readSlice(pos, end);
+    bytesRead += text.length;
+    pos = end;
+    if (onProgress) onProgress(bytesRead);
+
+    for (let i = 0; i < text.length; i++) {
+      const ch = text[i];
+
+      if (escape) { escape = false; if (objStart !== -1) buffer += ch; continue; }
+      if (ch === "\\" && inString) { escape = true; if (objStart !== -1) buffer += ch; continue; }
+      if (ch === '"') { inString = !inString; if (objStart !== -1) buffer += ch; continue; }
+      if (inString) { if (objStart !== -1) buffer += ch; continue; }
+
+      if (ch === "{") {
+        if (depth === 0) {
+          objStart = i;
+          buffer = "{";
+        } else {
+          buffer += ch;
+        }
+        depth++;
+      } else if (ch === "}") {
+        depth--;
+        if (depth === 0 && objStart !== -1) {
+          buffer += "}";
+          try {
+            const obj = JSON.parse(buffer);
+            if (obj && typeof obj === "object" && !Array.isArray(obj)) {
+              onCase(obj);
+              total++;
+            } else {
+              skipped++;
+            }
+          } catch {
             skipped++;
           }
-        } catch {
-          skipped++;
+          buffer = "";
+          objStart = -1;
+        } else if (objStart !== -1) {
+          buffer += ch;
         }
-        objStart = -1;
+      } else if (objStart !== -1) {
+        buffer += ch;
       }
     }
   }
 
-  return { cases, skipped };
+  return { total, skipped };
+}
+
+/**
+ * Extract top-level JSON objects from a string using brace-matching.
+ * Used as fallback for small files already loaded into memory.
+ */
+function extractObjectsByBraceMatch(text: string): { cases: ParsedCase[]; skipped: number } {
+  const cases: ParsedCase[] = [];
+  const skipped_arr: number[] = [0];
+  const total_arr: number[] = [0];
+
+  let depth = 0;
+  let inString = false;
+  let escape = false;
+  let objStart = -1;
+  let buffer = "";
+
+  for (let i = 0; i < text.length; i++) {
+    const ch = text[i];
+
+    if (escape) { escape = false; if (objStart !== -1) buffer += ch; continue; }
+    if (ch === "\\" && inString) { escape = true; if (objStart !== -1) buffer += ch; continue; }
+    if (ch === '"') { inString = !inString; if (objStart !== -1) buffer += ch; continue; }
+    if (inString) { if (objStart !== -1) buffer += ch; continue; }
+
+    if (ch === "{") {
+      if (depth === 0) { objStart = i; buffer = "{"; }
+      else buffer += ch;
+      depth++;
+    } else if (ch === "}") {
+      depth--;
+      if (depth === 0 && objStart !== -1) {
+        buffer += "}";
+        try {
+          const obj = JSON.parse(buffer);
+          if (obj && typeof obj === "object" && !Array.isArray(obj)) {
+            cases.push(obj);
+          } else { skipped_arr[0]++; }
+        } catch { skipped_arr[0]++; }
+        buffer = "";
+        objStart = -1;
+      } else if (objStart !== -1) buffer += ch;
+    } else if (objStart !== -1) buffer += ch;
+  }
+
+  void total_arr;
+  return { cases, skipped: skipped_arr[0] };
 }
 
 // Client-side parser: handles all HUDOC/ECHR export formats
@@ -255,7 +345,10 @@ export function EchrImportWizard({ open, onOpenChange, onSuccess }: EchrImportWi
   // Collected JSONL content for download
   const jsonlLinesRef = useRef<string[]>([]);
 
-  // ── File select (multiple) ────────────────────────────────────
+  // Streaming parse progress (bytes)
+  const [parseProgress, setParseProgress] = useState<{ file: string; pct: number } | null>(null);
+
+  // ── File select (multiple) — streams large files without loading into RAM ──
   const handleFileSelect = useCallback(async (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(e.target.files ?? []);
     if (files.length === 0) return;
@@ -272,25 +365,35 @@ export function EchrImportWizard({ open, onOpenChange, onSuccess }: EchrImportWi
 
     setStatus("parsing");
     setError(null);
+    setParseProgress(null);
 
     const entries: FileEntry[] = [];
     let totalSkipped = 0;
 
     for (const file of files) {
       try {
-        const text = await file.text();
-        const { cases, skipped } = parseRaw(text);
-        entries.push({ name: file.name, cases, skipped });
+        const fileCases: ParsedCase[] = [];
+        toast.info(`Читаю файл ${file.name} (${(file.size / 1024 / 1024).toFixed(1)} МБ)...`);
+
+        const { skipped } = await streamParseCases(
+          file,
+          (obj) => fileCases.push(obj),
+          (bytesRead) => {
+            const pct = Math.min(99, Math.round((bytesRead / file.size) * 100));
+            setParseProgress({ file: file.name, pct });
+          }
+        );
+
+        entries.push({ name: file.name, cases: fileCases, skipped });
         totalSkipped += skipped;
-        if (cases.length === 0 && skipped > 0) {
-          console.warn(`[EchrImport] File "${file.name}": 0 cases, ${skipped} skipped. Attempting brace-match fallback.`);
-        }
+        console.log(`[EchrImport] "${file.name}": ${fileCases.length} cases, ${skipped} skipped`);
       } catch (err) {
         console.error(`[EchrImport] Failed to read file "${file.name}":`, err);
         entries.push({ name: file.name, cases: [], skipped: 0 });
       }
     }
 
+    setParseProgress(null);
     setFileEntries(entries);
     const allCases = entries.flatMap(e => e.cases);
     setParsedCases(allCases);
@@ -299,11 +402,11 @@ export function EchrImportWizard({ open, onOpenChange, onSuccess }: EchrImportWi
 
     if (allCases.length > 0) {
       toast.success(
-        `${files.length} ${files.length === 1 ? '\u0444\u0430\u0439\u043b' : '\u0444\u0430\u0439\u043b\u0430'} — \u043d\u0430\u0439\u0434\u0435\u043d\u043e ${allCases.length.toLocaleString()} \u0434\u0435\u043b \u0415\u0421\u041f\u0427` +
-        (totalSkipped > 0 ? ` (\u043f\u0440\u043e\u043f\u0443\u0449\u0435\u043d\u043e ${totalSkipped})` : "")
+        `Найдено ${allCases.length.toLocaleString()} дел ЕСПЧ` +
+        (totalSkipped > 0 ? ` (пропущено ${totalSkipped})` : "")
       );
     } else {
-      toast.error(`\u041d\u0435 \u0443\u0434\u0430\u043b\u043e\u0441\u044c \u0440\u0430\u0441\u043f\u043e\u0437\u043d\u0430\u0442\u044c \u0434\u0435\u043b\u0430 \u0432 \u0444\u0430\u0439\u043b\u0435. \u041f\u0440\u043e\u043f\u0443\u0449\u0435\u043d\u043e: ${totalSkipped} \u0441\u0442\u0440\u043e\u043a.`);
+      toast.error(`Не удалось распознать дела в файле. Пропущено: ${totalSkipped} строк.`);
     }
 
     if (fileInputRef.current) fileInputRef.current.value = "";
@@ -479,8 +582,19 @@ export function EchrImportWizard({ open, onOpenChange, onSuccess }: EchrImportWi
               accept=".json,.jsonl,.txt"
               multiple
               onChange={handleFileSelect}
-              disabled={isRunning}
+            disabled={isRunning}
             />
+
+            {/* Parsing progress */}
+            {status === "parsing" && parseProgress && (
+              <div className="space-y-1.5">
+                <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                  <span>Читаю: {parseProgress.file} — {parseProgress.pct}%</span>
+                </div>
+                <Progress value={parseProgress.pct} className="h-1.5" />
+              </div>
+            )}
 
             {/* File list */}
             {fileEntries.length > 0 && (
