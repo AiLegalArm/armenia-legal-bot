@@ -63,18 +63,38 @@ function parseRaw(text: string): { cases: ParsedCase[]; skipped: number } {
   let cases: ParsedCase[] = [];
   let skipped = 0;
 
+  // Try JSON array first
   if (trimmed.startsWith("[")) {
     try {
       const arr = JSON.parse(trimmed);
-      if (Array.isArray(arr)) cases = arr.filter((x) => x && typeof x === "object");
+      if (Array.isArray(arr)) {
+        // Filter only objects (proper case records), skip primitives
+        const objects = arr.filter((x) => x && typeof x === "object" && !Array.isArray(x));
+        if (objects.length > 0) {
+          cases = objects;
+          // Count skipped primitives
+          skipped = arr.length - objects.length;
+          return { cases, skipped };
+        }
+        // If array of arrays — each sub-array might be a row; skip
+        // If array of primitives — fall through to JSONL
+      }
     } catch { /* fall through to JSONL */ }
   }
 
+  // Try as JSONL (one JSON object per line)
   if (cases.length === 0) {
     for (const line of trimmed.split("\n")) {
       const l = line.trim();
       if (!l) continue;
-      try { cases.push(JSON.parse(l)); } catch { skipped++; }
+      try {
+        const parsed = JSON.parse(l);
+        if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+          cases.push(parsed);
+        } else {
+          skipped++;
+        }
+      } catch { skipped++; }
     }
   }
 
@@ -198,12 +218,10 @@ export function EchrImportWizard({ open, onOpenChange, onSuccess }: EchrImportWi
           const batchCases = parsedCases.slice(batchIdx, batchIdx + BATCH_SIZE);
           const { data, error: fnErr } = await supabase.functions.invoke("echr-import", {
             body: {
-              rawContent: JSON.stringify(batchCases),
+              rawContent: batchCases, // send as array directly, not stringified
               storeInHyFields,
               generateJsonl,
               practiceCategory,
-              batchIndex: 0,
-              batchSize: BATCH_SIZE,
             },
           });
 
