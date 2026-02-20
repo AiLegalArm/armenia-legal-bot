@@ -191,6 +191,7 @@ export function ComplaintWizard({ open, onOpenChange }: ComplaintWizardProps) {
                 generatedContent={state.generatedContent}
                 complaintTypeId={state.complaintType?.id}
                 onReset={reset}
+                onRegenerate={(missingData) => onGenerate(missingData)}
               />
             )}
           </div>
@@ -206,7 +207,7 @@ export function ComplaintWizard({ open, onOpenChange }: ComplaintWizardProps) {
 
             {state.step === 3 && (
               <Button
-                onClick={onGenerate}
+                onClick={() => onGenerate()}
                 className="w-full h-12 rounded-xl text-sm font-medium"
                 disabled={state.isProcessing || (state.files.length === 0 && !state.additionalInfo)}
               >
