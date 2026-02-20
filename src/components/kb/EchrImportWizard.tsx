@@ -19,8 +19,9 @@ import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
 import { toast } from "sonner";
+import { Separator } from "@/components/ui/separator";
 import {
-  FileJson, Loader2, CheckCircle, AlertTriangle, Upload, Download, Globe, X, Files,
+  FileJson, Loader2, CheckCircle, AlertTriangle, Upload, Download, Globe, X, Files, Scissors,
 } from "lucide-react";
 
 interface EchrImportWizardProps {
@@ -160,9 +161,28 @@ function parseRaw(text: string): { cases: ParsedCase[]; skipped: number } {
   return { cases, skipped };
 }
 
+// ── Split parsed cases into N-sized JSON files and trigger downloads ──
+function splitAndDownload(cases: ParsedCase[], chunkSize: number, baseName: string) {
+  const total = cases.length;
+  const parts = Math.ceil(total / chunkSize);
+  for (let i = 0; i < parts; i++) {
+    const slice = cases.slice(i * chunkSize, (i + 1) * chunkSize);
+    const blob = new Blob([JSON.stringify(slice, null, 2)], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    const padded = String(i + 1).padStart(3, "0");
+    a.download = `${baseName}_part${padded}.json`;
+    a.click();
+    URL.revokeObjectURL(url);
+  }
+  return parts;
+}
+
 export function EchrImportWizard({ open, onOpenChange, onSuccess }: EchrImportWizardProps) {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const abortRef = useRef(false);
+  const [splitSize, setSplitSize] = useState(200);
 
   const [status, setStatus] = useState<Status>("idle");
   const [fileEntries, setFileEntries] = useState<FileEntry[]>([]);
@@ -547,6 +567,50 @@ export function EchrImportWizard({ open, onOpenChange, onSuccess }: EchrImportWi
               <span className="text-sm text-destructive">{error}</span>
             </div>
           )}
+
+          {/* Split tool — shown when cases loaded but not yet imported */}
+          {status === "idle" && parsedCases.length > 0 && (
+            <div className="rounded-lg border bg-muted/30 p-3 space-y-2">
+              <p className="text-xs font-semibold flex items-center gap-1.5">
+                <Scissors className="h-3.5 w-3.5" />
+                Разделить файл на части (скачать как отдельные JSON)
+              </p>
+              <div className="flex items-center gap-2">
+                <Select
+                  value={String(splitSize)}
+                  onValueChange={(v) => setSplitSize(Number(v))}
+                >
+                  <SelectTrigger className="h-8 w-36 text-xs">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="50">50 дел / файл</SelectItem>
+                    <SelectItem value="100">100 дел / файл</SelectItem>
+                    <SelectItem value="200">200 дел / файл</SelectItem>
+                    <SelectItem value="500">500 дел / файл</SelectItem>
+                    <SelectItem value="1000">1000 дел / файл</SelectItem>
+                  </SelectContent>
+                </Select>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="h-8 text-xs"
+                  onClick={() => {
+                    const parts = splitAndDownload(parsedCases, splitSize, "echr_chunk");
+                    toast.success(`Скачано ${parts} файлов по ~${splitSize} дел`);
+                  }}
+                >
+                  <Download className="mr-1.5 h-3.5 w-3.5" />
+                  Скачать {Math.ceil(parsedCases.length / splitSize)} файлов
+                </Button>
+              </div>
+              <p className="text-[10px] text-muted-foreground">
+                Всего {parsedCases.length.toLocaleString()} дел → {Math.ceil(parsedCases.length / splitSize)} файлов × ~{splitSize}
+              </p>
+            </div>
+          )}
+
+          <Separator />
 
           {/* Actions */}
           <div className="flex gap-2">
