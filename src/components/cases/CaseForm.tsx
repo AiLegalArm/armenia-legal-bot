@@ -49,6 +49,7 @@ const CASE_STAGES = [
   { value: 'first_instance', label: 'stage_2' },
   { value: 'appeal', label: 'stage_3' },
   { value: 'cassation', label: 'stage_4' },
+  { value: 'echr', label: 'stage_echr' },
 ] as const;
 
 // =============================================================================
@@ -77,6 +78,12 @@ const CRIMINAL_PARTY_ROLES = [
   { value: 'victim', labelKey: 'party_role_victim' },
 ] as const;
 
+// ECHR procedure roles
+const ECHR_PARTY_ROLES = [
+  { value: 'applicant', labelKey: 'party_role_echr_applicant' },
+  { value: 'government', labelKey: 'party_role_echr_government' },
+] as const;
+
 // Helper to get party roles based on case type
 function getPartyRolesForCaseType(caseType: string) {
   switch (caseType) {
@@ -86,6 +93,8 @@ function getPartyRolesForCaseType(caseType: string) {
       return ADMINISTRATIVE_PARTY_ROLES;
     case 'criminal':
       return CRIMINAL_PARTY_ROLES;
+    case 'echr':
+      return ECHR_PARTY_ROLES;
     default:
       return CIVIL_PARTY_ROLES;
   }
@@ -138,7 +147,7 @@ export function CaseForm({
     case_number: z.string().min(1, 'Required'),
     title: z.string().min(1, 'Required'),
     description: z.string().optional(),
-    case_type: z.enum(['criminal', 'civil', 'administrative'], {
+    case_type: z.enum(['criminal', 'civil', 'administrative', 'echr'], {
       required_error: t('case_type_required'),
     }),
     party_role: z.string().min(1, t('party_role_required')),
@@ -182,7 +191,7 @@ export function CaseForm({
       
       setSelectedDate(courtDate);
       
-      const caseType = (initialData.case_type || 'criminal') as Database["public"]["Enums"]["case_type"];
+      const caseType = (initialData.case_type || 'criminal') as 'criminal' | 'civil' | 'administrative' | 'echr';
       const currentStage = initialData.current_stage || 'preliminary';
       
       // Backward compatibility: if court exists but court_name doesn't, use court
@@ -302,6 +311,7 @@ export function CaseForm({
                         <SelectItem value="criminal">{t('type_criminal')}</SelectItem>
                         <SelectItem value="civil">{t('type_civil')}</SelectItem>
                         <SelectItem value="administrative">{t('type_administrative')}</SelectItem>
+                        <SelectItem value="echr">{t('type_echr')}</SelectItem>
                       </SelectContent>
                     </Select>
                     <FormMessage />
