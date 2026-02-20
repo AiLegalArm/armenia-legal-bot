@@ -10,7 +10,7 @@ import { cn } from "@/lib/utils";
 
 // Internal modules
 import type { WizardState, ComplaintCategory, ComplaintType } from "./types";
-import { getComplaintTypeLabel } from "./constants";
+import { getComplaintTypesByCategory } from "./constants";
 import { useComplaintFiles } from "./useComplaintFiles";
 import { useComplaintGenerator } from "./useComplaintGenerator";
 import { 
