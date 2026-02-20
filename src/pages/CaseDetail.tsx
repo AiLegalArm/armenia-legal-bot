@@ -20,6 +20,8 @@ import { CaseComplaintGenerator } from '@/components/cases/CaseComplaintGenerato
 import { CaseReminders, CourtDateReminderSuggestion } from '@/components/reminders';
 import { MultiAgentPanel } from '@/components/agents/MultiAgentPanel';
 
+import { ChatBubble } from '@/components/chat/ChatBubble';
+import { NotesBubble } from '@/components/notes/NotesBubble';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
@@ -492,6 +494,10 @@ const CaseDetail = () => {
           }}
         />
       )}
+
+      {/* Persistent floating bubbles */}
+      <ChatBubble />
+      <NotesBubble />
     </div>
   );
 };

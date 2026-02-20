@@ -12,6 +12,7 @@ import { LegalChatBot } from '@/components/chat/LegalChatBot';
 import { ChatBubble } from '@/components/chat/ChatBubble';
 import { TelegramUploads } from '@/components/profile/TelegramUploads';
 import { TelegramSettings } from '@/components/profile/TelegramSettings';
+import { NotesBubble } from '@/components/notes/NotesBubble';
 import { Button } from '@/components/ui/button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { useCases, type CaseFilters as CaseFiltersType } from '@/hooks/useCases';
@@ -492,6 +493,9 @@ const Dashboard = () => {
 
       {/* Persistent Legal AI Chat Bubble */}
       <ChatBubble />
+
+      {/* Persistent Notes Bubble */}
+      <NotesBubble />
 
       {/* Document Generator Dialog */}
       <DocumentGeneratorDialog
