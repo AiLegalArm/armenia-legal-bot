@@ -2217,7 +2217,7 @@ export type Database = {
         | "discontinued"
       case_priority: "low" | "medium" | "high" | "urgent"
       case_status: "open" | "in_progress" | "pending" | "closed" | "archived"
-      case_type: "criminal" | "civil" | "administrative"
+      case_type: "criminal" | "civil" | "administrative" | "echr"
       court_type:
         | "first_instance"
         | "appeal"
@@ -2456,7 +2456,7 @@ export const Constants = {
       ],
       case_priority: ["low", "medium", "high", "urgent"],
       case_status: ["open", "in_progress", "pending", "closed", "archived"],
-      case_type: ["criminal", "civil", "administrative"],
+      case_type: ["criminal", "civil", "administrative", "echr"],
       court_type: [
         "first_instance",
         "appeal",
