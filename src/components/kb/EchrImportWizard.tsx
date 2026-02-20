@@ -63,46 +63,48 @@ function parseRaw(text: string): { cases: ParsedCase[]; skipped: number } {
   let cases: ParsedCase[] = [];
   let skipped = 0;
 
-  // ── Try parsing the whole content as a single JSON value ──────
-  if (trimmed.startsWith("{") || trimmed.startsWith("[")) {
+  // ── Format 1: Single JSON value (object or array) ─────────────
+  // Covers: [{...},{...}] (big array), {"results":[...]}, etc.
+  // This handles files like chunk_1.jsonl which are actually a JSON array
+  // spread across many lines — NOT one-object-per-line.
+  if (trimmed.startsWith("[") || trimmed.startsWith("{")) {
     try {
       const parsed = JSON.parse(trimmed);
 
-      // Format 1: {"results": [...]} or {"items": [...]} etc. (HUDOC API format)
+      // {"results": [...]} / {"items": [...]} / {"hits":{"hits":[...]}} — HUDOC API
       if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
         const arr =
           parsed.results ??
           parsed.items ??
           parsed.data ??
           parsed.cases ??
-          parsed.hits?.hits ??  // ElasticSearch-style
+          parsed.hits?.hits ??
           null;
         if (Array.isArray(arr)) {
-          // Each element might be a direct object or have a _source field (ES)
-          const objs = arr.map((x: ParsedCase) =>
-            x && typeof x === "object" && !Array.isArray(x)
-              ? (x._source ?? x)
-              : null
-          ).filter(Boolean) as ParsedCase[];
-          cases = objs;
-          skipped = arr.length - cases.length;
-          return { cases, skipped };
+          const objs = arr
+            .map((x: ParsedCase) =>
+              x && typeof x === "object" && !Array.isArray(x)
+                ? (x._source ?? x)
+                : null
+            )
+            .filter(Boolean) as ParsedCase[];
+          return { cases: objs, skipped: arr.length - objs.length };
         }
+        // Single object — wrap in array
+        return { cases: [parsed], skipped: 0 };
       }
 
-      // Format 2: [{...}, {...}] — JSON array of objects
+      // [{...}, {...}] — plain JSON array of objects
       if (Array.isArray(parsed)) {
+        // Array of objects (most common HUDOC export)
         const objects = parsed.filter(
           (x) => x && typeof x === "object" && !Array.isArray(x)
         );
         if (objects.length > 0) {
-          cases = objects;
-          skipped = parsed.length - objects.length;
-          return { cases, skipped };
+          return { cases: objects, skipped: parsed.length - objects.length };
         }
 
-        // Format 3: [["header1","header2",...], ["val1","val2",...], ...]
-        // (CSV-style array of arrays — first row = headers)
+        // Array of arrays with header row: [["col1","col2",...], [val1,val2,...], ...]
         if (parsed.length > 1 && Array.isArray(parsed[0])) {
           const headers = parsed[0] as string[];
           for (let i = 1; i < parsed.length; i++) {
@@ -115,16 +117,19 @@ function parseRaw(text: string): { cases: ParsedCase[]; skipped: number } {
           return { cases, skipped };
         }
 
-        // All primitives — count as skipped
         skipped = parsed.length;
+        return { cases: [], skipped };
       }
-    } catch { /* fall through to JSONL */ }
+    } catch {
+      // JSON.parse failed — file is NOT a single JSON blob.
+      // Fall through to JSONL line-by-line parsing below.
+    }
   }
 
-  // ── Try as JSONL (one JSON value per line) ────────────────────
-  if (cases.length === 0) {
+  // ── Format 2: JSONL — one JSON value per line ─────────────────
+  // Only reached if the file is not parseable as a single JSON value.
+  {
     const lines = trimmed.split("\n");
-    // Detect if this might be an array-of-arrays JSONL (header on first line)
     let headers: string[] | null = null;
 
     for (let li = 0; li < lines.length; li++) {
@@ -133,15 +138,12 @@ function parseRaw(text: string): { cases: ParsedCase[]; skipped: number } {
       try {
         const parsed = JSON.parse(l);
         if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
-          // Normal JSONL object
           cases.push(parsed);
-          headers = null; // reset header detection
+          headers = null;
         } else if (Array.isArray(parsed)) {
           if (li === 0 && parsed.every((x) => typeof x === "string")) {
-            // First line is all strings → treat as header row
             headers = parsed as string[];
           } else if (headers) {
-            // Map array values using detected headers
             const obj: ParsedCase = {};
             headers.forEach((h, idx) => { obj[h] = parsed[idx] ?? null; });
             cases.push(obj);
