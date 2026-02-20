@@ -834,42 +834,29 @@ serve(async (req) => {
     const systemPrompt = (AGENT_PROMPTS[agentType] || AGENT_PROMPTS.evidence_collector) +
       (userSourcesBlock ? "\n\nWhen user-selected sources are provided, you MUST cite them by docId and chunkIndex in your analysis. These sources are mandatory references.\n" : "");
 
-    // Call AI
-    const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${LOVABLE_API_KEY}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        ...buildModelParams(MULTI_AGENT_ANALYSIS),
-        messages: [
-          { role: "system", content: systemPrompt },
-          { role: "user", content: userMessage }
-        ],
-      }),
-    });
+    // Route via centralized OpenAI router
+    const { callText } = await import("../_shared/openai-router.ts");
 
-    if (!response.ok) {
-      const status = response.status;
+    let content: string;
+    let tokensUsed = 0;
+    try {
+      const result = await callText("multi-agent-analyze", [
+        { role: "system", content: systemPrompt },
+        { role: "user", content: userMessage },
+      ]);
+      content = result.text;
+      tokensUsed = result.usage?.total_tokens ?? 0;
+      console.log(JSON.stringify({ ts: new Date().toISOString(), lvl: "info", fn: "multi-agent", model: result.model_used, latency_ms: result.latency_ms }));
+    } catch (routerErr) {
+      const status = (routerErr as { status?: number })?.status;
       if (status === 429) {
-        return new Response(JSON.stringify({ error: "Rate limit exceeded" }), {
-          status: 429,
-          headers: { ...corsHeaders, "Content-Type": "application/json" },
-        });
+        return new Response(JSON.stringify({ error: "Rate limit exceeded" }), { status: 429, headers: { ...corsHeaders, "Content-Type": "application/json" } });
       }
       if (status === 402) {
-        return new Response(JSON.stringify({ error: "AI credits exhausted" }), {
-          status: 402,
-          headers: { ...corsHeaders, "Content-Type": "application/json" },
-        });
+        return new Response(JSON.stringify({ error: "AI credits exhausted" }), { status: 402, headers: { ...corsHeaders, "Content-Type": "application/json" } });
       }
-      throw new Error(`AI gateway error: ${status}`);
+      throw new Error(`AI router error: ${String(routerErr)}`);
     }
-
-    const aiResponse = await response.json();
-    const content = aiResponse.choices?.[0]?.message?.content || "";
-    const tokensUsed = aiResponse.usage?.total_tokens || 0;
 
     // Parse JSON response
     let parsedResult: { summary: string; analysis: string; findings: unknown[]; evidenceItems: unknown[]; [key: string]: unknown } = {
@@ -880,21 +867,19 @@ serve(async (req) => {
     };
 
     try {
-      // Try to extract JSON from the response
       const jsonMatch = content.match(/\{[\s\S]*\}/);
       if (jsonMatch) {
         parsedResult = { ...parsedResult, ...JSON.parse(jsonMatch[0]) };
       }
     } catch (e) {
       console.error(JSON.stringify({ ts: new Date().toISOString(), lvl: "error", fn: "multi-agent", msg: "JSON parse failed" }));
-      // Use the raw content as analysis
       parsedResult.analysis = content;
     }
 
     // Log usage
     await supabase.rpc("log_api_usage", {
       _service_type: "multi_agent",
-      _model_name: "google/gemini-2.5-pro",
+      _model_name: "openai/gpt-5",
       _tokens_used: tokensUsed,
       _estimated_cost: tokensUsed * 0.000001,
       _metadata: { agentType, caseId, runId }

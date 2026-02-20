@@ -212,14 +212,22 @@ serve(async (req) => {
 
     console.log("Calling AI for extraction with", userMessageContent.length, "content parts...");
 
+    // Route via centralized OpenAI router
+    const { callText: _callText } = await import("../_shared/openai-router.ts");
+    // Note: tool_calling is sent directly to gateway for structured extraction
+    const LOVABLE_API_KEY_EXTRACT = Deno.env.get("LOVABLE_API_KEY");
+    if (!LOVABLE_API_KEY_EXTRACT) throw new Error("LOVABLE_API_KEY is not configured");
+
     const aiResponse = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
       method: "POST",
       headers: {
-        "Authorization": `Bearer ${LOVABLE_API_KEY}`,
+        "Authorization": `Bearer ${LOVABLE_API_KEY_EXTRACT}`,
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        ...buildModelParams(FIELD_EXTRACTION),
+        model: "openai/gpt-5-mini",
+        temperature: 0.1,
+        max_tokens: 4000,
         messages: [
           { role: "system", content: SYSTEM_PROMPT },
           { role: "user", content: userMessageContent }

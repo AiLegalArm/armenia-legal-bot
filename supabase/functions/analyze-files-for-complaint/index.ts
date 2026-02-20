@@ -137,41 +137,31 @@ serve(async (req) => {
 
     messages.push({ role: "user", content: userContent });
 
-    // Call AI for analysis
-    const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${LOVABLE_API_KEY}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        ...buildModelParams(FILE_ANALYSIS),
-        messages,
-      }),
-    });
+    // Route via centralized OpenAI router
+    const { callText } = await import("../_shared/openai-router.ts");
 
-    if (!response.ok) {
-      if (response.status === 429) {
+    let analysis: string;
+    try {
+      const result = await callText("analyze-files-for-complaint", messages as import("../_shared/openai-router.ts").RouterMessage[]);
+      analysis = result.text;
+      console.log("Analysis complete, length:", analysis.length, "model:", result.model_used);
+    } catch (routerErr) {
+      const status = (routerErr as { status?: number })?.status;
+      if (status === 429) {
         return new Response(
           JSON.stringify({ error: "Rate limit exceeded. Please try again later." }),
           { status: 429, headers: { ...corsHeaders, "Content-Type": "application/json" } }
         );
       }
-      if (response.status === 402) {
+      if (status === 402) {
         return new Response(
           JSON.stringify({ error: "AI credits exhausted. Please add credits." }),
           { status: 402, headers: { ...corsHeaders, "Content-Type": "application/json" } }
         );
       }
-      const errorText = await response.text();
-      console.error("AI gateway error:", response.status, errorText);
-      throw new Error(`AI gateway error: ${response.status}`);
+      console.error("AI router error:", routerErr);
+      throw new Error(`AI router error: ${String(routerErr)}`);
     }
-
-    const data = await response.json();
-    const analysis = data.choices?.[0]?.message?.content || "";
-
-    console.log("Analysis complete, length:", analysis.length);
 
     return new Response(
       JSON.stringify({

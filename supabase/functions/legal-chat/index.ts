@@ -358,22 +358,29 @@ serve(async (req) => {
     // Add current message
     messages.push({ role: "user", content: message });
 
-    // Call Lovable AI Gateway
+    // NOTE: legal-chat uses streaming — we call gateway directly (router doesn't support streaming).
+    // Model is resolved from openai-router MODEL_MAP to keep consistency.
+    const { getModelConfig: _getModelConfig } = await import("../_shared/openai-router.ts");
+    const chatModelCfg = _getModelConfig("legal-chat");
+    const LOVABLE_API_KEY_STREAM = Deno.env.get("LOVABLE_API_KEY");
+    if (!LOVABLE_API_KEY_STREAM) throw new Error("LOVABLE_API_KEY is not configured");
+
     const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
       method: "POST",
       headers: {
-        Authorization: `Bearer ${LOVABLE_API_KEY}`,
+        Authorization: `Bearer ${LOVABLE_API_KEY_STREAM}`,
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        ...buildModelParams(LEGAL_CHAT),
+        model: chatModelCfg.model,
+        temperature: chatModelCfg.temperature,
+        max_tokens: chatModelCfg.max_tokens,
         messages,
         stream: true,
       }),
     });
 
     if (!response.ok) {
-      const errorText = await response.text();
       err(FN, "AI Gateway error", undefined, { status: response.status });
 
       if (response.status === 429) {
@@ -399,7 +406,7 @@ serve(async (req) => {
     try {
       await supabase.rpc("log_api_usage", {
         _service_type: "legal_chat",
-        _model_name: "google/gemini-2.5-pro",
+        _model_name: chatModelCfg.model,
         _tokens_used: null,
         _estimated_cost: 0.003,
         _metadata: { message_length: message.length, has_context: !!kbContext, has_practice: !!practiceContext }

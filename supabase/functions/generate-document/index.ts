@@ -211,50 +211,44 @@ Use the legal sources and court practice above to strengthen legal argumentation
 
     log("generate-document", "Generating", { promptLen: userPrompt.length, sysLen: systemPrompt.length });
 
-    const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${LOVABLE_API_KEY}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        ...buildModelParams(DOCUMENT_GENERATION),
-        messages: [
-          { role: "system", content: systemPrompt },
-          { role: "user", content: userPrompt }
-        ],
-      }),
-    });
+    // Route via centralized OpenAI router
+    const { callText } = await import("../_shared/openai-router.ts");
 
-    if (!response.ok) {
-      if (response.status === 429) {
+    let generatedContent: string;
+    let modelUsed: string;
+    try {
+      const result = await callText("generate-document", [
+        { role: "system", content: systemPrompt },
+        { role: "user", content: userPrompt },
+      ]);
+      generatedContent = result.text;
+      modelUsed = result.model_used;
+      log("generate-document", "Document generated", { len: generatedContent.length, model: modelUsed });
+    } catch (routerErr) {
+      const status = (routerErr as { status?: number })?.status;
+      if (status === 429) {
         return new Response(
           JSON.stringify({ error: "Rate limit exceeded. Please try again later." }),
           { status: 429, headers: { ...corsHeaders, "Content-Type": "application/json" } }
         );
       }
-      if (response.status === 402) {
+      if (status === 402) {
         return new Response(
           JSON.stringify({ error: "AI credits need to be replenished." }),
           { status: 402, headers: { ...corsHeaders, "Content-Type": "application/json" } }
         );
       }
-      const errorText = await response.text();
-      err("generate-document", "AI gateway error", undefined, { status: response.status });
-      throw new Error(`AI gateway error: ${response.status}`);
+      err("generate-document", "AI router error", routerErr);
+      throw routerErr;
     }
-
-    const data = await response.json();
-    const generatedContent = data.choices?.[0]?.message?.content || "";
-
-    log("generate-document", "Document generated", { len: generatedContent.length });
 
     return new Response(
       JSON.stringify({ 
         content: generatedContent,
-        tokensUsed: data.usage?.total_tokens || 0,
+        tokensUsed: 0,
         role: request.role || 'default',
-        jurisdiction
+        jurisdiction,
+        model_used: modelUsed,
       }),
       { headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
