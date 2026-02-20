@@ -741,7 +741,91 @@ export async function exportCaseDetailToPDF(data: CaseDetailExportData): Promise
     addFooter(doc, i, totalPages, hasArmenianFont);
   }
   
-  // Save
+// Save
   const filename = `AI_Legal_${data.caseNumber}_Details_${exportDate.toISOString().split("T")[0]}.pdf`;
+  doc.save(filename);
+}
+
+// =============================================================================
+// COMPLAINT / CLAIM PDF EXPORT
+// =============================================================================
+
+export interface ComplaintExportData {
+  title: string;
+  complaintTypeId?: string;
+  content: string;
+  language?: "hy" | "ru" | "en";
+}
+
+export async function exportComplaintToPDF(data: ComplaintExportData): Promise<void> {
+  const doc = new jsPDF();
+  const exportDate = new Date();
+  const lang: "hy" | "en" = data.language === "en" ? "en" : "hy";
+
+  const pageWidth = doc.internal.pageSize.getWidth();
+  const pageHeight = doc.internal.pageSize.getHeight();
+  const margin = 20;
+  const maxWidth = pageWidth - margin * 2;
+  const contentTopMargin = 38;
+  const contentBottomMargin = 35;
+
+  // Load Armenian font
+  let hasArmenianFont = false;
+  try {
+    await registerArmenianFont(doc);
+    hasArmenianFont = true;
+  } catch (e) {
+    console.warn("Armenian font not loaded:", e);
+  }
+
+  // Load logo
+  const logoData = await loadLogoForPDF();
+
+  // ── Page 1 header ──
+  addHeader(doc, data.complaintTypeId || "complaint", exportDate, lang, hasArmenianFont, logoData);
+
+  // Title
+  doc.setFontSize(14);
+  doc.setTextColor(0, 0, 0);
+  selectBoldFont(doc, data.title, hasArmenianFont);
+  const titleLines = doc.splitTextToSize(data.title, maxWidth);
+  doc.text(titleLines, pageWidth / 2, 36, { align: "center" });
+
+  let yPosition = 36 + titleLines.length * 7 + 4;
+
+  // Separator
+  doc.setDrawColor(180, 180, 180);
+  doc.setLineWidth(0.5);
+  doc.line(margin, yPosition, pageWidth - margin, yPosition);
+  yPosition += 8;
+
+  // Content lines
+  doc.setFontSize(10);
+  doc.setTextColor(0, 0, 0);
+  selectFont(doc, data.content, hasArmenianFont);
+  const contentLines = doc.splitTextToSize(data.content, maxWidth);
+
+  for (const line of contentLines) {
+    if (yPosition > pageHeight - contentBottomMargin) {
+      doc.addPage();
+      addHeader(doc, data.complaintTypeId || "complaint", exportDate, lang, hasArmenianFont, logoData);
+      yPosition = contentTopMargin;
+      doc.setFontSize(10);
+      doc.setTextColor(0, 0, 0);
+      if (hasArmenianFont) setArmenianFont(doc);
+    }
+    doc.text(line, margin, yPosition);
+    yPosition += 5;
+  }
+
+  // Footers on all pages
+  const totalPages = doc.getNumberOfPages();
+  for (let i = 1; i <= totalPages; i++) {
+    doc.setPage(i);
+    addFooter(doc, i, totalPages, hasArmenianFont);
+  }
+
+  const safeId = (data.complaintTypeId || "complaint").replace(/[^a-zA-Z0-9_-]/g, "_");
+  const filename = `AI_Legal_complaint_${safeId}_${exportDate.toISOString().split("T")[0]}.pdf`;
   doc.save(filename);
 }

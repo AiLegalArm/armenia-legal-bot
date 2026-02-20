@@ -1,7 +1,9 @@
-import { Loader2, Copy, Download } from "lucide-react";
+import { useState } from "react";
+import { Loader2, Copy, FileText } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { toast } from "sonner";
+import { exportComplaintToPDF } from "@/lib/pdfExport";
 
 // =============================================================================
 // STEP 4: Result Display
@@ -24,20 +26,30 @@ export function StepResult({
   complaintTypeId,
   onReset
 }: StepResultProps) {
-  
+  const [isExporting, setIsExporting] = useState(false);
+
   const handleCopy = () => {
     navigator.clipboard.writeText(generatedContent);
-    toast.success(getText("\u054A\u0561\u057F\u0573\u0565\u0576\u057E\u0565\u0581", "Скопировано", "Copied"));
+    toast.success(getText("Պատճենվեց", "Скопировано", "Copied"));
   };
 
-  const handleDownload = () => {
-    const blob = new Blob([generatedContent], { type: "text/plain;charset=utf-8" });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = `${complaintTypeId || "complaint"}_${Date.now()}.txt`;
-    a.click();
-    URL.revokeObjectURL(url);
+  const handleDownloadPDF = async () => {
+    setIsExporting(true);
+    try {
+      const title = getText("Բողոք / Հայց", "Жалоба / Иск", "Complaint / Claim");
+      await exportComplaintToPDF({
+        title,
+        complaintTypeId,
+        content: generatedContent,
+        language: lang as "hy" | "ru" | "en",
+      });
+      toast.success(getText("PDF ֆայլը ներբեռնվեց", "PDF файл скачан", "PDF downloaded"));
+    } catch (e) {
+      console.error("PDF export error:", e);
+      toast.error(getText("Սխալ PDF-ի ստեղծման ժամանակ", "Ошибка при создании PDF", "PDF export error"));
+    } finally {
+      setIsExporting(false);
+    }
   };
 
   if (isGenerating) {
@@ -46,7 +58,7 @@ export function StepResult({
         <Loader2 className="h-12 w-12 animate-spin text-primary" />
         <p className="text-muted-foreground">
           {getText(
-            "AI-\u0576 \u0563\u0565\u0576\u0565\u0580\u0561\u0581\u0576\u0578\u0582\u0574 \u0567 \u0562\u0578\u0572\u0578\u0584\u0568...",
+            "AI-ն գեներացնում է բողոքը...",
             "AI генерирует жалобу...",
             "AI is generating your complaint..."
           )}
@@ -59,16 +71,25 @@ export function StepResult({
     <div className="space-y-4">
       <div className="flex items-center justify-between">
         <h3 className="text-lg font-semibold">
-          {getText("\u0533\u0565\u0576\u0565\u0580\u0561\u0581\u057E\u0561\u056E \u0562\u0578\u0572\u0578\u0584", "Сгенерированная жалоба", "Generated Complaint")}
+          {getText("Գեներացված բողոք", "Сгенерированная жалоба", "Generated Complaint")}
         </h3>
         <div className="flex gap-2">
           <Button variant="outline" size="sm" onClick={handleCopy}>
             <Copy className="h-4 w-4 mr-1" />
-            {getText("\u054A\u0561\u057F\u0573\u0565\u0576\u0565\u056C", "Копировать", "Copy")}
+            {getText("Պատճենել", "Копировать", "Copy")}
           </Button>
-          <Button variant="outline" size="sm" onClick={handleDownload}>
-            <Download className="h-4 w-4 mr-1" />
-            {getText("\u0546\u0565\u0580\u0562\u0565\u057C\u0576\u0565\u056C", "Скачать", "Download")}
+          <Button
+            variant="default"
+            size="sm"
+            onClick={handleDownloadPDF}
+            disabled={isExporting}
+          >
+            {isExporting ? (
+              <Loader2 className="h-4 w-4 mr-1 animate-spin" />
+            ) : (
+              <FileText className="h-4 w-4 mr-1" />
+            )}
+            {getText("Ներբեռնել PDF", "Скачать PDF", "Download PDF")}
           </Button>
         </div>
       </div>
@@ -76,7 +97,7 @@ export function StepResult({
         <pre className="whitespace-pre-wrap font-sans text-sm">{generatedContent}</pre>
       </ScrollArea>
       <Button variant="outline" onClick={onReset} className="w-full">
-        {getText("\u0546\u0578\u0580 \u0562\u0578\u0572\u0578\u0584", "Новая жалоба", "New Complaint")}
+        {getText("Նոր բողոք", "Новая жалоба", "New Complaint")}
       </Button>
     </div>
   );
