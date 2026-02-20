@@ -29,6 +29,22 @@ export interface CourtCategory {
 
 export const ARMENIAN_COURTS: CourtCategory[] = [
   {
+    id: "international_courts",
+    name_hy: "Միջազգային դատարաններ",
+    name_ru: "Международные суды",
+    name_en: "International Courts",
+    courts: [
+      {
+        id: "echr",
+        name_hy: "Մարդու իրավունքների եվրոպական դատարան (ՄԻԵԴ)",
+        name_ru: "Европейский суд по правам человека (ЕСПЧ)",
+        name_en: "European Court of Human Rights (ECHR)",
+        address: "Allée des Droits de l'Homme, 67000 Strasbourg, France",
+        phones: ["+33 3 88 41 20 18"],
+      }
+    ]
+  },
+  {
     id: "higher_courts",
     name_hy: "\u0532\u0561\u0580\u0571\u0580\u0561\u0563\u0578\u0582\u0575\u0576 \u0564\u0561\u057F\u0561\u0580\u0561\u0576\u0576\u0565\u0580",
     name_ru: "Высшие суды",
