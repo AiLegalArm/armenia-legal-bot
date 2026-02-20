@@ -209,9 +209,13 @@ export function EchrImportWizard({ open, onOpenChange, onSuccess }: EchrImportWi
     const files = Array.from(e.target.files ?? []);
     if (files.length === 0) return;
 
-    const invalid = files.filter(f => !f.name.endsWith(".jsonl") && !f.name.endsWith(".json"));
+    const invalid = files.filter(f =>
+      !f.name.endsWith(".jsonl") &&
+      !f.name.endsWith(".json") &&
+      !f.name.endsWith(".txt")
+    );
     if (invalid.length > 0) {
-      toast.error(`Поддерживаются только .json и .jsonl: ${invalid.map(f => f.name).join(", ")}`);
+      toast.error(`Поддерживаются .json, .jsonl, .txt: ${invalid.map(f => f.name).join(", ")}`);
       return;
     }
 
@@ -407,12 +411,12 @@ export function EchrImportWizard({ open, onOpenChange, onSuccess }: EchrImportWi
           <div className="space-y-2">
             <Label className="flex items-center gap-2">
               <Files className="h-4 w-4" />
-              ECHR ֆayleri (.json / .jsonl) — կareli e yntel mi qani
+              ECHR ֆayleri (.json / .jsonl / .txt) — կareli e yntel mi qani
             </Label>
             <Input
               ref={fileInputRef}
               type="file"
-              accept=".json,.jsonl"
+              accept=".json,.jsonl,.txt"
               multiple
               onChange={handleFileSelect}
               disabled={isRunning}
