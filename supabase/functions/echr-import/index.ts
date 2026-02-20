@@ -419,10 +419,8 @@ serve(async (req) => {
 
     return new Response(JSON.stringify({
       success: true,
-      total: cases.length,
+      total: batchCases.length,
       batchProcessed: processed,
-      batchIndex,
-      batchSize,
       translated,
       partial,
       errors,
