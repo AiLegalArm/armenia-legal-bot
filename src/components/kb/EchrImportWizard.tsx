@@ -58,6 +58,52 @@ const PRACTICE_CATEGORIES = [
   { value: "constitutional", label: "Սահمانадporitakan" },
 ];
 
+/**
+ * Extract top-level JSON objects from a large JSON array using brace-matching.
+ * Works even when JSON.parse fails due to file size.
+ * Returns each {...} block as a parsed object.
+ */
+function extractObjectsByBraceMatch(text: string): { cases: ParsedCase[]; skipped: number } {
+  const cases: ParsedCase[] = [];
+  let skipped = 0;
+  let depth = 0;
+  let inString = false;
+  let escape = false;
+  let objStart = -1;
+
+  for (let i = 0; i < text.length; i++) {
+    const ch = text[i];
+
+    if (escape) { escape = false; continue; }
+    if (ch === '\\' && inString) { escape = true; continue; }
+    if (ch === '"') { inString = !inString; continue; }
+    if (inString) continue;
+
+    if (ch === '{') {
+      if (depth === 0) objStart = i;
+      depth++;
+    } else if (ch === '}') {
+      depth--;
+      if (depth === 0 && objStart !== -1) {
+        const chunk = text.slice(objStart, i + 1);
+        try {
+          const obj = JSON.parse(chunk);
+          if (obj && typeof obj === 'object' && !Array.isArray(obj)) {
+            cases.push(obj);
+          } else {
+            skipped++;
+          }
+        } catch {
+          skipped++;
+        }
+        objStart = -1;
+      }
+    }
+  }
+
+  return { cases, skipped };
+}
+
 // Client-side parser: handles all HUDOC/ECHR export formats
 // Supports: JSON array [...], JSONL (one object per line), {results:[...]}, plain .txt with JSON inside
 function parseRaw(text: string): { cases: ParsedCase[]; skipped: number } {
@@ -66,10 +112,7 @@ function parseRaw(text: string): { cases: ParsedCase[]; skipped: number } {
   let cases: ParsedCase[] = [];
   let skipped = 0;
 
-  // ── Format 1: Single JSON value (object or array) ─────────────
-  // Covers: [{...},{...}] (big array), {"results":[...]}, etc.
-  // This handles files like chunk_1.jsonl.txt which are actually a JSON array
-  // spread across many lines — NOT one-object-per-line.
+  // ── Format 1: Try full JSON.parse first (works for small/medium files) ─────
   if (trimmed.startsWith("[") || trimmed.startsWith("{")) {
     try {
       const parsed = JSON.parse(trimmed);
@@ -124,13 +167,17 @@ function parseRaw(text: string): { cases: ParsedCase[]; skipped: number } {
         return { cases: [], skipped };
       }
     } catch {
-      // JSON.parse failed — file is NOT a single JSON blob.
+      // JSON.parse failed — file may be too large or truncated (no closing bracket).
+      // Use brace-matching to extract all complete {...} objects from the text.
+      if (trimmed.startsWith("[") || trimmed.startsWith("{")) {
+        const result = extractObjectsByBraceMatch(trimmed);
+        if (result.cases.length > 0) return result;
+      }
       // Fall through to JSONL line-by-line parsing below.
     }
   }
 
   // ── Format 2: JSONL — one JSON value per line ─────────────────
-  // Only reached if the file is not parseable as a single JSON value.
   {
     const lines = trimmed.split("\n");
     let headers: string[] | null = null;
@@ -162,6 +209,8 @@ function parseRaw(text: string): { cases: ParsedCase[]; skipped: number } {
 
   return { cases, skipped };
 }
+
+
 
 // ── Split parsed cases into N-sized JSON files and trigger downloads ──
 function splitAndDownload(cases: ParsedCase[], chunkSize: number, baseName: string) {
@@ -233,7 +282,11 @@ export function EchrImportWizard({ open, onOpenChange, onSuccess }: EchrImportWi
         const { cases, skipped } = parseRaw(text);
         entries.push({ name: file.name, cases, skipped });
         totalSkipped += skipped;
-      } catch {
+        if (cases.length === 0 && skipped > 0) {
+          console.warn(`[EchrImport] File "${file.name}": 0 cases, ${skipped} skipped. Attempting brace-match fallback.`);
+        }
+      } catch (err) {
+        console.error(`[EchrImport] Failed to read file "${file.name}":`, err);
         entries.push({ name: file.name, cases: [], skipped: 0 });
       }
     }
@@ -244,13 +297,18 @@ export function EchrImportWizard({ open, onOpenChange, onSuccess }: EchrImportWi
     setParseSkipped(totalSkipped);
     setStatus("idle");
 
-    toast.success(
-      `${files.length} ֆայлер — ${allCases.length.toLocaleString()} գործ` +
-      (totalSkipped > 0 ? ` (${totalSkipped} բаcк թողац)` : "")
-    );
+    if (allCases.length > 0) {
+      toast.success(
+        `${files.length} ${files.length === 1 ? '\u0444\u0430\u0439\u043b' : '\u0444\u0430\u0439\u043b\u0430'} — \u043d\u0430\u0439\u0434\u0435\u043d\u043e ${allCases.length.toLocaleString()} \u0434\u0435\u043b \u0415\u0421\u041f\u0427` +
+        (totalSkipped > 0 ? ` (\u043f\u0440\u043e\u043f\u0443\u0449\u0435\u043d\u043e ${totalSkipped})` : "")
+      );
+    } else {
+      toast.error(`\u041d\u0435 \u0443\u0434\u0430\u043b\u043e\u0441\u044c \u0440\u0430\u0441\u043f\u043e\u0437\u043d\u0430\u0442\u044c \u0434\u0435\u043b\u0430 \u0432 \u0444\u0430\u0439\u043b\u0435. \u041f\u0440\u043e\u043f\u0443\u0449\u0435\u043d\u043e: ${totalSkipped} \u0441\u0442\u0440\u043e\u043a.`);
+    }
 
     if (fileInputRef.current) fileInputRef.current.value = "";
   }, []);
+
 
   // ── Helper: extract error message ─────────────────────────────
   const extractErrMsg = (err: unknown): string => {
