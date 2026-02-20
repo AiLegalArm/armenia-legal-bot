@@ -117,6 +117,7 @@
   "stage_administrative_4": "Кассация",
   "court_label": "Суд",
   "select_court": "Выберите суд",
+  "court_echr": "Европейский суд по правам человека (ЕСПЧ)",
   "court_required": "Выберите суд",
   "court_constitutional": "Конституционный суд",
   "court_cassation": "Кассационный суд",
