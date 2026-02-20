@@ -1,23 +1,28 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.91.1";
 import { FIELD_EXTRACTION, buildModelParams } from "../_shared/model-config.ts";
-import { handleCors } from "../_shared/edge-security.ts";
+
+const corsHeaders = {
+  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+  'Access-Control-Allow-Methods': 'POST, OPTIONS',
+};
 
 const SYSTEM_PROMPT = `You are an expert legal analyst for Armenian (RA) law cases. Your task is to extract key pieces of information from case materials:
 
-1. CASE NUMBER (\u0533\u0578\u0580\u056E\u056B \u0570\u0561\u0574\u0561\u0580):
-   - Look for patterns like: \u053F\u0534/1718/02/24, \u0535\u0531\u0534/1234/01/25, \u053F\u0534-1234-2024, etc.
+1. CASE NUMBER (Գործի համար):
+   - Look for patterns like: ԿԴ/1718/02/24, ԵԱԴ/1234/01/25, ԿԴ-1234-2024, etc.
    - Court case numbers often follow format: XX/NNNN/NN/NN or XX-NNNN-NNNN
-   - Also look for: "\u0563\u0578\u0580\u056E N", "\u0563\u0578\u0580\u056E \u0569\u056B\u057E", "case N", "\u0564\u0565\u056C\u0578 N"
+   - Also look for: "գործ N", "գործ թիվ", "case N", "դело N"
    - Extract the EXACT case number as written in the document
 
-2. FACTS (\u0553\u0561\u057D\u057F\u0565\u0580): 
+2. FACTS (Փաստեր): 
    - Concrete facts of what happened
    - When and where it occurred
    - Involved parties: victim, defendant, plaintiff, body
    - Amounts, damages involved
 
-3. LEGAL QUESTION (\u053B\u0580\u0561\u057E\u0561\u0562\u0561\u0576\u0561\u056F\u0561\u0576 \u0570\u0561\u0580\u0581):
+3. LEGAL QUESTION (Իրավաբանական հարց):
    - What legal issue needs to be resolved
    - Which articles or laws may apply
    - What documents to collect, what questions to answer for lawyers
@@ -25,25 +30,26 @@ const SYSTEM_PROMPT = `You are an expert legal analyst for Armenian (RA) law cas
 Extract from case materials (description, OCR results, audio transcriptions).
 
 IMPORTANT: 
-- Always respond in Armenian (\u0540\u0561\u0575\u0565\u0580\u0565\u0576). 
+- Always respond in Armenian (Հայերեն). 
 - Extract specific, concrete information from the provided documents.
-- For case_number, return the EXACT number found in documents (e.g., "\u053F\u0534/1718/02/24"), or empty string if not found.`;
+- For case_number, return the EXACT number found in documents (e.g., "ԿԴ/1718/02/24"), or empty string if not found.`;
 
 serve(async (req) => {
-  const cors = handleCors(req);
-  if (cors.errorResponse) return cors.errorResponse;
-  const corsHeaders = cors.corsHeaders!;
+  if (req.method === 'OPTIONS') {
+    return new Response(null, { headers: corsHeaders });
+  }
 
   try {
-    // === AUTH GUARD (Prevent Anonymous Access) ===
+    // === AUTH GUARD ===
     const authHeader = req.headers.get("Authorization") ?? "";
     const sb = createClient(
       Deno.env.get("SUPABASE_URL")!,
       Deno.env.get("SUPABASE_ANON_KEY")!,
       { global: { headers: { Authorization: authHeader } } }
     );
-    const { data: { user }, error: authError } = await sb.auth.getUser();
-    if (authError || !user) {
+    const token = authHeader.replace('Bearer ', '');
+    const { data, error: authError } = await sb.auth.getClaims(token);
+    if (authError || !data?.claims) {
       return new Response(JSON.stringify({ error: "Unauthorized" }), {
         status: 401,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
@@ -59,14 +65,8 @@ serve(async (req) => {
 
     console.log("Processing extraction for case:", caseId);
 
-    // Initialize Supabase client
-    const supabaseUrl = Deno.env.get("SUPABASE_URL");
-    const supabaseKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
-    
-    if (!supabaseUrl || !supabaseKey) {
-      throw new Error("Missing Supabase configuration");
-    }
-
+    const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
+    const supabaseKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
     const supabase = createClient(supabaseUrl, supabaseKey);
 
     // Get case data
@@ -83,20 +83,14 @@ serve(async (req) => {
     // Get OCR results from case files
     const { data: ocrResults } = await supabase
       .from("ocr_results")
-      .select(`
-        extracted_text,
-        case_files!inner(case_id)
-      `)
+      .select(`extracted_text, case_files!inner(case_id)`)
       .eq("case_files.case_id", caseId)
       .limit(5);
 
     // Get audio transcriptions from case files
     const { data: transcriptions } = await supabase
       .from("audio_transcriptions")
-      .select(`
-        transcription_text,
-        case_files!inner(case_id)
-      `)
+      .select(`transcription_text, case_files!inner(case_id)`)
       .eq("case_files.case_id", caseId)
       .limit(5);
 
@@ -110,7 +104,6 @@ serve(async (req) => {
     if (ocrResults && ocrResults.length > 0) {
       context += "\n\n=== OCR EXTRACTED TEXT ===";
       ocrResults.forEach((ocr, idx) => {
-        // Limit each OCR result to 2000 chars
         const text = ocr.extracted_text?.substring(0, 2000) || "";
         context += `\n\n[Document ${idx + 1}]:\n${text}`;
       });
@@ -119,7 +112,6 @@ serve(async (req) => {
     if (transcriptions && transcriptions.length > 0) {
       context += "\n\n=== AUDIO TRANSCRIPTIONS ===";
       transcriptions.forEach((trans, idx) => {
-        // Limit each transcription to 2000 chars
         const text = trans.transcription_text?.substring(0, 2000) || "";
         context += `\n\n[Transcription ${idx + 1}]:\n${text}`;
       });
@@ -129,12 +121,9 @@ serve(async (req) => {
       return new Response(
         JSON.stringify({
           success: false,
-          error: "No data available: no description, OCR or audio transcriptions found. Please add description or upload documents first."
+          error: "No data available: no description, OCR or audio transcriptions found."
         }),
-        { 
-          status: 400, 
-          headers: { ...corsHeaders, "Content-Type": "application/json" } 
-        }
+        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
 
@@ -169,15 +158,15 @@ serve(async (req) => {
                 properties: {
                   case_number: {
                     type: "string",
-                    description: "Case number found in documents (e.g., \u053F\u0534/1718/02/24, \u0535\u0531\u0534/1234/01/25). Return empty string if not found."
+                    description: "Case number found in documents. Return empty string if not found."
                   },
                   facts: {
                     type: "string",
-                    description: "Case facts in Armenian - concrete details of what happened, when, where, involved parties, amounts"
+                    description: "Case facts in Armenian - concrete details of what happened"
                   },
                   legal_question: {
                     type: "string",
-                    description: "Legal question in Armenian - what legal issue needs resolution, which laws apply"
+                    description: "Legal question in Armenian - what legal issue needs resolution"
                   }
                 },
                 required: ["case_number", "facts", "legal_question"]
@@ -192,26 +181,16 @@ serve(async (req) => {
     if (!aiResponse.ok) {
       const errorText = await aiResponse.text();
       console.error("AI Gateway error:", aiResponse.status, errorText);
-      
       if (aiResponse.status === 429) {
         return new Response(
           JSON.stringify({ success: false, error: "Rate limit exceeded. Please try again later." }),
           { status: 429, headers: { ...corsHeaders, "Content-Type": "application/json" } }
         );
       }
-      if (aiResponse.status === 402) {
-        return new Response(
-          JSON.stringify({ success: false, error: "Payment required or premium account needed." }),
-          { status: 402, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-        );
-      }
       throw new Error(`AI Gateway error: ${aiResponse.status}`);
     }
 
     const aiData = await aiResponse.json();
-    console.log("AI response received");
-
-    // Extract tool call result
     const toolCall = aiData.choices?.[0]?.message?.tool_calls?.[0];
     if (!toolCall || toolCall.function.name !== "extract_case_fields") {
       throw new Error("Unexpected AI response format");
@@ -220,19 +199,16 @@ serve(async (req) => {
     const extractedFields = JSON.parse(toolCall.function.arguments);
     console.log("Extracted fields:", extractedFields);
 
-    // Build update object - only update case_number if found
     const updateData: Record<string, unknown> = {
       facts: extractedFields.facts,
       legal_question: extractedFields.legal_question,
       updated_at: new Date().toISOString()
     };
 
-    // Only update case_number if AI found one in documents
     if (extractedFields.case_number && extractedFields.case_number.trim()) {
       updateData.case_number = extractedFields.case_number.trim();
     }
 
-    // Update case with extracted fields
     const { error: updateError } = await supabase
       .from("cases")
       .update(updateData)
@@ -261,10 +237,7 @@ serve(async (req) => {
         success: false, 
         error: error instanceof Error ? error.message : "Unknown error" 
       }),
-      { 
-        status: 500, 
-        headers: { ...corsHeaders, "Content-Type": "application/json" } 
-      }
+      { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
   }
 });
