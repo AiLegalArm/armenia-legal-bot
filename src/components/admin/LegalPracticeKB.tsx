@@ -130,14 +130,17 @@ export function LegalPracticeKB() {
     queryFn: async () => {
       const selectFields = 'id,title,description,court_type,practice_category,court_name,case_number_anonymized,decision_date,outcome,key_violations,legal_reasoning_summary,applied_articles,source_name,source_url,is_anonymized,visibility,is_active,created_at,updated_at';
       const batchSize = 1000;
+      // Limit total records when no category filter to avoid loading all 6000+ records
+      const MAX_TOTAL = filterCategory === 'all' && !searchTerm ? 2000 : 10000;
       let allData: any[] = [];
       let offset = 0;
       let hasMore = true;
 
-      while (hasMore) {
+      while (hasMore && allData.length < MAX_TOTAL) {
         let query = supabase
           .from('legal_practice_kb')
           .select(selectFields)
+          .eq('is_active', true)
           .order('created_at', { ascending: false })
           .range(offset, offset + batchSize - 1);
 
