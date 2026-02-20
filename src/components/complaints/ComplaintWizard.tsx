@@ -91,13 +91,16 @@ export function ComplaintWizard({ open, onOpenChange }: ComplaintWizardProps) {
     setState(INITIAL_STATE);
   };
 
-  const onGenerate = () => {
+  const onGenerate = (extraInfo?: string) => {
     if (state.complaintType && state.category) {
+      const combinedInfo = extraInfo
+        ? `${state.additionalInfo}\n\n--- Дополнительные данные (повторная генерация) ---\n${extraInfo}`
+        : state.additionalInfo;
       handleGenerate({
         complaintType: state.complaintType,
         category: state.category,
         files: state.files,
-        additionalInfo: state.additionalInfo
+        additionalInfo: combinedInfo
       });
     }
   };
