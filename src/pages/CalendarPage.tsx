@@ -2,7 +2,7 @@ import { useState, useCallback, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useNavigate } from 'react-router-dom';
 import { Calendar, dateFnsLocalizer, Event as BigCalendarEvent, View } from 'react-big-calendar';
-import { format, parse, startOfWeek, getDay, startOfMonth, endOfMonth } from 'date-fns';
+import { format, parse, startOfWeek, getDay } from 'date-fns';
 import { hy, enUS, ru } from 'date-fns/locale';
 import 'react-big-calendar/lib/css/react-big-calendar.css';
 import { useAuth } from '@/hooks/useAuth';
@@ -15,7 +15,11 @@ import { NotificationBell } from '@/components/reminders/NotificationBell';
 import { useReminderNotificationChecker } from '@/components/reminders/useReminderNotificationChecker';
 import { LanguageSwitcher } from '@/components/LanguageSwitcher';
 import { Button } from '@/components/ui/button';
-import { Loader2, LogOut, Scale, Plus, ArrowLeft, Bell, Gavel, Clock, Target, Users, HelpCircle } from 'lucide-react';
+import {
+  Loader2, Scale, Plus, ArrowLeft, Bell,
+  Gavel, Clock, Target, Users, HelpCircle, LogOut,
+  CalendarDays, CalendarCheck2
+} from 'lucide-react';
 import type { Database } from '@/integrations/supabase/types';
 import { useCases } from '@/hooks/useCases';
 
@@ -31,11 +35,11 @@ interface CalendarEvent extends BigCalendarEvent {
 }
 
 const reminderTypeColors: Record<ReminderType, string> = {
-  court_hearing: '#ef4444', // red
-  deadline: '#f97316', // orange  
-  task: '#3b82f6', // blue
-  meeting: '#22c55e', // green
-  other: '#6b7280', // gray
+  court_hearing: '#ef4444',
+  deadline: '#f97316',
+  task: '#3b82f6',
+  meeting: '#22c55e',
+  other: '#6b7280',
 };
 
 const CalendarPage = () => {
@@ -44,13 +48,13 @@ const CalendarPage = () => {
   const { user, signOut } = useAuth();
   const { cases, isLoading: casesLoading } = useCourtCases();
   const { createCase } = useCases();
-  const { 
-    reminders, 
+  const {
+    reminders,
     isLoading: remindersLoading,
     createReminder,
     updateReminder,
   } = useReminders();
-  
+
   const [caseFormOpen, setCaseFormOpen] = useState(false);
   const [reminderFormOpen, setReminderFormOpen] = useState(false);
   const [dateSheetOpen, setDateSheetOpen] = useState(false);
@@ -58,12 +62,10 @@ const CalendarPage = () => {
   const [currentView, setCurrentView] = useState<View>('month');
   const [editingReminder, setEditingReminder] = useState<Reminder | null>(null);
 
-  // Initialize notification checker
   useReminderNotificationChecker();
 
   const isLoading = casesLoading || remindersLoading;
 
-  // Setup localizer with appropriate locale
   const getLocale = () => {
     switch (i18n.language) {
       case 'hy': return hy;
@@ -78,14 +80,9 @@ const CalendarPage = () => {
     parse,
     startOfWeek: () => startOfWeek(new Date(), { locale }),
     getDay,
-    locales: {
-      'hy': hy,
-      'en': enUS,
-      'ru': ru,
-    },
+    locales: { 'hy': hy, 'en': enUS, 'ru': ru },
   });
 
-  // Custom messages for calendar
   const messages = useMemo(() => ({
     allDay: t('all_day'),
     previous: t('previous'),
@@ -102,7 +99,6 @@ const CalendarPage = () => {
     showMore: (total: number) => `+${total} ${t('show_more')}`,
   }), [t]);
 
-  // Convert cases and reminders to calendar events
   const events: CalendarEvent[] = useMemo(() => {
     const caseEvents: CalendarEvent[] = cases
       .filter(c => c.court_date)
@@ -129,7 +125,9 @@ const CalendarPage = () => {
     return [...caseEvents, ...reminderEvents];
   }, [cases, reminders]);
 
-  // Get color based on event type
+  const totalEvents = events.length;
+  const upcomingEvents = events.filter(e => e.start >= new Date()).length;
+
   const getEventStyle = useCallback((event: CalendarEvent) => {
     if (event.type === 'case' && event.caseData) {
       const statusColors: Record<CaseStatus, string> = {
@@ -140,38 +138,41 @@ const CalendarPage = () => {
         archived: '#6b7280',
       };
       const backgroundColor = statusColors[event.caseData.status] || '#3b82f6';
-      
       return {
         style: {
           backgroundColor,
-          borderRadius: '4px',
-          opacity: 0.9,
+          borderRadius: '6px',
+          opacity: 0.92,
           color: 'white',
           border: 'none',
           display: 'block',
+          fontWeight: '500',
+          fontSize: '0.8rem',
+          paddingLeft: '6px',
+          boxShadow: '0 1px 4px rgba(0,0,0,0.15)',
         },
       };
     }
-
     if (event.type === 'reminder' && event.reminderData) {
       const backgroundColor = reminderTypeColors[event.reminderData.reminder_type] || '#6b7280';
-      
       return {
         style: {
           backgroundColor,
-          borderRadius: '4px',
-          opacity: 0.85,
+          borderRadius: '6px',
+          opacity: 0.88,
           color: 'white',
-          border: '2px dashed rgba(255,255,255,0.4)',
+          border: '2px dashed rgba(255,255,255,0.5)',
           display: 'block',
+          fontWeight: '500',
+          fontSize: '0.8rem',
+          paddingLeft: '6px',
+          boxShadow: '0 1px 4px rgba(0,0,0,0.12)',
         },
       };
     }
-
     return {};
   }, []);
 
-  // Handle event click
   const handleSelectEvent = useCallback((event: CalendarEvent) => {
     if (event.type === 'case') {
       navigate(`/cases/${event.id}`);
@@ -181,20 +182,17 @@ const CalendarPage = () => {
     }
   }, [navigate]);
 
-  // Handle slot selection - show date reminders sheet
   const handleSelectSlot = useCallback((slotInfo: { start: Date; end: Date }) => {
     setSelectedDate(slotInfo.start);
     setDateSheetOpen(true);
   }, []);
 
-  // Handle case creation
   const handleCreateCase = (data: Database['public']['Tables']['cases']['Insert']) => {
     createCase.mutate(data, {
       onSuccess: () => setCaseFormOpen(false),
     });
   };
 
-  // Handle reminder creation/update
   const handleReminderSubmit = (data: CreateReminderInput) => {
     if (editingReminder) {
       updateReminder.mutate({ id: editingReminder.id, ...data }, {
@@ -218,69 +216,130 @@ const CalendarPage = () => {
 
   if (isLoading) {
     return (
-      <div className="flex min-h-screen items-center justify-center">
-        <Loader2 className="h-8 w-8 animate-spin text-primary" />
+      <div className="flex min-h-screen items-center justify-center bg-background">
+        <div className="flex flex-col items-center gap-3">
+          <Loader2 className="h-10 w-10 animate-spin text-primary" />
+          <p className="text-sm text-muted-foreground animate-pulse">{t('common:loading', 'Загрузка...')}</p>
+        </div>
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-background">
+    <div className="min-h-screen bg-muted/30">
       {/* Header */}
-      <header className="sticky top-0 z-10 border-b bg-card">
+      <header className="sticky top-0 z-20 border-b bg-card/95 backdrop-blur-sm shadow-soft">
         <div className="container mx-auto flex h-14 sm:h-16 items-center justify-between px-3 sm:px-4">
           <div className="flex items-center gap-2 sm:gap-4">
-            <Button 
-              variant="ghost" 
+            <Button
+              variant="ghost"
               size="icon"
               onClick={() => navigate('/dashboard')}
+              className="rounded-xl hover:bg-muted"
               aria-label={t('common:back')}
             >
               <ArrowLeft className="h-5 w-5" />
             </Button>
             <div className="flex items-center gap-2">
-              <Scale className="h-5 w-5 sm:h-6 sm:w-6 text-primary" />
-              <h1 className="text-lg sm:text-xl font-bold hidden sm:block">{t('common:app_name')}</h1>
+              <div className="flex h-8 w-8 items-center justify-center rounded-xl bg-primary text-primary-foreground shadow-soft">
+                <Scale className="h-4 w-4" />
+              </div>
+              <h1 className="text-lg sm:text-xl font-bold hidden sm:block tracking-tight">{t('common:app_name')}</h1>
             </div>
           </div>
-          <div className="flex items-center gap-2 sm:gap-4">
-            <span className="hidden sm:inline text-sm text-muted-foreground truncate max-w-[120px]">
+          <div className="flex items-center gap-2 sm:gap-3">
+            <span className="hidden md:inline text-sm text-muted-foreground truncate max-w-[140px] bg-muted px-3 py-1 rounded-lg">
               {user?.email}
             </span>
             <NotificationBell />
             <LanguageSwitcher />
-            <Button variant="ghost" size="icon" onClick={() => signOut()}>
-              <LogOut className="h-5 w-5" />
+            <Button variant="ghost" size="icon" onClick={() => signOut()} className="rounded-xl hover:bg-destructive/10 hover:text-destructive">
+              <LogOut className="h-4 w-4" />
             </Button>
           </div>
         </div>
       </header>
 
-      {/* Main Content */}
-      <main className="container mx-auto px-4 py-6">
-        {/* Page Header */}
-        <div className="mb-4 sm:mb-6 flex items-center justify-between flex-wrap gap-2">
+      <main className="container mx-auto px-4 py-6 space-y-6">
+
+        {/* Page title + actions */}
+        <div className="flex items-start justify-between flex-wrap gap-3">
           <div>
-            <h2 className="text-xl sm:text-2xl font-bold">{t('court_sessions')}</h2>
-            <p className="text-xs sm:text-sm text-muted-foreground">
-              {t('calendar:calendar')}
-            </p>
+            <h2 className="text-2xl sm:text-3xl font-bold tracking-tight">{t('court_sessions')}</h2>
+            <p className="text-sm text-muted-foreground mt-0.5">{t('calendar:calendar')}</p>
           </div>
           <div className="flex items-center gap-2">
-            <Button onClick={handleAddReminder} variant="outline" size="sm" className="sm:h-9">
-              <Bell className="h-4 w-4 sm:mr-2" />
+            <Button
+              onClick={handleAddReminder}
+              variant="outline"
+              size="sm"
+              className="gap-2 rounded-xl border-dashed hover:border-solid"
+            >
+              <Bell className="h-4 w-4" />
               <span className="hidden sm:inline">{t('reminders:add_reminder')}</span>
             </Button>
-            <Button onClick={() => setCaseFormOpen(true)} size="sm" className="sm:h-9">
-              <Plus className="h-4 w-4 sm:mr-2" />
+            <Button
+              onClick={() => setCaseFormOpen(true)}
+              size="sm"
+              className="gap-2 rounded-xl shadow-soft"
+            >
+              <Plus className="h-4 w-4" />
               <span className="hidden sm:inline">{t('add_session')}</span>
             </Button>
           </div>
         </div>
 
-        {/* Calendar */}
-        <div className="rounded-lg border bg-card p-4">
-          <div className="calendar-wrapper" style={{ height: 'calc(100vh - 320px)', minHeight: '500px' }}>
+        {/* Stats row */}
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+          {[
+            {
+              icon: CalendarDays,
+              label: t('cases:cases'),
+              value: cases.filter(c => c.court_date).length,
+              color: 'text-blue-500',
+              bg: 'bg-blue-500/10',
+            },
+            {
+              icon: Bell,
+              label: t('reminders:reminders'),
+              value: reminders.filter(r => r.status === 'active').length,
+              color: 'text-orange-500',
+              bg: 'bg-orange-500/10',
+            },
+            {
+              icon: CalendarCheck2,
+              label: t('calendar:today', 'Сегодня'),
+              value: events.filter(e => {
+                const d = e.start as Date;
+                const now = new Date();
+                return d.toDateString() === now.toDateString();
+              }).length,
+              color: 'text-primary',
+              bg: 'bg-primary/10',
+            },
+            {
+              icon: Target,
+              label: 'Предстоящих',
+              value: upcomingEvents,
+              color: 'text-emerald-500',
+              bg: 'bg-emerald-500/10',
+            },
+          ].map(({ icon: Icon, label, value, color, bg }) => (
+            <div key={label} className="bg-card border rounded-2xl p-4 flex items-center gap-3 shadow-soft">
+              <div className={`h-10 w-10 rounded-xl ${bg} flex items-center justify-center flex-shrink-0`}>
+                <Icon className={`h-5 w-5 ${color}`} />
+              </div>
+              <div>
+                <p className="text-2xl font-bold leading-none">{value}</p>
+                <p className="text-xs text-muted-foreground mt-1 leading-tight">{label}</p>
+              </div>
+            </div>
+          ))}
+        </div>
+
+        {/* Calendar card */}
+        <div className="bg-card border rounded-2xl shadow-soft overflow-hidden">
+          <div className="calendar-wrapper" style={{ height: 'calc(100vh - 380px)', minHeight: '520px' }}>
             <Calendar
               localizer={localizer}
               events={events}
@@ -301,57 +360,49 @@ const CalendarPage = () => {
         </div>
 
         {/* Legend */}
-        <div className="mt-4 rounded-lg border bg-card p-4">
-          <div className="mb-2 text-sm font-medium text-muted-foreground">{t('cases:cases')}</div>
-          <div className="flex flex-wrap gap-4 mb-4">
-            <div className="flex items-center gap-2">
-              <div className="h-4 w-4 rounded" style={{ backgroundColor: '#3b82f6' }} />
-              <span className="text-sm">{t('cases:status_open')}</span>
-            </div>
-            <div className="flex items-center gap-2">
-              <div className="h-4 w-4 rounded" style={{ backgroundColor: '#f59e0b' }} />
-              <span className="text-sm">{t('cases:status_in_progress')}</span>
-            </div>
-            <div className="flex items-center gap-2">
-              <div className="h-4 w-4 rounded" style={{ backgroundColor: '#8b5cf6' }} />
-              <span className="text-sm">{t('cases:status_pending')}</span>
-            </div>
-            <div className="flex items-center gap-2">
-              <div className="h-4 w-4 rounded" style={{ backgroundColor: '#10b981' }} />
-              <span className="text-sm">{t('cases:status_closed')}</span>
-            </div>
-            <div className="flex items-center gap-2">
-              <div className="h-4 w-4 rounded" style={{ backgroundColor: '#6b7280' }} />
-              <span className="text-sm">{t('cases:status_archived')}</span>
+        <div className="bg-card border rounded-2xl shadow-soft p-5 grid sm:grid-cols-2 gap-5">
+          {/* Cases legend */}
+          <div>
+            <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-3">{t('cases:cases')}</p>
+            <div className="flex flex-wrap gap-2">
+              {[
+                { color: '#3b82f6', label: t('cases:status_open') },
+                { color: '#f59e0b', label: t('cases:status_in_progress') },
+                { color: '#8b5cf6', label: t('cases:status_pending') },
+                { color: '#10b981', label: t('cases:status_closed') },
+                { color: '#6b7280', label: t('cases:status_archived') },
+              ].map(({ color, label }) => (
+                <div
+                  key={label}
+                  className="flex items-center gap-1.5 bg-muted/50 rounded-lg px-2.5 py-1.5"
+                >
+                  <div className="h-2.5 w-2.5 rounded-full flex-shrink-0" style={{ backgroundColor: color }} />
+                  <span className="text-xs font-medium">{label}</span>
+                </div>
+              ))}
             </div>
           </div>
-          
-          <div className="mb-2 text-sm font-medium text-muted-foreground">{t('reminders:reminders')}</div>
-          <div className="flex flex-wrap gap-4">
-            <div className="flex items-center gap-2">
-              <div className="h-4 w-4 rounded border-2 border-dashed border-red-300" style={{ backgroundColor: '#ef4444' }} />
-              <Gavel className="h-3 w-3 text-muted-foreground" />
-              <span className="text-sm">{t('reminders:type_court_hearing')}</span>
-            </div>
-            <div className="flex items-center gap-2">
-              <div className="h-4 w-4 rounded border-2 border-dashed border-orange-300" style={{ backgroundColor: '#f97316' }} />
-              <Clock className="h-3 w-3 text-muted-foreground" />
-              <span className="text-sm">{t('reminders:type_deadline')}</span>
-            </div>
-            <div className="flex items-center gap-2">
-              <div className="h-4 w-4 rounded border-2 border-dashed border-blue-300" style={{ backgroundColor: '#3b82f6' }} />
-              <Target className="h-3 w-3 text-muted-foreground" />
-              <span className="text-sm">{t('reminders:type_task')}</span>
-            </div>
-            <div className="flex items-center gap-2">
-              <div className="h-4 w-4 rounded border-2 border-dashed border-green-300" style={{ backgroundColor: '#22c55e' }} />
-              <Users className="h-3 w-3 text-muted-foreground" />
-              <span className="text-sm">{t('reminders:type_meeting')}</span>
-            </div>
-            <div className="flex items-center gap-2">
-              <div className="h-4 w-4 rounded border-2 border-dashed border-gray-300" style={{ backgroundColor: '#6b7280' }} />
-              <HelpCircle className="h-3 w-3 text-muted-foreground" />
-              <span className="text-sm">{t('reminders:type_other')}</span>
+
+          {/* Reminders legend */}
+          <div>
+            <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-3">{t('reminders:reminders')}</p>
+            <div className="flex flex-wrap gap-2">
+              {[
+                { color: '#ef4444', icon: Gavel, label: t('reminders:type_court_hearing') },
+                { color: '#f97316', icon: Clock, label: t('reminders:type_deadline') },
+                { color: '#3b82f6', icon: Target, label: t('reminders:type_task') },
+                { color: '#22c55e', icon: Users, label: t('reminders:type_meeting') },
+                { color: '#6b7280', icon: HelpCircle, label: t('reminders:type_other') },
+              ].map(({ color, icon: Icon, label }) => (
+                <div
+                  key={label}
+                  className="flex items-center gap-1.5 bg-muted/50 rounded-lg px-2.5 py-1.5 border border-dashed border-border"
+                >
+                  <div className="h-2.5 w-2.5 rounded-full flex-shrink-0" style={{ backgroundColor: color }} />
+                  <Icon className="h-3 w-3 text-muted-foreground" />
+                  <span className="text-xs font-medium">{label}</span>
+                </div>
+              ))}
             </div>
           </div>
         </div>
@@ -410,89 +461,193 @@ const CalendarPage = () => {
 
       {/* Custom Calendar Styles */}
       <style>{`
+        .calendar-wrapper {
+          padding: 1rem;
+        }
+
         .calendar-wrapper .rbc-calendar {
           font-family: inherit;
         }
-        
+
         .calendar-wrapper .rbc-header {
-          padding: 0.5rem;
+          padding: 0.6rem 0.5rem;
           font-weight: 600;
-          border-bottom: 2px solid hsl(var(--border));
+          font-size: 0.8rem;
+          text-transform: uppercase;
+          letter-spacing: 0.05em;
+          color: hsl(var(--muted-foreground));
+          border-bottom: 1px solid hsl(var(--border));
         }
-        
+
         .calendar-wrapper .rbc-today {
-          background-color: hsl(var(--accent));
+          background-color: hsl(var(--primary) / 0.06);
         }
-        
+
         .calendar-wrapper .rbc-off-range-bg {
-          background-color: hsl(var(--muted) / 0.5);
+          background-color: hsl(var(--muted) / 0.4);
         }
-        
+
+        .calendar-wrapper .rbc-off-range .rbc-button-link {
+          color: hsl(var(--muted-foreground) / 0.5);
+        }
+
+        .calendar-wrapper .rbc-date-cell {
+          padding: 4px 8px;
+          font-size: 0.85rem;
+          font-weight: 500;
+        }
+
+        .calendar-wrapper .rbc-date-cell.rbc-now .rbc-button-link {
+          background-color: hsl(var(--primary));
+          color: hsl(var(--primary-foreground));
+          border-radius: 50%;
+          width: 26px;
+          height: 26px;
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
+          font-weight: 700;
+        }
+
         .calendar-wrapper .rbc-event {
-          padding: 2px 5px;
-          font-size: 0.875rem;
+          padding: 2px 6px;
+          font-size: 0.78rem;
+          transition: opacity 0.15s ease, transform 0.1s ease;
         }
-        
+
         .calendar-wrapper .rbc-event:hover {
           opacity: 1 !important;
+          transform: translateY(-1px);
           cursor: pointer;
         }
-        
+
+        .calendar-wrapper .rbc-show-more {
+          font-size: 0.75rem;
+          color: hsl(var(--primary));
+          font-weight: 600;
+          padding: 1px 4px;
+          border-radius: 4px;
+          background: hsl(var(--primary) / 0.08);
+        }
+
         .calendar-wrapper .rbc-toolbar {
-          padding: 0.5rem 0 1rem;
+          padding: 0 0 1rem;
           flex-wrap: wrap;
           gap: 0.5rem;
+          align-items: center;
         }
-        
+
+        .calendar-wrapper .rbc-toolbar-label {
+          font-size: 1rem;
+          font-weight: 700;
+          color: hsl(var(--foreground));
+          letter-spacing: -0.01em;
+        }
+
+        .calendar-wrapper .rbc-btn-group {
+          display: flex;
+          gap: 2px;
+        }
+
         .calendar-wrapper .rbc-toolbar button {
           color: hsl(var(--foreground));
           border: 1px solid hsl(var(--border));
           background-color: hsl(var(--background));
-          padding: 0.5rem 1rem;
-          border-radius: 0.375rem;
-          font-size: 0.875rem;
+          padding: 0.4rem 0.9rem;
+          border-radius: 0.5rem;
+          font-size: 0.8rem;
+          font-weight: 500;
+          transition: all 0.15s ease;
+          cursor: pointer;
         }
-        
+
         .calendar-wrapper .rbc-toolbar button:hover {
-          background-color: hsl(var(--accent));
+          background-color: hsl(var(--muted));
+          border-color: hsl(var(--border));
         }
-        
+
         .calendar-wrapper .rbc-toolbar button.rbc-active {
           background-color: hsl(var(--primary));
           color: hsl(var(--primary-foreground));
           border-color: hsl(var(--primary));
+          box-shadow: 0 1px 4px hsl(var(--primary) / 0.3);
         }
-        
-        .calendar-wrapper .rbc-month-view,
+
+        .calendar-wrapper .rbc-month-view {
+          border: none;
+          border-radius: 0;
+        }
+
+        .calendar-wrapper .rbc-month-row {
+          border-color: hsl(var(--border));
+        }
+
+        .calendar-wrapper .rbc-day-bg + .rbc-day-bg,
+        .calendar-wrapper .rbc-month-row + .rbc-month-row {
+          border-color: hsl(var(--border));
+        }
+
         .calendar-wrapper .rbc-time-view,
         .calendar-wrapper .rbc-agenda-view {
-          border: 1px solid hsl(var(--border));
-          border-radius: 0.5rem;
+          border: none;
         }
-        
+
+        .calendar-wrapper .rbc-time-header {
+          border-color: hsl(var(--border));
+        }
+
+        .calendar-wrapper .rbc-time-content {
+          border-color: hsl(var(--border));
+        }
+
+        .calendar-wrapper .rbc-timeslot-group {
+          border-color: hsl(var(--border) / 0.5);
+        }
+
+        .calendar-wrapper .rbc-time-slot {
+          color: hsl(var(--muted-foreground));
+          font-size: 0.75rem;
+        }
+
+        .calendar-wrapper .rbc-agenda-table {
+          border-color: hsl(var(--border));
+          font-size: 0.875rem;
+        }
+
+        .calendar-wrapper .rbc-agenda-date-cell,
+        .calendar-wrapper .rbc-agenda-time-cell {
+          color: hsl(var(--muted-foreground));
+          font-size: 0.8rem;
+        }
+
         @media (max-width: 640px) {
           .calendar-wrapper {
-            height: calc(100vh - 360px) !important;
+            height: calc(100vh - 440px) !important;
             min-height: 400px !important;
+            padding: 0.75rem;
           }
-          
+
           .calendar-wrapper .rbc-toolbar {
             font-size: 0.75rem;
           }
-          
+
           .calendar-wrapper .rbc-toolbar button {
-            padding: 0.375rem 0.75rem;
+            padding: 0.3rem 0.6rem;
             font-size: 0.75rem;
           }
-          
+
           .calendar-wrapper .rbc-header {
             padding: 0.25rem;
-            font-size: 0.75rem;
+            font-size: 0.65rem;
           }
-          
+
           .calendar-wrapper .rbc-event {
-            font-size: 0.75rem;
+            font-size: 0.7rem;
             padding: 1px 3px;
+          }
+
+          .calendar-wrapper .rbc-toolbar-label {
+            font-size: 0.875rem;
           }
         }
       `}</style>
