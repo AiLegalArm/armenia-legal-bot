@@ -145,11 +145,18 @@ export function AgentRunCard({ agent, run, isRunning, onRun, disabled }: AgentRu
                               <p className="text-xs mt-1">{finding.description}</p>
                               {finding.legal_basis && finding.legal_basis.length > 0 && (
                                 <div className="flex flex-wrap gap-1 mt-2">
-                                  {finding.legal_basis.map((basis, i) => (
-                                    <Badge key={i} variant="outline" className="text-xs">
-                                      {basis}
-                                    </Badge>
-                                  ))}
+                                  {finding.legal_basis.map((basis, i) => {
+                                    const label = typeof basis === 'string'
+                                      ? basis
+                                      : (basis as { article?: string; source?: string; details?: string }).article
+                                        || (basis as { source?: string }).source
+                                        || JSON.stringify(basis);
+                                    return (
+                                      <Badge key={i} variant="outline" className="text-xs">
+                                        {label}
+                                      </Badge>
+                                    );
+                                  })}
                                 </div>
                               )}
                             </div>
