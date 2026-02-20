@@ -63,8 +63,9 @@ export function LegalPracticeAIImport({ open, onOpenChange }: LegalPracticeAIImp
     for (const file of fileArray) {
       const isTxt = file.name.endsWith('.txt');
       const isJson = file.name.endsWith('.json');
-      if (!isTxt && !isJson) {
-        toast.error(`${file.name}: ${t('common:error')} - TXT/JSON only`);
+      const isPdf = file.name.endsWith('.pdf');
+      if (!isTxt && !isJson && !isPdf) {
+        toast.error(`${file.name}: ${t('common:error')} - TXT/JSON/PDF only`);
         continue;
       }
       
@@ -124,28 +125,48 @@ export function LegalPracticeAIImport({ open, onOpenChange }: LegalPracticeAIImp
     
     try {
       updateFile(id, { status: 'reading', progress: 20 });
-      const rawContent = await file.text();
-      updateFile(id, { progress: 40 });
-      
-      // For JSON files, extract content_text or stringify
-      let textContent = rawContent;
-      if (file.name.endsWith('.json')) {
-        try {
-          const parsed = JSON.parse(rawContent);
-          if (typeof parsed === 'object' && parsed !== null) {
-            textContent = parsed.content_text || parsed.content || parsed.text || parsed.body || JSON.stringify(parsed, null, 2);
+      let textContent = '';
+
+      if (file.name.endsWith('.pdf')) {
+        // Convert PDF to base64 and extract text via edge function
+        const arrayBuffer = await file.arrayBuffer();
+        const uint8Array = new Uint8Array(arrayBuffer);
+        let binary = '';
+        for (let i = 0; i < uint8Array.byteLength; i++) {
+          binary += String.fromCharCode(uint8Array[i]);
+        }
+        const base64 = btoa(binary);
+        updateFile(id, { progress: 35 });
+
+        const { data: ocrData, error: ocrError } = await supabase.functions.invoke('kb-fetch-pdf-content', {
+          body: { pdfBase64: base64, filename: file.name },
+        });
+        if (ocrError) throw ocrError;
+        textContent = ocrData?.text || ocrData?.content || '';
+        if (!textContent) throw new Error('PDF text extraction failed');
+      } else {
+        const rawContent = await file.text();
+        textContent = rawContent;
+        // For JSON files, extract content_text or stringify
+        if (file.name.endsWith('.json')) {
+          try {
+            const parsed = JSON.parse(rawContent);
+            if (typeof parsed === 'object' && parsed !== null) {
+              textContent = parsed.content_text || parsed.content || parsed.text || parsed.body || JSON.stringify(parsed, null, 2);
+            }
+          } catch {
+            // Use raw content if JSON parsing fails
           }
-        } catch {
-          // Use raw content if JSON parsing fails
         }
       }
-      
+
+      updateFile(id, { progress: 40 });
       updateFile(id, { status: 'analyzing', progress: 60 });
       
       const { data, error: fnError } = await supabase.functions.invoke('legal-practice-import', {
         body: {
           textContent,
-          fileName: file.name.replace(/\.(txt|json)$/i, ''),
+          fileName: file.name.replace(/\.(txt|json|pdf)$/i, ''),
         },
       });
       
@@ -280,14 +301,14 @@ export function LegalPracticeAIImport({ open, onOpenChange }: LegalPracticeAIImp
             <input
               ref={fileInputRef}
               type="file"
-              accept=".txt,.json"
+              accept=".txt,.json,.pdf"
               multiple
               onChange={handleFileSelect}
               className="hidden"
             />
             <Brain className="mx-auto h-10 w-10 text-purple-500" />
             <p className="mt-2 text-sm font-medium">
-              {'\u0554\u0561\u0577\u0565\u0584 \u056F\u0561\u0574 \u0562\u0565\u0580\u0565\u0584 TXT / JSON \u0586\u0561\u0575\u056C\u0565\u0580'}
+              {'\u0554\u0561\u0577\u0565\u0584 \u056F\u0561\u0574 \u0562\u0565\u0580\u0565\u0584 TXT / JSON / PDF \u0586\u0561\u0575\u056C\u0565\u0580'}
             </p>
             <p className="mt-1 text-xs text-muted-foreground">
               AI-{'\u0568 \u0561\u057E\u057F\u0578\u0574\u0561\u057F \u056C\u0580\u0561\u0581\u0576\u0565\u056C\u0578\u0582 \u0567 \u0562\u0578\u056C\u0578\u0580 \u0564\u0561\u0577\u057F\u0565\u0580\u0568'}
