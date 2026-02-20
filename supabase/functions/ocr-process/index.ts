@@ -3,9 +3,14 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2.91.1";
 import { OCR_EXTRACTION, buildModelParams } from "../_shared/model-config.ts";
 import { redactForLog } from "../_shared/pii-redactor.ts";
 import { parseDocx } from "../_shared/docx-parser.ts";
-import { handleCors } from "../_shared/edge-security.ts";
 
 const CONFIDENCE_THRESHOLD = 0.70;
+
+const corsHeaders = {
+  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version',
+  'Access-Control-Allow-Methods': 'POST, OPTIONS',
+};
 
 export const OCR_SYSTEM_PROMPT = `You are an expert OCR specialist for Armenian legal documents with advanced handwritten text recognition capabilities. Your task is to accurately extract BOTH printed AND handwritten text from scanned documents, PDFs, and images containing Armenian (hy), Russian (ru), or English (en) text.
 
@@ -14,9 +19,9 @@ export const OCR_SYSTEM_PROMPT = `You are an expert OCR specialist for Armenian 
 9) Preserve handwritten Armenian text exactly as written (no spelling correction).`;
 
 serve(async (req) => {
-  const cors = handleCors(req);
-  if (cors.errorResponse) return cors.errorResponse;
-  const corsHeaders = cors.corsHeaders!;
+  if (req.method === 'OPTIONS') {
+    return new Response(null, { headers: corsHeaders });
+  }
 
   try {
     // === AUTH GUARD (Prevent Anonymous Access) ===
