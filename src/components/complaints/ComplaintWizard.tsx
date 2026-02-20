@@ -1,4 +1,4 @@
-import { useState, useCallback } from "react";
+import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { getText } from "@/lib/i18n-utils";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -9,8 +9,8 @@ import { Sparkles, Check, ChevronRight, ArrowLeft } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 // Internal modules
-import type { WizardState, ComplaintCategory, ComplaintType, UploadedFile } from "./types";
-import { getComplaintTypeLabel } from "./constants";
+import type { WizardState, ComplaintCategory, ComplaintType } from "./types";
+
 import { useComplaintFiles } from "./useComplaintFiles";
 import { useComplaintGenerator } from "./useComplaintGenerator";
 import { 
@@ -91,13 +91,16 @@ export function ComplaintWizard({ open, onOpenChange }: ComplaintWizardProps) {
     setState(INITIAL_STATE);
   };
 
-  const onGenerate = () => {
+  const onGenerate = (extraInfo?: string) => {
     if (state.complaintType && state.category) {
+      const combinedInfo = extraInfo
+        ? `${state.additionalInfo}\n\n--- Дополнительные данные (повторная генерация) ---\n${extraInfo}`
+        : state.additionalInfo;
       handleGenerate({
         complaintType: state.complaintType,
         category: state.category,
         files: state.files,
-        additionalInfo: state.additionalInfo
+        additionalInfo: combinedInfo
       });
     }
   };
@@ -188,6 +191,7 @@ export function ComplaintWizard({ open, onOpenChange }: ComplaintWizardProps) {
                 generatedContent={state.generatedContent}
                 complaintTypeId={state.complaintType?.id}
                 onReset={reset}
+                onRegenerate={(missingData) => onGenerate(missingData)}
               />
             )}
           </div>
@@ -203,7 +207,7 @@ export function ComplaintWizard({ open, onOpenChange }: ComplaintWizardProps) {
 
             {state.step === 3 && (
               <Button
-                onClick={onGenerate}
+                onClick={() => onGenerate()}
                 className="w-full h-12 rounded-xl text-sm font-medium"
                 disabled={state.isProcessing || (state.files.length === 0 && !state.additionalInfo)}
               >
