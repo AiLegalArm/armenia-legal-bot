@@ -112,18 +112,18 @@ export function AgentRunCard({ agent, run, isRunning, onRun, disabled }: AgentRu
       </CardHeader>
       
       {run?.status === "completed" && (
-        <CardContent className="pt-0 overflow-hidden min-w-0">
+        <CardContent className="pt-0 overflow-hidden min-w-0 w-full">
           <Collapsible>
             <CollapsibleTrigger asChild>
-              <Button variant="ghost" className="w-full justify-between h-auto py-2">
-                <span className="text-sm">
+              <Button variant="ghost" className="w-full justify-between h-auto py-2 min-w-0">
+                <span className="text-sm min-w-0 flex-1 overflow-hidden text-left">
                   {run.summary ? (
-                    <span className="line-clamp-1">{run.summary}</span>
+                    <span className="block truncate w-full">{run.summary}</span>
                   ) : (
                     t("ai:view_analysis")
                   )}
                 </span>
-                <ChevronDown className="h-4 w-4" />
+                <ChevronDown className="h-4 w-4 shrink-0 ml-2" />
               </Button>
             </CollapsibleTrigger>
             <CollapsibleContent>
