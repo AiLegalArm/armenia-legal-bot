@@ -36,73 +36,36 @@ export function GenerateComplaintButton({
     setIsGenerating(true);
     
     try {
-      // Prepare analysis context from multi-agent runs
-      const analysisContext = {
-        completedAgents: completedRuns.map(run => ({
-          agentType: run.agent_type,
-          summary: run.summary,
-          findings: run.findings,
-          analysis: run.analysis_result?.substring(0, 2000) // Limit size
-        })),
-        evidence: evidenceRegistry.map(e => ({
-          title: e.title,
-          type: e.evidence_type,
-          status: e.admissibility_status,
-          description: e.description,
-          violations: e.violations_found,
-          defenseArguments: e.defense_arguments
-        })),
-        aggregatedReport: aggregatedReport ? {
-          executiveSummary: aggregatedReport.executive_summary,
-          violationsSummary: aggregatedReport.violations_summary,
-          defenseStrategy: aggregatedReport.defense_strategy,
-          prosecutionWeaknesses: aggregatedReport.prosecution_weaknesses,
-          recommendations: aggregatedReport.recommendations
-        } : null
-      };
+      // Build compact extractedText — single source, no duplication
+      const agentSummaries = completedRuns
+        .map(run => `--- ${run.agent_type} ---\n${(run.summary || "").substring(0, 400)}`)
+        .join("\n\n");
+
+      const evidenceSummary = evidenceRegistry.slice(0, 15).map(e =>
+        `- ${e.title} (${e.evidence_type}): ${e.admissibility_status}${e.violations_found?.length ? " | " + e.violations_found.slice(0, 3).join(", ") : ""}`
+      ).join("\n");
+
+      const reportSection = aggregatedReport ? [
+        aggregatedReport.executive_summary?.substring(0, 600),
+        aggregatedReport.violations_summary?.substring(0, 400),
+        aggregatedReport.defense_strategy?.substring(0, 400),
+        aggregatedReport.recommendations?.substring(0, 300),
+      ].filter(Boolean).join("\n\n") : "";
+
+      const extractedText = [
+        "=== Multi-Agent Analysis Summary ===",
+        agentSummaries,
+        evidenceSummary ? `\n=== Evidence Registry (${evidenceRegistry.length} items) ===\n${evidenceSummary}` : "",
+        reportSection ? `\n=== Aggregated Report ===\n${reportSection}` : "",
+      ].filter(Boolean).join("\n\n");
 
       const { data, error } = await supabase.functions.invoke("generate-complaint", {
         body: {
           courtType: "appellate",
           category: "criminal",
           complaintType: t("ai:appeal_based_on_analysis"),
-          extractedText: `
-=== Multi-agent analysis results ===
-
-${completedRuns.map(run => `
---- ${run.agent_type} ---
-${run.summary || ""}
-${run.analysis_result?.substring(0, 1500) || ""}
-`).join("\n")}
-
-=== Evidence Registry ===
-
-${evidenceRegistry.map(e => `
-- ${e.title} (${e.evidence_type}): ${e.admissibility_status}
-  ${e.description || ""}
-  ${e.violations_found?.length ? "Violations: " + e.violations_found.join(", ") : ""}
-`).join("\n")}
-
-${aggregatedReport ? `
-=== Aggregated Report ===
-
-${aggregatedReport.executive_summary || ""}
-
-Violations:
-${aggregatedReport.violations_summary || ""}
-
-Defense Strategy:
-${aggregatedReport.defense_strategy || ""}
-
-Prosecution Weaknesses:
-${aggregatedReport.prosecution_weaknesses || ""}
-
-Recommendations:
-${aggregatedReport.recommendations || ""}
-` : ""}
-          `,
+          extractedText,
           language: i18n.language,
-          multiAgentContext: analysisContext
         }
       });
 
