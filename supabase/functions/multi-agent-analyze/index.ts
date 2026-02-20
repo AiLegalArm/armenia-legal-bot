@@ -3,8 +3,13 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2.91.1";
 import { MULTI_AGENT_ANALYSIS, buildModelParams } from "../_shared/model-config.ts";
 import { redactForLog } from "../_shared/pii-redactor.ts";
 import { searchKB, searchPractice, formatKBContext, formatPracticeContext as formatPracticeCtx } from "../_shared/rag-search.ts";
-import { handleCors } from "../_shared/edge-security.ts";
 import { parseReferencesText, buildUserSourcesBlock } from "../_shared/reference-sources.ts";
+
+const corsHeaders = {
+  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version',
+  'Access-Control-Allow-Methods': 'POST, OPTIONS',
+};
 
 // ==============================
 // AI LEGAL ARMENIA \u2014 AGENT PROMPTS (PRODUCTION)
@@ -646,9 +651,9 @@ const AGENT_PROMPTS: Record<string, string> = {
 };
 
 serve(async (req) => {
-  const cors = handleCors(req);
-  if (cors.errorResponse) return cors.errorResponse;
-  const corsHeaders = cors.corsHeaders!;
+  if (req.method === 'OPTIONS') {
+    return new Response(null, { headers: corsHeaders });
+  }
 
   try {
     // === AUTH GUARD (Prevent Anonymous Access) ===

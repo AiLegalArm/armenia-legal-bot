@@ -40,7 +40,11 @@ function getPartyRolesForType(caseType?: string) {
     case 'civil': return CIVIL_ROLES;
     case 'administrative': return ADMINISTRATIVE_ROLES;
     case 'criminal': return CRIMINAL_ROLES;
-    default: return [...CRIMINAL_ROLES, ...CIVIL_ROLES, ...ADMINISTRATIVE_ROLES];
+  default: return [
+      ...CRIMINAL_ROLES.map(r => ({ ...r, value: `criminal_${r.value}` })),
+      ...CIVIL_ROLES.map(r => ({ ...r, value: `civil_${r.value}` })),
+      ...ADMINISTRATIVE_ROLES.map(r => ({ ...r, value: `admin_${r.value}` })),
+    ];
   }
 }
 
