@@ -74,10 +74,10 @@ async function translateFieldHY(
     // Translate via OpenAI with retries
     let result = "";
     let lastError: string = "";
-    for (let attempt = 0; attempt < 3; attempt++) {
+    for (let attempt = 0; attempt < 2; attempt++) {
       try {
         if (attempt > 0) {
-          await new Promise((r) => setTimeout(r, Math.pow(2, attempt) * 1000 + Math.random() * 500));
+          await new Promise((r) => setTimeout(r, 1500));
         }
         const resp = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
           method: "POST",
@@ -85,18 +85,14 @@ async function translateFieldHY(
             Authorization: `Bearer ${openaiKey}`,
             "Content-Type": "application/json",
           },
-          signal: AbortSignal.timeout(60000),
+          signal: AbortSignal.timeout(30000),
           body: JSON.stringify({
             model: "openai/gpt-5-mini",
             messages: [
               {
                 role: "system",
                 content:
-                  "Դուք ԵԽԴM (ECHR) գործերի պաշտոնական հայ թարգմանիչ եք։ " +
-                  "Թարգմանել տրված բնագիրը հայ գրական-իրավական լեզվով (ոչ խոսակցական)։ " +
-                  "Պահպանեք բոլոր անուններն, ամսաթվերը, հղումները, հոդվածների համարները և թվերն անփոփոխ։ " +
-                  "Թարգմանեք հավատարմորեն, մի հնարեք բնագրում բացակայող տեղեկություններ։ " +
-                  "Վերադարձրեք ՄԻԱՅՆ թարգմանությունը, ոչ մի բացատրություն կամ ծանոթագրություն։",
+                  "Translate to Armenian legal language. Preserve all names, dates, article numbers. Return ONLY the translation.",
               },
               {
                 role: "user",
@@ -160,20 +156,33 @@ async function translateCaseHY(
 
   const out: Record<string, unknown> = { ...caseObj };
 
-  for (const field of FIELDS) {
-    const val = caseObj[field];
-    if (!val || typeof val !== "string" || val.trim().length === 0) continue;
+  // Translate all fields in parallel for speed
+  const fieldResults = await Promise.all(
+    FIELDS.map(async (field) => {
+      const val = caseObj[field];
+      if (!val || typeof val !== "string" || val.trim().length === 0) return null;
+      try {
+        // Truncate very long fields to avoid timeout (max 6000 chars)
+        const truncated = val.length > 6000 ? val.slice(0, 6000) : val;
+        const translated = await translateFieldHY(truncated, field, openaiKey, supabase);
+        return { field, translated, ok: true };
+      } catch (e) {
+        return { field, error: e instanceof Error ? e.message : String(e), ok: false };
+      }
+    })
+  );
 
-    try {
-      const translated = await translateFieldHY(val, field, openaiKey, supabase);
+  for (const r of fieldResults) {
+    if (!r) continue;
+    if (r.ok && r.translated) {
       if (storeInHyFields) {
-        out[`${field}_hy`] = translated;
+        out[`${r.field}_hy`] = r.translated;
       } else {
-        out[field] = translated;
+        out[r.field] = r.translated;
       }
       translatedCount++;
-    } catch (e) {
-      errors.push(`${field}: ${e instanceof Error ? e.message : String(e)}`);
+    } else if (!r.ok && r.error) {
+      errors.push(`${r.field}: ${r.error}`);
     }
   }
 

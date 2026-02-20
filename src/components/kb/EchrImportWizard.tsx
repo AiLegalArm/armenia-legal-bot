@@ -89,7 +89,7 @@ export function EchrImportWizard({ open, onOpenChange, onSuccess }: EchrImportWi
   const [storeInHyFields, setStoreInHyFields] = useState(true);
   const [generateJsonl, setGenerateJsonl] = useState(true);
   const [practiceCategory, setPracticeCategory] = useState("echr");
-  const BATCH_SIZE = 5;
+  const BATCH_SIZE = 1;
 
   // Progress
   const [stats, setStats] = useState<ImportStats>({
@@ -134,6 +134,26 @@ export function EchrImportWizard({ open, onOpenChange, onSuccess }: EchrImportWi
     if (fileInputRef.current) fileInputRef.current.value = "";
   }, []);
 
+  // ── Helper: extract error message from Supabase invoke error ──
+  const extractErrMsg = (err: unknown): string => {
+    if (!err || typeof err !== "object") return String(err);
+    const e = err as Record<string, unknown>;
+    // Try context.body (Supabase v2.90+)
+    const ctx = e.context as Record<string, unknown> | undefined;
+    if (ctx?.body) {
+      const b = ctx.body;
+      if (typeof b === "object" && b !== null) {
+        const bo = b as Record<string, unknown>;
+        if (typeof bo.error === "string") return bo.error;
+        if (typeof bo.message === "string") return bo.message;
+      }
+      if (typeof b === "string") {
+        try { const p = JSON.parse(b); return p?.error || p?.message || b; } catch { return b; }
+      }
+    }
+    return typeof e.message === "string" ? e.message : "Unknown error";
+  };
+
   // ── Start import ──────────────────────────────────────────────
   const handleImport = useCallback(async () => {
     if (!rawContent || parsedCases.length === 0) return;
@@ -147,45 +167,75 @@ export function EchrImportWizard({ open, onOpenChange, onSuccess }: EchrImportWi
     let translated = 0;
     let partial = 0;
     let importErrors = 0;
+    let consecutiveErrors = 0;
+    const MAX_CONSECUTIVE_ERRORS = 5;
 
     setStats({ total, processed: 0, translated: 0, partial: 0, errors: 0, parseSkipped });
 
     for (let batchIdx = 0; batchIdx < total; batchIdx += BATCH_SIZE) {
       if (abortRef.current) break;
-
-      try {
-        const batchCases = parsedCases.slice(batchIdx, batchIdx + BATCH_SIZE);
-        const { data, error: fnErr } = await supabase.functions.invoke("echr-import", {
-          body: {
-            rawContent: JSON.stringify(batchCases),
-            storeInHyFields,
-            generateJsonl,
-            practiceCategory,
-            batchIndex: 0,
-            batchSize: BATCH_SIZE,
-          },
-        });
-
-        if (fnErr) throw new Error(fnErr.message);
-        if (data?.error) throw new Error(data.error);
-
-        processed += data.batchProcessed ?? 0;
-        translated += data.translated ?? 0;
-        partial += data.partial ?? 0;
-        importErrors += data.errors ?? 0;
-
-        if (data.jsonlContent) {
-          jsonlLinesRef.current.push(data.jsonlContent);
-        }
-
-        setStats({ total, processed, translated, partial, errors: importErrors, parseSkipped });
-      } catch (err) {
-        importErrors += BATCH_SIZE;
-        setStats((s) => ({ ...s, errors: s.errors + BATCH_SIZE }));
-        console.error("Batch error:", err);
+      if (consecutiveErrors >= MAX_CONSECUTIVE_ERRORS) {
+        toast.error(`Կանգ — ${consecutiveErrors} անընդ. սխ. Ստուգեք կոնսոլը։`);
+        break;
       }
 
-      await new Promise((r) => setTimeout(r, 100));
+      let batchOk = false;
+      // Retry up to 3 times per batch
+      for (let attempt = 0; attempt < 3; attempt++) {
+        if (abortRef.current) break;
+        try {
+          const batchCases = parsedCases.slice(batchIdx, batchIdx + BATCH_SIZE);
+          const { data, error: fnErr } = await supabase.functions.invoke("echr-import", {
+            body: {
+              rawContent: JSON.stringify(batchCases),
+              storeInHyFields,
+              generateJsonl,
+              practiceCategory,
+              batchIndex: 0,
+              batchSize: BATCH_SIZE,
+            },
+          });
+
+          if (fnErr) {
+            const msg = extractErrMsg(fnErr);
+            console.error(`Batch ${batchIdx} attempt ${attempt + 1} error:`, msg);
+            if (attempt < 2) {
+              await new Promise((r) => setTimeout(r, 2000 * (attempt + 1)));
+              continue;
+            }
+            throw new Error(msg);
+          }
+          if (data?.error) throw new Error(data.error);
+
+          processed += data.batchProcessed ?? BATCH_SIZE;
+          translated += data.translated ?? 0;
+          partial += data.partial ?? 0;
+          importErrors += data.errors ?? 0;
+
+          if (data.jsonlContent) {
+            jsonlLinesRef.current.push(data.jsonlContent);
+          }
+
+          consecutiveErrors = 0;
+          batchOk = true;
+          setStats({ total, processed, translated, partial, errors: importErrors, parseSkipped });
+          break;
+        } catch (err) {
+          console.error(`Batch ${batchIdx} final error:`, err);
+          if (attempt < 2) {
+            await new Promise((r) => setTimeout(r, 2000 * (attempt + 1)));
+          }
+        }
+      }
+
+      if (!batchOk) {
+        consecutiveErrors++;
+        importErrors += BATCH_SIZE;
+        processed += BATCH_SIZE;
+        setStats({ total, processed, translated, partial, errors: importErrors, parseSkipped });
+      }
+
+      await new Promise((r) => setTimeout(r, 300));
     }
 
     setStatus("success");
