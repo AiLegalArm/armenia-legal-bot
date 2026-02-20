@@ -1,6 +1,7 @@
 /**
- * EchrImportWizard — Import ECHR cases (JSON/JSONL) with automatic
+ * EchrImportWizard — Bulk import ECHR cases (JSON/JSONL) with automatic
  * Armenian translation of text, summary, facts, judgment fields.
+ * Supports multiple files selection.
  */
 import { useState, useRef, useCallback } from "react";
 import { supabase } from "@/integrations/supabase/client";
@@ -19,7 +20,7 @@ import {
 } from "@/components/ui/select";
 import { toast } from "sonner";
 import {
-  FileJson, Loader2, CheckCircle, AlertTriangle, Upload, Download, Globe, X,
+  FileJson, Loader2, CheckCircle, AlertTriangle, Upload, Download, Globe, X, Files,
 } from "lucide-react";
 
 interface EchrImportWizardProps {
@@ -42,12 +43,18 @@ interface ImportStats {
   parseSkipped: number;
 }
 
+interface FileEntry {
+  name: string;
+  cases: ParsedCase[];
+  skipped: number;
+}
+
 const PRACTICE_CATEGORIES = [
-  { value: "echr", label: "\u0544\u056B\u0535\u0564" },
+  { value: "echr", label: "ՄԻԵԴ" },
   { value: "criminal", label: "Քրեական" },
   { value: "civil", label: "Քաղաքացիական" },
   { value: "administrative", label: "Վարչական" },
-  { value: "constitutional", label: "Սահմանադրական" },
+  { value: "constitutional", label: "Սահمانадporitakan" },
 ];
 
 // Client-side parser: JSON array or JSONL
@@ -79,8 +86,7 @@ export function EchrImportWizard({ open, onOpenChange, onSuccess }: EchrImportWi
   const abortRef = useRef(false);
 
   const [status, setStatus] = useState<Status>("idle");
-  const [fileName, setFileName] = useState("");
-  const [rawContent, setRawContent] = useState("");
+  const [fileEntries, setFileEntries] = useState<FileEntry[]>([]);
   const [parsedCases, setParsedCases] = useState<ParsedCase[]>([]);
   const [parseSkipped, setParseSkipped] = useState(0);
   const [error, setError] = useState<string | null>(null);
@@ -99,46 +105,52 @@ export function EchrImportWizard({ open, onOpenChange, onSuccess }: EchrImportWi
   // Collected JSONL content for download
   const jsonlLinesRef = useRef<string[]>([]);
 
-  // ── File select ───────────────────────────────────────────────
+  // ── File select (multiple) ────────────────────────────────────
   const handleFileSelect = useCallback(async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
+    const files = Array.from(e.target.files ?? []);
+    if (files.length === 0) return;
 
-    if (!file.name.endsWith(".jsonl") && !file.name.endsWith(".json")) {
-      toast.error("Supported: .jsonl, .json");
+    const invalid = files.filter(f => !f.name.endsWith(".jsonl") && !f.name.endsWith(".json"));
+    if (invalid.length > 0) {
+      toast.error(`Поддерживаются только .json и .jsonl: ${invalid.map(f => f.name).join(", ")}`);
       return;
     }
 
     setStatus("parsing");
-    setFileName(file.name);
     setError(null);
 
-    try {
-      const text = await file.text();
-      setRawContent(text);
+    const entries: FileEntry[] = [];
+    let totalSkipped = 0;
 
-      const { cases, skipped } = parseRaw(text);
-      setParsedCases(cases);
-      setParseSkipped(skipped);
-      setStatus("idle");
-
-      toast.success(
-        `Հայտնաբերվել է ${cases.length.toLocaleString()} գործ` +
-        (skipped > 0 ? ` (${skipped} բաց թողած)` : "")
-      );
-    } catch (err) {
-      setStatus("error");
-      setError(err instanceof Error ? err.message : "Parse error");
+    for (const file of files) {
+      try {
+        const text = await file.text();
+        const { cases, skipped } = parseRaw(text);
+        entries.push({ name: file.name, cases, skipped });
+        totalSkipped += skipped;
+      } catch {
+        entries.push({ name: file.name, cases: [], skipped: 0 });
+      }
     }
+
+    setFileEntries(entries);
+    const allCases = entries.flatMap(e => e.cases);
+    setParsedCases(allCases);
+    setParseSkipped(totalSkipped);
+    setStatus("idle");
+
+    toast.success(
+      `${files.length} ֆայлер — ${allCases.length.toLocaleString()} գործ` +
+      (totalSkipped > 0 ? ` (${totalSkipped} բаcк թողац)` : "")
+    );
 
     if (fileInputRef.current) fileInputRef.current.value = "";
   }, []);
 
-  // ── Helper: extract error message from Supabase invoke error ──
+  // ── Helper: extract error message ─────────────────────────────
   const extractErrMsg = (err: unknown): string => {
     if (!err || typeof err !== "object") return String(err);
     const e = err as Record<string, unknown>;
-    // Try context.body (Supabase v2.90+)
     const ctx = e.context as Record<string, unknown> | undefined;
     if (ctx?.body) {
       const b = ctx.body;
@@ -156,7 +168,7 @@ export function EchrImportWizard({ open, onOpenChange, onSuccess }: EchrImportWi
 
   // ── Start import ──────────────────────────────────────────────
   const handleImport = useCallback(async () => {
-    if (!rawContent || parsedCases.length === 0) return;
+    if (parsedCases.length === 0) return;
 
     setStatus("translating");
     abortRef.current = false;
@@ -175,12 +187,11 @@ export function EchrImportWizard({ open, onOpenChange, onSuccess }: EchrImportWi
     for (let batchIdx = 0; batchIdx < total; batchIdx += BATCH_SIZE) {
       if (abortRef.current) break;
       if (consecutiveErrors >= MAX_CONSECUTIVE_ERRORS) {
-        toast.error(`Կանգ — ${consecutiveErrors} անընդ. սխ. Ստուգեք կոնսոլը։`);
+        toast.error(`Կанг — ${consecutiveErrors} ченд. сх. Проверьте консоль.`);
         break;
       }
 
       let batchOk = false;
-      // Retry up to 3 times per batch
       for (let attempt = 0; attempt < 3; attempt++) {
         if (abortRef.current) break;
         try {
@@ -239,9 +250,9 @@ export function EchrImportWizard({ open, onOpenChange, onSuccess }: EchrImportWi
     }
 
     setStatus("success");
-    toast.success(`Ներմուծումն ավարտված է — ${translated} թարգմանված`);
+    toast.success(`Ներмуծum avar — ${translated} Targ.`);
     onSuccess();
-  }, [rawContent, parsedCases, storeInHyFields, generateJsonl, practiceCategory, parseSkipped, onSuccess]);
+  }, [parsedCases, storeInHyFields, generateJsonl, practiceCategory, parseSkipped, onSuccess]);
 
   // ── Download JSONL ────────────────────────────────────────────
   const downloadJsonl = useCallback(() => {
@@ -259,14 +270,13 @@ export function EchrImportWizard({ open, onOpenChange, onSuccess }: EchrImportWi
   const handleAbort = useCallback(() => {
     abortRef.current = true;
     setStatus("idle");
-    toast.info("Ընդհատվել է");
+    toast.info("Ընдhатvel е");
   }, []);
 
   const handleClose = useCallback(() => {
     abortRef.current = true;
     setStatus("idle");
-    setFileName("");
-    setRawContent("");
+    setFileEntries([]);
     setParsedCases([]);
     setParseSkipped(0);
     setError(null);
@@ -280,6 +290,7 @@ export function EchrImportWizard({ open, onOpenChange, onSuccess }: EchrImportWi
     : 0;
 
   const isRunning = status === "translating" || status === "parsing";
+  const totalCases = parsedCases.length;
 
   return (
     <Dialog open={open} onOpenChange={handleClose}>
@@ -287,42 +298,53 @@ export function EchrImportWizard({ open, onOpenChange, onSuccess }: EchrImportWi
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <Globe className="h-5 w-5" />
-            ECHR Ներմուծում — Հայ Թարգմանությամբ
+            ECHR Массовый импорт — Հայ Թарг.
           </DialogTitle>
           <DialogDescription>
-            JSON / JSONL ֆայլ հայերեն թարգմանությամբ (text, summary, facts, judgment)
+            Выберите один или несколько .json / .jsonl файлов. Импорт с переводом на армянский язык.
           </DialogDescription>
         </DialogHeader>
 
         <div className="space-y-5 py-2">
-          {/* File selector */}
+          {/* File selector — multiple */}
           <div className="space-y-2">
-            <Label>ECHR ֆայլ (.json կամ .jsonl)</Label>
+            <Label className="flex items-center gap-2">
+              <Files className="h-4 w-4" />
+              ECHR ֆayleri (.json / .jsonl) — կareli e yntel mi qani
+            </Label>
             <Input
               ref={fileInputRef}
               type="file"
               accept=".json,.jsonl"
+              multiple
               onChange={handleFileSelect}
               disabled={isRunning}
             />
-            {fileName && (
-              <p className="text-sm text-muted-foreground flex items-center gap-2">
-                <FileJson className="h-4 w-4" />
-                {fileName} &mdash;{" "}
-                <strong>{parsedCases.length.toLocaleString()}</strong> գործ
-                {parseSkipped > 0 && (
-                  <Badge variant="destructive" className="text-[10px]">
-                    {parseSkipped} բաց թողած
-                  </Badge>
-                )}
-              </p>
+
+            {/* File list */}
+            {fileEntries.length > 0 && (
+              <div className="rounded-lg border bg-muted/30 p-2 space-y-1">
+                {fileEntries.map((fe, i) => (
+                  <div key={i} className="flex items-center gap-2 text-sm">
+                    <FileJson className="h-4 w-4 shrink-0 text-muted-foreground" />
+                    <span className="truncate flex-1 text-muted-foreground max-w-[260px]">{fe.name}</span>
+                    <Badge variant="secondary" className="text-xs">{fe.cases.length.toLocaleString()} գործ</Badge>
+                    {fe.skipped > 0 && (
+                      <Badge variant="destructive" className="text-[10px]">{fe.skipped} skip</Badge>
+                    )}
+                  </div>
+                ))}
+                <p className="text-xs font-semibold text-primary pt-1 border-t mt-1">
+                  Ընдамenы: {totalCases.toLocaleString()} գործ · {fileEntries.length} ֆayleri
+                </p>
+              </div>
             )}
           </div>
 
           {/* Preview */}
           {parsedCases.length > 0 && status === "idle" && (
             <div className="space-y-2">
-              <Label className="text-xs">Նախատեսություն (առաջին 3)</Label>
+              <Label className="text-xs">Нахат. (ara jna 3)</Label>
               <ScrollArea className="h-36 rounded-lg border">
                 <div className="p-2 space-y-2">
                   {parsedCases.slice(0, 3).map((c, i) => (
@@ -352,7 +374,7 @@ export function EchrImportWizard({ open, onOpenChange, onSuccess }: EchrImportWi
             <div className="space-y-3">
               {/* Category */}
               <div className="space-y-1.5">
-                <Label className="text-xs">Կատեգորիա</Label>
+                <Label className="text-xs">Категория</Label>
                 <Select value={practiceCategory} onValueChange={setPracticeCategory} disabled={isRunning}>
                   <SelectTrigger className="h-9">
                     <SelectValue />
@@ -368,8 +390,8 @@ export function EchrImportWizard({ open, onOpenChange, onSuccess }: EchrImportWi
               {/* Store HY toggle */}
               <div className="flex items-center justify-between rounded-lg border p-3">
                 <div>
-                  <p className="text-sm font-medium">Պահ. թարգ. *_hy դաշտերում (text_hy, summary_hy...)</p>
-                  <p className="text-xs text-muted-foreground">Բնագիրն անփոփոխ կمنا</p>
+                  <p className="text-sm font-medium">Сохр. перев. в *_hy полях (text_hy, summary_hy...)</p>
+                  <p className="text-xs text-muted-foreground">Оригинал останется без изменений</p>
                 </div>
                 <Switch
                   checked={storeInHyFields}
@@ -379,10 +401,10 @@ export function EchrImportWizard({ open, onOpenChange, onSuccess }: EchrImportWi
               </div>
 
               {!storeInHyFields && (
-                <div className="rounded-lg border border-amber-500/40 bg-amber-500/10 p-3">
-                  <p className="text-xs text-amber-800 dark:text-amber-300 flex items-center gap-1.5">
+                <div className="rounded-lg border border-warning bg-warning/10 p-3">
+                  <p className="text-xs text-foreground flex items-center gap-1.5">
                     <AlertTriangle className="h-3.5 w-3.5 shrink-0" />
-                    Ուշադրություն. բնագրի դաշտերը կվերագրվեն: text, summary, facts, judgment
+                    Внимание: оригинальные поля будут перезаписаны: text, summary, facts, judgment
                   </p>
                 </div>
               )}
@@ -390,8 +412,8 @@ export function EchrImportWizard({ open, onOpenChange, onSuccess }: EchrImportWi
               {/* Generate JSONL toggle */}
               <div className="flex items-center justify-between rounded-lg border p-3">
                 <div>
-                  <p className="text-sm font-medium">JSONL արտահանում (echr_cases_hy.jsonl)</p>
-                  <p className="text-xs text-muted-foreground">1 տող = 1 գործ</p>
+                  <p className="text-sm font-medium">JSONL экспорт (echr_cases_hy.jsonl)</p>
+                  <p className="text-xs text-muted-foreground">1 строка = 1 дело</p>
                 </div>
                 <Switch
                   checked={generateJsonl}
@@ -409,33 +431,33 @@ export function EchrImportWizard({ open, onOpenChange, onSuccess }: EchrImportWi
                 {status === "translating" ? (
                   <Loader2 className="h-4 w-4 animate-spin text-primary" />
                 ) : (
-                  <CheckCircle className="h-4 w-4 text-green-500" />
+                  <CheckCircle className="h-4 w-4 text-primary" />
                 )}
                 <span className="text-sm font-medium">
                   {status === "translating"
-                    ? `Թարգմանում է... ${stats.processed}/${stats.total}`
-                    : `Ավարտված — ${stats.processed}/${stats.total}`}
+                    ? `Переводит... ${stats.processed}/${stats.total}`
+                    : `Завершено — ${stats.processed}/${stats.total}`}
                 </span>
                 <Badge variant="outline" className="ml-auto">{progressPct}%</Badge>
               </div>
               <Progress value={progressPct} className="h-2" />
 
               <div className="grid grid-cols-4 gap-2 text-center text-xs">
-                <div className="rounded border bg-green-500/10 p-2">
-                  <p className="font-mono font-bold text-green-700 dark:text-green-400">{stats.translated}</p>
-                  <p className="text-muted-foreground">Թարգ.</p>
+                <div className="rounded border bg-primary/10 p-2">
+                  <p className="font-mono font-bold text-primary">{stats.translated}</p>
+                  <p className="text-muted-foreground">Переведено</p>
                 </div>
-                <div className="rounded border bg-amber-500/10 p-2">
-                  <p className="font-mono font-bold text-amber-700 dark:text-amber-400">{stats.partial}</p>
-                  <p className="text-muted-foreground">Մաս.</p>
+                <div className="rounded border bg-secondary p-2">
+                  <p className="font-mono font-bold">{stats.partial}</p>
+                  <p className="text-muted-foreground">Частично</p>
                 </div>
                 <div className="rounded border bg-destructive/10 p-2">
                   <p className="font-mono font-bold text-destructive">{stats.errors}</p>
-                  <p className="text-muted-foreground">Սխ.</p>
+                  <p className="text-muted-foreground">Ошибки</p>
                 </div>
                 <div className="rounded border bg-muted p-2">
                   <p className="font-mono font-bold">{stats.parseSkipped}</p>
-                  <p className="text-muted-foreground">Բաց</p>
+                  <p className="text-muted-foreground">Пропущено</p>
                 </div>
               </div>
             </div>
@@ -454,28 +476,28 @@ export function EchrImportWizard({ open, onOpenChange, onSuccess }: EchrImportWi
             {status === "idle" && parsedCases.length > 0 && (
               <Button onClick={handleImport} className="flex-1">
                 <Upload className="mr-2 h-4 w-4" />
-                Ներմուծել + Թարգ. {parsedCases.length.toLocaleString()} գործ
+                Импортировать + Перевести {totalCases.toLocaleString()} дел
               </Button>
             )}
 
             {status === "translating" && (
               <Button variant="outline" onClick={handleAbort} className="flex-1">
                 <X className="mr-2 h-4 w-4" />
-                Կանգնել
+                Остановить
               </Button>
             )}
 
             {status === "success" && generateJsonl && jsonlLinesRef.current.length > 0 && (
               <Button onClick={downloadJsonl} variant="outline" className="flex-1">
                 <Download className="mr-2 h-4 w-4" />
-                Ներբեռ. echr_cases_hy.jsonl
+                Скачать echr_cases_hy.jsonl
               </Button>
             )}
 
             {status === "success" && (
               <Button onClick={handleClose}>
                 <CheckCircle className="mr-2 h-4 w-4" />
-                Փակել
+                Закрыть
               </Button>
             )}
           </div>
