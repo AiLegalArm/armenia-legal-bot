@@ -456,11 +456,12 @@ export function ImportWizard({ open, onOpenChange, onImport }: ImportWizardProps
                       onChange={handleFileSelect}
                     />
                     {files.length > 0 && (
-                      <div className="space-y-1 max-h-32 overflow-y-auto">
+                      <div className="space-y-1 max-h-48 overflow-y-auto">
+                        <p className="text-xs text-muted-foreground">{'\u0427\u0438\u0441\u043b\u043e \u0444\u0430\u0439\u043b\u043e\u0432'}: {files.length}</p>
                         {files.map((f, i) => (
-                          <div key={i} className="flex items-center justify-between rounded bg-muted px-2 py-1 text-sm">
-                            <span className="truncate">{f.name} ({(f.size / 1024).toFixed(1)} KB)</span>
-                            <button onClick={() => removeFile(i)} className="text-muted-foreground hover:text-destructive">
+                          <div key={i} className="flex items-start justify-between gap-2 rounded bg-muted px-2 py-1.5 text-sm">
+                            <span className="break-all leading-snug min-w-0">{f.name} <span className="text-muted-foreground text-xs">({(f.size / 1024).toFixed(1)} KB)</span></span>
+                            <button onClick={() => removeFile(i)} className="text-muted-foreground hover:text-destructive shrink-0 mt-0.5">
                               <X className="h-3.5 w-3.5" />
                             </button>
                           </div>
