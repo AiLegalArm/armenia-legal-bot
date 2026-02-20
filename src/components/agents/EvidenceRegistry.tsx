@@ -33,7 +33,7 @@ export function EvidenceRegistry({
   const [typeFilter, setTypeFilter] = useState<EvidenceType | "all">("all");
   const [editingItem, setEditingItem] = useState<EvidenceItem | null>(null);
 
-  const lang = i18n.language === "hy" ? "hy" : "en";
+  const lang = i18n.language === "hy" ? "hy" : i18n.language === "ru" ? "ru" : "en";
 
   // Filter items
   const filteredItems = items.filter(item => {

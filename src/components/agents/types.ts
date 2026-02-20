@@ -158,8 +158,10 @@ export interface AgentConfig {
   type: AgentType;
   name: string;
   nameHy: string;
+  nameRu: string;
   description: string;
   descriptionHy: string;
+  descriptionRu: string;
   icon: string;
   color: string;
   order: number;
@@ -169,108 +171,126 @@ export const AGENT_CONFIGS: AgentConfig[] = [
   {
     type: 'evidence_collector',
     name: 'Evidence Collector',
-    nameHy: '\u0531\u057a\u0561\u0581\u0578\u0582\u0575\u0581\u0576\u0565\u0580\u056b \u0570\u0561\u057e\u0561\u0584\u0578\u0572',
+    nameHy: 'Ապացույցների հավաքող',
+    nameRu: 'Сбор доказательств',
     description: 'Catalogs all evidence from case volumes',
-    descriptionHy: '\u053f\u0561\u057f\u0561\u056c\u0578\u0563\u0561\u057e\u0578\u0580\u0578\u0582\u0574 \u0567 \u0563\u0578\u0580\u056e\u056b \u0562\u0578\u056c\u0578\u0580 \u0561\u057a\u0561\u0581\u0578\u0582\u0575\u0581\u0576\u0565\u0580\u0568',
-    icon: '\ud83d\udd0d',
+    descriptionHy: 'Կատալոգավորում է գործի բոլոր ապացույցները',
+    descriptionRu: 'Каталогизирует все доказательства из томов дела',
+    icon: '🔍',
     color: 'bg-blue-500',
     order: 1
   },
   {
     type: 'evidence_admissibility',
     name: 'Evidence Admissibility',
-    nameHy: '\u0531\u057a\u0561\u0581\u0578\u0582\u0575\u0581\u0576\u0565\u0580\u056b \u0569\u0578\u0582\u0575\u056c\u0561\u057f\u0580\u0565\u056c\u056b\u0578\u0582\u0569\u0575\u0578\u0582\u0576',
+    nameHy: 'Ապացույցների թույлատրելիություն',
+    nameRu: 'Допустимость доказательств',
     description: 'Analyzes admissibility of each evidence',
-    descriptionHy: '\u054e\u0565\u0580\u056c\u0578\u0582\u056e\u0578\u0582\u0574 \u0567 \u0561\u057a\u0561\u0581\u0578\u0582\u0575\u0581\u0576\u0565\u0580\u056b \u0569\u0578\u0582\u0575\u056c\u0561\u057f\u0580\u0565\u056c\u056b\u0578\u0582\u0569\u0575\u0578\u0582\u0576\u0568',
-    icon: '\u2696\ufe0f',
+    descriptionHy: 'Վերлուծум է ապацойцнерի թуйlatrelиуtуune',
+    descriptionRu: 'Анализирует допустимость каждого доказательства',
+    icon: '⚖️',
     color: 'bg-amber-500',
     order: 2
   },
   {
     type: 'charge_qualification',
     name: 'Charge Qualification',
-    nameHy: '\u0544\u0565\u0572\u0561\u0564\u0580\u0561\u0576\u0584\u056b \u0578\u0580\u0561\u056f\u0561\u057e\u0578\u0580\u0578\u0582\u0574',
+    nameHy: 'Մեղадранkyի квалификация',
+    nameRu: 'Квалификация обвинения',
     description: 'Verifies correctness of criminal charges',
-    descriptionHy: '\u054d\u057f\u0578\u0582\u0563\u0578\u0582\u0574 \u0567 \u0574\u0565\u0572\u0561\u0564\u0580\u0561\u0576\u0584\u056b \u0570\u0561\u0574\u0561\u057a\u0561\u057f\u0561\u057d\u056d\u0561\u0576\u0578\u0582\u0569\u0575\u0578\u0582\u0576\u0568',
-    icon: '\ud83d\udccb',
+    descriptionHy: 'Ступum է мегадранkyи hамаpataskhanutyuне',
+    descriptionRu: 'Проверяет правильность квалификации обвинения',
+    icon: '📋',
     color: 'bg-purple-500',
     order: 3
   },
   {
     type: 'procedural_violations',
     name: 'Procedural Violations',
-    nameHy: '\u0534\u0561\u057f\u0561\u057e\u0561\u0580\u0561\u056f\u0561\u0576 \u056d\u0561\u056d\u057f\u0578\u0582\u0574\u0576\u0565\u0580',
+    nameHy: 'Դատavараkan Խakhтuмнер',
+    nameRu: 'Процессуальные нарушения',
     description: 'Finds CPC violations',
-    descriptionHy: '\u0540\u0561\u0575\u057f\u0576\u0561\u0562\u0565\u0580\u0578\u0582\u0574 \u0567 \u0554\u0534\u0555 \u056d\u0561\u056d\u057f\u0578\u0582\u0574\u0576\u0565\u0580\u0568',
-    icon: '\ud83d\udea8',
+    descriptionHy: 'Haytnaberum е ՔԴՕ khakhтuмнере',
+    descriptionRu: 'Выявляет нарушения УПК',
+    icon: '🚨',
     color: 'bg-red-500',
     order: 4
   },
   {
     type: 'substantive_violations',
     name: 'Substantive Violations',
-    nameHy: '\u0546\u0575\u0578\u0582\u0569\u0561\u056f\u0561\u0576 \u056d\u0561\u056d\u057f\u0578\u0582\u0574\u0576\u0565\u0580',
+    nameHy: 'Нюtаkаn Խakhтuмнер',
+    nameRu: 'Нарушения норм УК',
     description: 'Finds Criminal Code violations',
-    descriptionHy: '\u0540\u0561\u0575\u057f\u0576\u0561\u0562\u0565\u0580\u0578\u0582\u0574 \u0567 \u0554\u0555 \u0576\u0578\u0580\u0574\u0565\u0580\u056b \u056d\u0561\u056d\u057f\u0578\u0582\u0574\u0576\u0565\u0580\u0568',
-    icon: '\ud83d\udcdc',
+    descriptionHy: 'Haytnaberum е ՔՕ normeri khakhтuмнерe',
+    descriptionRu: 'Выявляет нарушения норм Уголовного кодекса',
+    icon: '📜',
     color: 'bg-orange-500',
     order: 5
   },
   {
     type: 'defense_strategy',
     name: 'Defense Strategy',
-    nameHy: '\u054a\u0561\u0577\u057f\u057a\u0561\u0576\u0578\u0582\u0569\u0575\u0561\u0576 \u057d\u057f\u0580\u0561\u057f\u0565\u0563\u056b\u0561',
+    nameHy: 'Паштpануtyan Стратегиа',
+    nameRu: 'Стратегия защиты',
     description: 'Builds defense arguments',
-    descriptionHy: '\u053f\u0561\u0566\u0574\u0578\u0582\u0574 \u0567 \u057a\u0561\u0577\u057f\u057a\u0561\u0576\u0578\u0582\u0569\u0575\u0561\u0576 \u0583\u0561\u057d\u057f\u0561\u0580\u056f\u0576\u0565\u0580',
-    icon: '\ud83d\udee1\ufe0f',
+    descriptionHy: 'Казмum е паштpануtyan фастаркнер',
+    descriptionRu: 'Формирует аргументы защиты',
+    icon: '🛡️',
     color: 'bg-green-500',
     order: 6
   },
   {
     type: 'prosecution_weaknesses',
     name: 'Prosecution Weaknesses',
-    nameHy: '\u0544\u0565\u0572\u0561\u0564\u0580\u0561\u0576\u0584\u056b \u0569\u0578\u0582\u0575\u056c \u056f\u0578\u0572\u0574\u0565\u0580',
+    nameHy: 'Meghаdranki Тuyл Кohмер',
+    nameRu: 'Слабости обвинения',
     description: 'Identifies prosecution gaps',
-    descriptionHy: '\u0540\u0561\u0575\u057f\u0576\u0561\u0562\u0565\u0580\u0578\u0582\u0574 \u0567 \u0574\u0565\u0572\u0561\u0564\u0580\u0561\u0576\u0584\u056b \u0569\u0578\u0582\u0575\u056c \u056f\u0578\u0572\u0574\u0565\u0580\u0568',
-    icon: '\u26a0\ufe0f',
+    descriptionHy: 'Haytnaberum е meghadranki тuyl koghmerе',
+    descriptionRu: 'Выявляет слабые места обвинения',
+    icon: '⚠️',
     color: 'bg-yellow-500',
     order: 7
   },
   {
     type: 'rights_violations',
     name: 'Rights Violations',
-    nameHy: '\u053b\u0580\u0561\u057e\u0578\u0582\u0576\u0584\u0576\u0565\u0580\u056b \u056d\u0561\u056d\u057f\u0578\u0582\u0574\u0576\u0565\u0580',
+    nameHy: 'Иравунkyнери Хахтuмнер',
+    nameRu: 'Нарушения прав',
     description: 'Finds Constitution & ECHR violations',
-    descriptionHy: '\u054d\u0561\u0570\u0574\u0561\u0576\u0561\u0564\u0580\u0578\u0582\u0569\u0575\u0561\u0576 \u0587 \u0535\u053f\u0553\u0544 \u056d\u0561\u056d\u057f\u0578\u0582\u0574\u0576\u0565\u0580',
-    icon: '\ud83d\udcdc',
+    descriptionHy: 'Sahmanadrutyан ew ЕКПМ хахтumнер',
+    descriptionRu: 'Нарушения Конституции и ЕКПЧ',
+    icon: '📜',
     color: 'bg-indigo-500',
     order: 8
   },
   {
     type: 'aggregator',
     name: 'Aggregator',
-    nameHy: '\u0531\u0563\u0580\u0565\u0563\u0561\u057f\u0578\u0580',
+    nameHy: 'Агрегатор',
+    nameRu: 'Агрегатор',
     description: 'Synthesizes all analyses into final report',
-    descriptionHy: '\u0540\u0561\u0574\u0561\u0564\u0580\u0578\u0582\u0574 \u0567 \u0562\u0578\u056c\u0578\u0580 \u057e\u0565\u0580\u056c\u0578\u0582\u056e\u0578\u0582\u0569\u0575\u0578\u0582\u0576\u0576\u0565\u0580\u0568',
-    icon: '\ud83e\udde0',
+    descriptionHy: 'Hamadrum е bolor verluxutyunnerе',
+    descriptionRu: 'Объединяет все анализы в итоговый отчёт',
+    icon: '🧠',
     color: 'bg-teal-500',
     order: 9
   }
 ];
 
-export const EVIDENCE_TYPE_LABELS: Record<EvidenceType, { en: string; hy: string }> = {
-  document: { en: 'Document', hy: '\u0553\u0561\u057d\u057f\u0561\u0569\u0578\u0582\u0572\u0569' },
-  testimony: { en: 'Testimony', hy: '\u0551\u0578\u0582\u0581\u0574\u0578\u0582\u0576\u0584' },
-  expert_conclusion: { en: 'Expert Conclusion', hy: '\u0553\u0578\u0580\u0571\u0561\u0563\u0565\u057f\u056b \u0565\u0566\u0580\u0561\u056f\u0561\u0581\u0578\u0582\u0569\u0575\u0578\u0582\u0576' },
-  physical: { en: 'Physical Evidence', hy: '\u054e\u0565\u0572\u0561\u056f\u0561\u0576 \u0561\u057a\u0561\u0581\u0578\u0582\u0575\u0581' },
-  protocol: { en: 'Protocol', hy: '\u0531\u0580\u0571\u0561\u0576\u0561\u0563\u0580\u0578\u0582\u0569\u0575\u0578\u0582\u0576' },
-  audio_video: { en: 'Audio/Video', hy: '\u0531\u0578\u0582\u0564\u056b\u0578/\u054e\u056b\u0564\u0565\u0578' },
-  other: { en: 'Other', hy: '\u0531\u0575\u056c' }
+export const EVIDENCE_TYPE_LABELS: Record<EvidenceType, { en: string; hy: string; ru: string }> = {
+  document: { en: 'Document', hy: 'Փաստաuтugt', ru: 'Документ' },
+  testimony: { en: 'Testimony', hy: 'Цуцмунк', ru: 'Показание' },
+  expert_conclusion: { en: 'Expert Conclusion', hy: 'Порджageti Езракацутюн', ru: 'Заключение эксперта' },
+  physical: { en: 'Physical Evidence', hy: 'Вещakan Апацуйц', ru: 'Вещественное доказательство' },
+  protocol: { en: 'Protocol', hy: 'Арdjанаgруtюн', ru: 'Протокол' },
+  audio_video: { en: 'Audio/Video', hy: 'Аудио/Видео', ru: 'Аудио/Видео' },
+  other: { en: 'Other', hy: 'Айл', ru: 'Другое' }
 };
 
-export const EVIDENCE_STATUS_LABELS: Record<EvidenceStatus, { en: string; hy: string; color: string }> = {
-  admissible: { en: 'Admissible', hy: '\u0539\u0578\u0582\u0575\u056c\u0561\u057f\u0580\u0565\u056c\u056b', color: 'bg-green-100 text-green-800' },
-  inadmissible: { en: 'Inadmissible', hy: '\u0531\u0576\u0569\u0578\u0582\u0575\u056c\u0561\u057f\u0580\u0565\u056c\u056b', color: 'bg-red-100 text-red-800' },
-  questionable: { en: 'Questionable', hy: '\u053f\u0561\u057d\u056f\u0561\u056e\u0565\u056c\u056b', color: 'bg-yellow-100 text-yellow-800' },
-  pending_review: { en: 'Pending Review', hy: '\u054d\u057a\u0561\u057d\u0578\u0582\u0574 \u0567 \u057d\u057f\u0578\u0582\u0563\u0574\u0561\u0576', color: 'bg-gray-100 text-gray-800' }
+export const EVIDENCE_STATUS_LABELS: Record<EvidenceStatus, { en: string; hy: string; ru: string; color: string }> = {
+  admissible: { en: 'Admissible', hy: 'Тuylatrelи', ru: 'Допустимо', color: 'bg-green-100 text-green-800' },
+  inadmissible: { en: 'Inadmissible', hy: 'Антuylatrelи', ru: 'Недопустимо', color: 'bg-red-100 text-red-800' },
+  questionable: { en: 'Questionable', hy: 'Касkахели', ru: 'Спорно', color: 'bg-yellow-100 text-yellow-800' },
+  pending_review: { en: 'Pending Review', hy: 'Спасum е Стugман', ru: 'На проверке', color: 'bg-gray-100 text-gray-800' }
 };
