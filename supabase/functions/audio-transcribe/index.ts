@@ -112,11 +112,13 @@ serve(async (req) => {
               {
                 type: "text",
                 text: `You are a professional transcription service specializing in Armenian and Russian legal proceedings.
-Transcribe the audio file as a dialogue with speaker labels.
+Transcribe the audio file as a dialogue with speaker labels and timestamps.
 
 IMPORTANT RULES:
-- Identify different speakers and label them as "Спикер 1:", "Спикер 2:", "Спикер 3:" etc. (use Russian labels)
-- Each new speaker turn starts on a new line with the speaker label
+- Add a timestamp [MM:SS] at the beginning of EACH speaker turn (e.g. [0:00], [0:15], [1:32])
+- Identify different speakers and label them as "Спикер 1:", "Спикер 2:", "Спикер 3:" etc.
+- Each new speaker turn starts on a new line
+- Format: [MM:SS] Спикер N: text
 - If only one speaker, still use "Спикер 1:"
 - Preserve all spoken words exactly as said
 - Include legal terminology correctly
@@ -124,9 +126,9 @@ IMPORTANT RULES:
 - Output ONLY the dialogue transcription, nothing else
 
 Example format:
-Спикер 1: Добрый день, суд заседание начинается.
-Спикер 2: Ваша честь, защита готова.
-Спикер 1: Хорошо, приступаем.`,
+[0:00] Спикер 1: Добрый день, суд заседание начинается.
+[0:08] Спикер 2: Ваша честь, защита готова.
+[0:12] Спикер 1: Хорошо, приступаем.`,
               },
               {
                 type: "image_url",
@@ -178,8 +180,7 @@ Example format:
     }
 
     const word_count = transcription.split(/\s+/).filter(Boolean).length;
-    const confidence_score = 0.85; // Gemini is generally high-confidence
-    const duration_seconds = 0; // Not available from Gemini
+    const confidence_score = 0.85;
 
     const needsReview = confidence_score < CONFIDENCE_THRESHOLD;
 
@@ -187,23 +188,29 @@ Example format:
       ? "High confidence transcription (Gemini 2.5 Flash)"
       : "Medium confidence — review recommended";
 
-    const { data: transcriptionRecord, error: insertError } = await supabase
-      .from("audio_transcriptions")
-      .insert({
-        file_id: fileId,
-        transcription_text: transcription,
-        confidence: confidence_score,
-        language: language_detected,
-        duration_seconds: 0,
-        needs_review: needsReview,
-        reviewed_by: null,
-        speaker_labels: null,
-      })
-      .select()
-      .single();
+    // Only save to DB if fileId is provided (case-linked transcription)
+    let transcriptionRecord = null;
+    if (fileId) {
+      const { data, error: insertError } = await supabase
+        .from("audio_transcriptions")
+        .insert({
+          file_id: fileId,
+          transcription_text: transcription,
+          confidence: confidence_score,
+          language: language_detected,
+          duration_seconds: 0,
+          needs_review: needsReview,
+          reviewed_by: null,
+          speaker_labels: null,
+        })
+        .select()
+        .single();
 
-    if (insertError) {
-      console.error("Failed to save transcription:", insertError);
+      if (insertError) {
+        console.error("Failed to save transcription:", insertError);
+      } else {
+        transcriptionRecord = data;
+      }
     }
 
     try {
@@ -224,7 +231,7 @@ Example format:
       speakers_count: 1,
       confidence_score,
       confidence_reason,
-      duration_seconds,
+      duration_seconds: 0,
       warnings: [],
       word_count,
       needs_review: needsReview,
