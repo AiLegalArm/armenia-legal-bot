@@ -9,6 +9,7 @@ import {
   PROMPT_REGISTRY,
 } from "./prompts/index.ts";
 import { PRECEDENT_CITATION_PROMPT, PRECEDENT_CITATION_SCHEMA } from "./prompts/precedent-citation.ts";
+import { DEADLINE_RULES_PROMPT, DEADLINE_RULES_SCHEMA } from "./prompts/deadline-rules.ts";
 import { BASE_SYSTEM_PROMPT } from "./system.ts";
 import { sandboxUserInput, secureSandbox, logInjectionAttempt, ANTI_INJECTION_RULES } from "../_shared/prompt-armor.ts";
 import { applyBudgets, logTokenUsage, type RankedContent } from "../_shared/token-budget.ts";
@@ -105,7 +106,7 @@ const SYSTEM_PROMPTS: Record<Role, string> = {
 // UserSourceRef moved to _shared/reference-sources.ts
 
 interface AnalysisRequest {
-  role: "advocate" | "prosecutor" | "judge" | "aggregator" | "criminal_module" | "precedent_citation";
+  role: "advocate" | "prosecutor" | "judge" | "aggregator" | "criminal_module" | "precedent_citation" | "deadline_rules";
   moduleId?: CriminalAnalysisModule;
   caseId?: string;
   caseFacts?: string;
@@ -151,7 +152,7 @@ serve(async (req) => {
       (await req.json()) as AnalysisRequest;
 
     // Validate role - support both legacy roles and new analysis types
-    const legacyRoles = ["advocate", "prosecutor", "judge", "aggregator", "criminal_module", "precedent_citation"];
+    const legacyRoles = ["advocate", "prosecutor", "judge", "aggregator", "criminal_module", "precedent_citation", "deadline_rules"];
     const isLegacyRole = legacyRoles.includes(role);
     const isNewAnalysisType = isValidAnalysisType(role as AnalysisType);
 
@@ -590,6 +591,8 @@ Please provide your professional legal analysis from your designated role perspe
     let systemPrompt: string;
     if (role === "precedent_citation") {
       systemPrompt = PRECEDENT_CITATION_PROMPT;
+    } else if (role === "deadline_rules") {
+      systemPrompt = DEADLINE_RULES_PROMPT;
     } else if (role === "criminal_module" && moduleId) {
       // Legacy criminal module support
       systemPrompt = CRIMINAL_MODULE_PROMPTS[moduleId];
@@ -656,6 +659,12 @@ Please provide your professional legal analysis from your designated role perspe
         precedentJson = result.json;
         aiResponseText = JSON.stringify(result.json, null, 2);
         console.log(JSON.stringify({ ts: new Date().toISOString(), lvl: "info", fn: "ai-analyze", mode: "precedent_citation", model: result.model_used, latency_ms: result.latency_ms }));
+      } else if (role === "deadline_rules") {
+        // Use JSON extraction for structured deadline output
+        const result = await callJSON("ai-analyze", routerMessages, DEADLINE_RULES_SCHEMA);
+        precedentJson = result.json; // reuse the variable for structured data
+        aiResponseText = JSON.stringify(result.json, null, 2);
+        console.log(JSON.stringify({ ts: new Date().toISOString(), lvl: "info", fn: "ai-analyze", mode: "deadline_rules", model: result.model_used, latency_ms: result.latency_ms }));
       } else {
         const result = await callText("ai-analyze", routerMessages);
         aiResponseText = result.text;
@@ -674,13 +683,13 @@ Please provide your professional legal analysis from your designated role perspe
       throw new Error("Legal AI router error");
     }
 
-    // For precedent_citation, return structured JSON directly
-    if (role === "precedent_citation" && precedentJson) {
+    // For precedent_citation or deadline_rules, return structured JSON directly
+    if ((role === "precedent_citation" || role === "deadline_rules") && precedentJson) {
       // Save to database if caseId provided
       if (caseId) {
         await supabase.from("ai_analysis").insert({
           case_id: caseId,
-          role: "precedent_citation",
+          role,
           prompt_used: redactPII(userMessage.substring(0, 2000)),
           response_text: aiResponseText,
           sources_used: sourcesUsed.length > 0 ? sourcesUsed : null,
@@ -688,11 +697,12 @@ Please provide your professional legal analysis from your designated role perspe
         });
       }
 
+      const responseKey = role === "precedent_citation" ? "precedent_data" : "deadline_data";
       return new Response(
         JSON.stringify({
-          role: "precedent_citation",
+          role,
           analysis: aiResponseText,
-          precedent_data: precedentJson,
+          [responseKey]: precedentJson,
           sources: sourcesUsed,
           model: "Legal AI (openai/gpt-5)",
         }),
