@@ -30,7 +30,6 @@ export const LEGAL_DETERMINISTIC: ModelConfig = {
   temperature: 0.2,
   max_tokens: 16384,
   top_p: 0.92,
-  frequency_penalty: 1.2,
   description: "Legal analysis with deterministic output (temp=0.2)",
 };
 
