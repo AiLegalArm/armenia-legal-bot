@@ -82,7 +82,7 @@ export function AgentRunCard({ agent, run, isRunning, onRun, disabled }: AgentRu
   const findings = (run?.findings || []) as AgentFinding[];
 
   return (
-    <Card className={`${agent.color.replace("bg-", "border-l-4 border-l-")} overflow-hidden`}>
+    <Card className={`${agent.color.replace("bg-", "border-l-4 border-l-")} overflow-hidden w-full min-w-0`}>
       <CardHeader className="pb-2 p-3 sm:p-4">
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
           <div className="flex items-start sm:items-center gap-3 min-w-0">
@@ -112,7 +112,7 @@ export function AgentRunCard({ agent, run, isRunning, onRun, disabled }: AgentRu
       </CardHeader>
       
       {run?.status === "completed" && (
-        <CardContent className="pt-0">
+        <CardContent className="pt-0 overflow-hidden min-w-0">
           <Collapsible>
             <CollapsibleTrigger asChild>
               <Button variant="ghost" className="w-full justify-between h-auto py-2">
@@ -167,13 +167,13 @@ export function AgentRunCard({ agent, run, isRunning, onRun, disabled }: AgentRu
                 
                 {/* Full Analysis */}
                 {run.analysis_result && (
-                  <div>
+                  <div className="min-w-0 overflow-hidden">
                     <h4 className="text-sm font-medium mb-2">{t("ai:full_analysis")}</h4>
-                    <ScrollArea className="h-[500px] border rounded-lg">
-                      <div className="p-4 prose prose-sm max-w-none dark:prose-invert whitespace-pre-wrap break-words">
+                    <div className="h-[500px] overflow-y-auto border rounded-lg p-4">
+                      <div className="prose prose-sm max-w-none dark:prose-invert break-words overflow-wrap-anywhere">
                         <ReactMarkdown>{run.analysis_result}</ReactMarkdown>
                       </div>
-                    </ScrollArea>
+                    </div>
                   </div>
                 )}
                 
