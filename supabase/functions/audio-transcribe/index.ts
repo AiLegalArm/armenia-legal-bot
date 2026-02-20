@@ -205,7 +205,7 @@ serve(async (req) => {
         transcription_text: transcription,
         confidence: confidence_score,
         language: language_detected,
-        duration_seconds,
+        duration_seconds: Math.round(duration_seconds),
         needs_review: needsReview,
         reviewed_by: null,
         speaker_labels: null,
@@ -217,13 +217,15 @@ serve(async (req) => {
       console.error("Failed to save transcription:", insertError);
     }
 
-    await supabase.rpc("log_api_usage", {
-      _service_type: "audio",
-      _model_name: "openai/whisper-1",
-      _tokens_used: 0,
-      _estimated_cost: 0,
-      _metadata: { fileName, fileId: fileId || null, duration_seconds, fileSizeMB: (fileSize / 1024 / 1024).toFixed(2) }
-    }).catch(() => {/* non-critical */});
+    try {
+      await supabase.rpc("log_api_usage", {
+        _service_type: "audio",
+        _model_name: "openai/whisper-1",
+        _tokens_used: 0,
+        _estimated_cost: 0,
+        _metadata: { fileName, fileId: fileId || null, duration_seconds: Math.round(duration_seconds), fileSizeMB: (fileSize / 1024 / 1024).toFixed(2) }
+      });
+    } catch (_) { /* non-critical */ }
 
     return new Response(JSON.stringify({
       success: true,
