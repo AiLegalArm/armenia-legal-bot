@@ -168,10 +168,29 @@ serve(async (req) => {
     const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
     if (!LOVABLE_API_KEY) throw new Error("LOVABLE_API_KEY is not configured");
 
+    const IMAGE_MIME_TYPES = ["image/jpeg", "image/jpg", "image/png", "image/gif", "image/webp"];
+
     if (caseFiles && caseFiles.length > 0) {
       for (const file of caseFiles) {
         try {
-          console.log(`Downloading file from storage: ${file.storage_path}`);
+          const mimeType = file.file_type || "";
+          const isImage = IMAGE_MIME_TYPES.includes(mimeType);
+          const isPdf = mimeType === "application/pdf";
+
+          // PDFs cannot be sent as image_url — mention them in text context instead
+          if (isPdf) {
+            console.log(`PDF file noted (cannot send as image): ${file.original_filename}`);
+            context += `\n\n=== UPLOADED PDF FILE ===\nFilename: ${file.original_filename}\n(PDF content — extract information from the case metadata and OCR results above)`;
+            continue;
+          }
+
+          // Only process actual image files
+          if (!isImage) {
+            console.warn(`Unsupported file type ${mimeType} for ${file.original_filename}, skipping`);
+            continue;
+          }
+
+          console.log(`Downloading image from storage: ${file.storage_path}`);
           
           // Download file from Supabase storage
           const { data: fileData, error: downloadError } = await supabase.storage
@@ -199,20 +218,19 @@ serve(async (req) => {
             binary += String.fromCharCode(...chunk);
           }
           const base64 = btoa(binary);
-          const mimeType = file.file_type || "application/pdf";
           const dataUrl = `data:${mimeType};base64,${base64}`;
 
-          console.log(`File ${file.original_filename} encoded (${Math.round(base64.length / 1024)}KB)`);
+          console.log(`Image ${file.original_filename} encoded (${Math.round(base64.length / 1024)}KB)`);
 
           if (!hasTextContext && userMessageContent.length === 0) {
             userMessageContent.push({
               type: "text",
-              text: `Extract case number, description, facts and legal question from this uploaded document: "${file.original_filename}"`
+              text: `Extract case number, description, facts and legal question from this uploaded image: "${file.original_filename}"`
             });
-          } else if (hasTextContext) {
+          } else {
             userMessageContent.push({
               type: "text",
-              text: `\nAlso analyze this uploaded document: "${file.original_filename}"`
+              text: `\nAlso analyze this uploaded image: "${file.original_filename}"`
             });
           }
 
