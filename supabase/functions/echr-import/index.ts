@@ -24,6 +24,90 @@ async function sha256hex(text: string): Promise<string> {
     .join("");
 }
 
+// ── Recursively extract text from HUDOC nested content ───────────
+function extractElementsText(
+  elements: Array<{ content?: string; elements?: unknown[] }>,
+  parts: string[]
+): void {
+  for (const el of elements) {
+    if (typeof el.content === "string" && el.content.trim()) {
+      parts.push(el.content.trim());
+    }
+    if (Array.isArray(el.elements) && el.elements.length > 0) {
+      extractElementsText(
+        el.elements as Array<{ content?: string; elements?: unknown[] }>,
+        parts
+      );
+    }
+  }
+}
+
+/**
+ * Extract usable text from a HUDOC case object.
+ * Supports both standard fields (text/summary/facts/judgment)
+ * and HUDOC's nested `content` structure.
+ */
+function extractCaseText(caseObj: Record<string, unknown>): string {
+  // 1. Standard fields first
+  const standard = [caseObj.text, caseObj.content_text, caseObj.judgment, caseObj.summary, caseObj.facts]
+    .filter((v) => typeof v === "string" && (v as string).trim().length > 0)
+    .join("\n\n");
+  if (standard.trim()) return standard;
+
+  // 2. HUDOC nested `content` field: { "filename.docx": [{content, elements:[...]}] }
+  const hudocContent = caseObj.content;
+  if (hudocContent && typeof hudocContent === "object" && !Array.isArray(hudocContent)) {
+    const parts: string[] = [];
+    for (const docSections of Object.values(hudocContent as Record<string, unknown>)) {
+      if (Array.isArray(docSections)) {
+        extractElementsText(
+          docSections as Array<{ content?: string; elements?: unknown[] }>,
+          parts
+        );
+      }
+    }
+    if (parts.length > 0) return parts.join("\n\n");
+  }
+
+  // 3. __conclusion or conclusion summary as last resort
+  if (typeof caseObj.__conclusion === "string" && caseObj.__conclusion.trim()) {
+    return caseObj.__conclusion;
+  }
+
+  return "";
+}
+
+/**
+ * Extract violations from HUDOC `conclusion` array or `__conclusion` string.
+ */
+function extractViolations(caseObj: Record<string, unknown>): string[] {
+  const violations: string[] = [];
+  if (Array.isArray(caseObj.conclusion)) {
+    for (const c of caseObj.conclusion as Array<{ type?: string; element?: string; details?: string[] }>) {
+      if (c.type === "violation" && c.element) {
+        violations.push(c.element);
+      }
+    }
+  }
+  if (violations.length === 0 && typeof caseObj.__conclusion === "string") {
+    violations.push(...caseObj.__conclusion.split(";").map((s) => s.trim()).filter(Boolean));
+  }
+  return violations;
+}
+
+/**
+ * Extract ECHR article numbers from `article` array or `__articles` string.
+ */
+function extractArticles(caseObj: Record<string, unknown>): string[] {
+  if (Array.isArray(caseObj.article)) {
+    return (caseObj.article as string[]).filter((a) => typeof a === "string");
+  }
+  if (typeof caseObj.__articles === "string") {
+    return caseObj.__articles.split(";").map((s) => s.trim()).filter(Boolean);
+  }
+  return [];
+}
+
 // ── Text chunker (≈3000 chars per chunk) ─────────────────────────
 function chunkText(text: string, chunkSize = 3000): string[] {
   if (!text || text.length <= chunkSize) return [text];
@@ -154,12 +238,22 @@ async function translateCaseHY(
   const errors: string[] = [];
   let translatedCount = 0;
 
-  const out: Record<string, unknown> = { ...caseObj };
+  // Normalize HUDOC format: if standard text fields are missing, inject extracted text
+  const normalizedCase = { ...caseObj };
+  const hasStandardText = FIELDS.some(
+    (f) => typeof caseObj[f] === "string" && (caseObj[f] as string).trim().length > 0
+  );
+  if (!hasStandardText) {
+    const extracted = extractCaseText(caseObj);
+    if (extracted) normalizedCase.text = extracted;
+  }
+
+  const out: Record<string, unknown> = { ...normalizedCase };
 
   // Translate all fields in parallel for speed
   const fieldResults = await Promise.all(
     FIELDS.map(async (field) => {
-      const val = caseObj[field];
+      const val = normalizedCase[field];
       if (!val || typeof val !== "string" || val.trim().length === 0) return null;
       try {
         // Translate full text — chunkText() handles splitting into ≤3000 char pieces
@@ -333,19 +427,32 @@ serve(async (req) => {
             caseObj.docname || caseObj.title || caseObj.case_name || `ECHR-${stableId ?? "unknown"}`
           ).slice(0, 500);
 
-          // Map ECHR fields to legal_practice_kb schema
-          const contentText = String(
-            result.text || result.content_text || result.judgment || result.summary || result.facts || ""
-          ).replace(/\u0000/g, "").slice(0, 500000);
+          // Extract text: supports standard fields AND HUDOC nested content structure
+          const rawText = extractCaseText(caseObj);
+          const contentText = rawText.replace(/\u0000/g, "").slice(0, 500000);
 
           if (!contentText) return { status, fieldErrors, skipped: true };
+
+          // Extract violations and articles from HUDOC conclusion/article fields
+          const violations = extractViolations(caseObj);
+          const echrArticles = extractArticles(caseObj);
+
+          // Map outcome: HUDOC 'conclusion' with type='violation' → 'granted'
+          const hasViolation = violations.some((v) =>
+            /violation/i.test(v) || /no.violation/i.test(v) === false
+          );
+          const outcomeRaw = String(
+            caseObj.judgementdate
+              ? (violations.length > 0 ? "violation" : "no violation")
+              : caseObj.outcome ?? "granted"
+          );
 
           const row: Record<string, unknown> = {
             title,
             content_text: contentText,
             practice_category: practiceCategory,
             court_type: "echr",
-            outcome: mapOutcome(String(caseObj.judgementdate ? "granted" : caseObj.outcome ?? "granted")),
+            outcome: mapOutcome(outcomeRaw),
             is_anonymized: false,
             visibility: "ai_only",
             is_active: true,
@@ -354,6 +461,8 @@ serve(async (req) => {
             translation_provider: "openai",
             translation_ts: new Date().toISOString(),
             translation_errors: fieldErrors.length > 0 ? fieldErrors.join("; ") : null,
+            key_violations: violations.length > 0 ? violations : null,
+            echr_article: echrArticles.length > 0 ? echrArticles : null,
           };
 
           // Add *_hy fields if storing separately
