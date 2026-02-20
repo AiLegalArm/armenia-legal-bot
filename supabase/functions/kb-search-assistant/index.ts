@@ -53,20 +53,13 @@ serve(async (req) => {
     let keywords: string[] = [];
     
     try {
-      const aiResponse = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${LOVABLE_API_KEY}`,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          ...buildModelParams(KEYWORD_EXTRACTION),
-          messages: [
-            { role: "system", content: SEARCH_ASSISTANT_SYSTEM_PROMPT },
-            { role: "user", content: query }
-          ],
-        }),
-      });
+      // Route via centralized OpenAI router
+      const { callText } = await import("../_shared/openai-router.ts");
+      const kbResult = await callText("kb-search-assistant", [
+        { role: "system", content: SEARCH_ASSISTANT_SYSTEM_PROMPT },
+        { role: "user", content: query },
+      ]);
+      const aiResponse = { ok: true, json: async () => ({ choices: [{ message: { content: kbResult.text } }] }) };
 
       if (aiResponse.ok) {
         const aiData = await aiResponse.json();

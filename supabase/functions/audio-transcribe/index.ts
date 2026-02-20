@@ -104,41 +104,46 @@ serve(async (req) => {
     const audioBase64 = arrayBufferToBase64(audioBuffer);
     console.log(`Base64 length: ${(audioBase64.length / 1024 / 1024).toFixed(2)} MB`);
 
-    // Build request - use inline data for all files
-    // Lovable AI Gateway handles large inline content well
-    const requestBody = {
-      ...buildModelParams(AUDIO_TRANSCRIPTION),
-      messages: [
-        { role: "system", content: TRANSCRIPTION_SYSTEM_PROMPT },
-        { 
-          role: "user", 
-          content: [
-            { 
-              type: "text", 
-              text: `Please transcribe this ${isVideo ? 'video' : 'audio'} file. File name: ${fileName}. Focus on accurate Armenian legal terminology if applicable. Extract and transcribe all spoken content.` 
-            },
-            { 
-              type: isVideo ? "input_video" : "input_audio",
-              [isVideo ? "input_video" : "input_audio"]: {
-                data: audioBase64,
-                format: isVideo ? ext : (ext === 'wav' ? 'wav' : 'mp3')
-              }
-            }
-          ]
-        }
-      ],
-    };
+    // Route via centralized OpenAI router (callTranscription for audio)
+    const { callTranscription } = await import("../_shared/openai-router.ts");
 
-    // Call Gemini via Lovable AI Gateway
-    console.log("Sending to Lovable AI Gateway for transcription...");
-    const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${LOVABLE_API_KEY}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify(requestBody),
-    });
+    const transcribeMessages = [
+      { role: "system" as const, content: TRANSCRIPTION_SYSTEM_PROMPT },
+      {
+        role: "user" as const,
+        content: [
+          {
+            type: "text",
+            text: `Please transcribe this ${isVideo ? 'video' : 'audio'} file. File name: ${fileName}. Focus on accurate Armenian legal terminology if applicable. Extract and transcribe all spoken content.`
+          },
+          {
+            type: isVideo ? "input_video" : "input_audio",
+            [isVideo ? "input_video" : "input_audio"]: {
+              data: audioBase64,
+              format: isVideo ? ext : (ext === 'wav' ? 'wav' : 'mp3')
+            }
+          }
+        ]
+      }
+    ];
+
+    console.log("Sending to OpenAI router for transcription...");
+    let rawContent: string;
+    try {
+      const transcResult = await callTranscription("audio-transcribe", transcribeMessages as import("../_shared/openai-router.ts").RouterMessage[]);
+      rawContent = transcResult.text;
+    } catch (transcErr) {
+      const status = (transcErr as { status?: number })?.status;
+      const response = { status: status ?? 500, ok: false };
+      // fall through to existing error handling via synthetic response object
+      if (status === 429 || status === 402 || (status && status >= 400)) {
+        // reuse existing error response blocks below
+        throw transcErr;
+      }
+      throw transcErr;
+    }
+    // Synthetic response object for compatibility with existing parsing code
+    const response = { ok: true, status: 200, json: async () => ({ choices: [{ message: { content: rawContent } }], usage: { total_tokens: 0 } }) };
 
     if (!response.ok) {
       const errorText = await response.text();

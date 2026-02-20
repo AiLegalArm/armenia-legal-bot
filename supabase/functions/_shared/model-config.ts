@@ -24,106 +24,114 @@ export interface ModelConfig {
 /**
  * LEGAL_DETERMINISTIC — For all legal analysis, document generation, complaint generation.
  * Low temperature ensures consistent, reproducible legal reasoning.
+ * NOW USES: openai/gpt-5 via Lovable AI Gateway
  */
 export const LEGAL_DETERMINISTIC: ModelConfig = {
-  model: "google/gemini-2.5-pro",
+  model: "openai/gpt-5",
   temperature: 0.2,
   max_tokens: 16384,
   top_p: 0.92,
-  description: "Legal analysis with deterministic output (temp=0.2)",
+  description: "Legal analysis with deterministic output (temp=0.2, GPT-5)",
 };
 
 /**
- * LEGAL_CHAT — For interactive legal chat. Slightly higher creativity for conversational flow.
- * Still uses Pro model for deep legal reasoning.
+ * LEGAL_CHAT — For interactive legal chat.
+ * NOW USES: openai/gpt-5 via Lovable AI Gateway
  */
 export const LEGAL_CHAT: ModelConfig = {
-  model: "google/gemini-2.5-pro",
+  model: "openai/gpt-5",
   temperature: 0.2,
   max_tokens: 16000,
-  description: "Legal chat with streaming (temp=0.2, Pro)",
+  description: "Legal chat (temp=0.2, GPT-5)",
 };
 
 /**
- * DOCUMENT_GENERATION — For generating legal documents. Lowest temperature for precision.
+ * DOCUMENT_GENERATION — For generating legal documents.
+ * NOW USES: openai/gpt-5-mini via Lovable AI Gateway
  */
 export const DOCUMENT_GENERATION: ModelConfig = {
-  model: "google/gemini-2.5-flash",
+  model: "openai/gpt-5-mini",
   temperature: 0.2,
   max_tokens: 10000,
-  description: "Document generation (temp=0.2, Flash)",
+  description: "Document generation (temp=0.2, GPT-5-mini)",
 };
 
 /**
- * COMPLAINT_GENERATION — For generating judicial complaints. Uses Pro for complex legal reasoning.
+ * COMPLAINT_GENERATION — For generating judicial complaints.
+ * NOW USES: openai/gpt-5 via Lovable AI Gateway
  */
 export const COMPLAINT_GENERATION: ModelConfig = {
-  model: "google/gemini-2.5-pro",
+  model: "openai/gpt-5",
   temperature: 0.1,
   max_tokens: 12000,
-  description: "Complaint generation (temp=0.1, Pro)",
+  description: "Complaint generation (temp=0.1, GPT-5)",
 };
 
 /**
- * OCR_EXTRACTION — For OCR/vision-based text extraction. Low temperature for accuracy.
+ * OCR_EXTRACTION — For OCR/vision-based text extraction.
+ * UNCHANGED: OCR functions are excluded from OpenAI migration.
+ * Still uses Google Gemini Flash for vision tasks.
  */
 export const OCR_EXTRACTION: ModelConfig = {
   model: "google/gemini-2.5-flash",
   temperature: 0.1,
   max_tokens: 8000,
-  description: "OCR text extraction (temp=0.1, Flash)",
+  description: "OCR text extraction — OCR ONLY, do NOT migrate (temp=0.1, Gemini Flash)",
 };
 
 /**
- * AUDIO_TRANSCRIPTION — For audio/video transcription. Minimal temperature.
+ * AUDIO_TRANSCRIPTION — For audio/video transcription.
+ * NOW USES: openai/gpt-5-mini via Lovable AI Gateway
  */
 export const AUDIO_TRANSCRIPTION: ModelConfig = {
-  model: "google/gemini-2.5-flash",
+  model: "openai/gpt-5-mini",
   temperature: 0.1,
   max_tokens: 16000,
-  description: "Audio transcription (temp=0.1, Flash)",
+  description: "Audio transcription (temp=0.1, GPT-5-mini)",
 };
 
 /**
- * MULTI_AGENT_ANALYSIS — For 9-agent multi-agent system. Uses Pro for deep analysis.
- * NOTE: Previously used temp=0.7 which is too high for legal analysis.
- * Fixed to 0.3 for deterministic legal output.
+ * MULTI_AGENT_ANALYSIS — For 9-agent multi-agent system.
+ * NOW USES: openai/gpt-5 via Lovable AI Gateway
  */
 export const MULTI_AGENT_ANALYSIS: ModelConfig = {
-  model: "google/gemini-2.5-pro",
+  model: "openai/gpt-5",
   temperature: 0.3,
   max_tokens: 16384,
-  description: "Multi-agent legal analysis (temp=0.3, Pro)",
+  description: "Multi-agent legal analysis (temp=0.3, GPT-5)",
 };
 
 /**
- * FILE_ANALYSIS — For analyzing uploaded files for complaints. Uses Pro for vision.
+ * FILE_ANALYSIS — For analyzing uploaded files for complaints.
+ * NOW USES: openai/gpt-5 via Lovable AI Gateway (supports vision)
  */
 export const FILE_ANALYSIS: ModelConfig = {
-  model: "google/gemini-2.5-pro",
+  model: "openai/gpt-5",
   temperature: 0.3,
   max_tokens: 16384,
-  description: "File analysis for complaints (temp=0.3, Pro)",
+  description: "File analysis for complaints (temp=0.3, GPT-5)",
 };
 
 /**
  * FIELD_EXTRACTION — For extracting structured fields from case materials.
+ * NOW USES: openai/gpt-5-mini via Lovable AI Gateway
  */
 export const FIELD_EXTRACTION: ModelConfig = {
-  model: "google/gemini-2.5-flash",
+  model: "openai/gpt-5-mini",
   temperature: 0.1,
   max_tokens: 4000,
-  description: "Case field extraction (temp=0.1, Flash)",
+  description: "Case field extraction — JSON output (temp=0.1, GPT-5-mini)",
 };
 
 /**
- * KEYWORD_EXTRACTION — For KB search keyword extraction. Lightweight model.
+ * KEYWORD_EXTRACTION — For KB search keyword extraction.
+ * NOW USES: openai/gpt-5-mini via Lovable AI Gateway
  */
 export const KEYWORD_EXTRACTION: ModelConfig = {
-  model: "google/gemini-2.5-flash-lite",
+  model: "openai/gpt-5-mini",
   temperature: 0.1,
   max_tokens: 200,
-  description: "Keyword extraction (temp=0.1, Flash Lite)",
+  description: "Keyword extraction — JSON output (temp=0.1, GPT-5-mini)",
 };
 
 /**

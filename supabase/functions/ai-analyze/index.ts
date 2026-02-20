@@ -635,54 +635,34 @@ Please provide your professional legal analysis from your designated role perspe
       messageContent = userMessage;
     }
 
-    // Call Legal AI (Gemini Pro for high-quality Armenian legal reasoning with vision)
-    const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${LOVABLE_API_KEY}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        ...buildModelParams(LEGAL_DETERMINISTIC),
-        messages: [
-          { role: "system", content: systemPrompt },
-          { role: "user", content: messageContent },
-        ],
-      }),
-    });
+    // Route via centralized OpenAI router (supports multimodal content arrays)
+    const { callText } = await import("../_shared/openai-router.ts");
 
-    if (!response.ok) {
-      const errorStatus = response.status;
-      if (errorStatus === 429) {
-        await supabase.rpc("log_error", {
-          _error_type: "llm",
-          _error_message: "Rate limit exceeded",
-          _error_details: { status: 429, role },
-          _case_id: caseId || null,
-        });
-        return new Response(JSON.stringify({ error: "Rate limit exceeded. Please try again later." }), {
-          status: 429,
-          headers: { ...corsHeaders, "Content-Type": "application/json" },
-        });
+    let aiResponseText: string;
+    try {
+      const routerMessages = [
+        { role: "system" as const, content: systemPrompt },
+        { role: "user" as const, content: messageContent as string | unknown[] },
+      ];
+      const result = await callText("ai-analyze", routerMessages);
+      aiResponseText = result.text;
+      console.log(JSON.stringify({ ts: new Date().toISOString(), lvl: "info", fn: "ai-analyze", model: result.model_used, latency_ms: result.latency_ms }));
+    } catch (routerErr) {
+      const status = (routerErr as { status?: number })?.status;
+      if (status === 429) {
+        await supabase.rpc("log_error", { _error_type: "llm", _error_message: "Rate limit exceeded", _error_details: { status: 429, role }, _case_id: caseId || null });
+        return new Response(JSON.stringify({ error: "Rate limit exceeded. Please try again later." }), { status: 429, headers: { ...corsHeaders, "Content-Type": "application/json" } });
       }
-      if (errorStatus === 402) {
-        return new Response(JSON.stringify({ error: "AI credits exhausted. Please contact administrator." }), {
-          status: 402,
-          headers: { ...corsHeaders, "Content-Type": "application/json" },
-        });
+      if (status === 402) {
+        return new Response(JSON.stringify({ error: "AI credits exhausted. Please contact administrator." }), { status: 402, headers: { ...corsHeaders, "Content-Type": "application/json" } });
       }
-      const errorText = await response.text();
-      console.error("Legal AI gateway error:", errorStatus, errorText);
-
-      await supabase.rpc("log_error", {
-        _error_type: "llm",
-        _error_message: "Legal AI gateway error: " + errorStatus,
-        _error_details: { status: errorStatus, error: errorText, role },
-        _case_id: caseId || null,
-      });
-
-      throw new Error("Legal AI gateway error");
+      await supabase.rpc("log_error", { _error_type: "llm", _error_message: "Legal AI router error: " + String(routerErr), _error_details: { role }, _case_id: caseId || null });
+      throw new Error("Legal AI router error");
     }
+
+    // Wrap response to match existing parsing logic
+    const response = { ok: true, text: async () => JSON.stringify({ choices: [{ message: { content: aiResponseText } }] }) };
+    if (!response.ok) { // always false; kept for type compatibility below
 
     // Robust JSON parsing to handle truncated/malformed responses
     let aiResponse;
