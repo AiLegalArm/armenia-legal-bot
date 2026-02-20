@@ -1318,6 +1318,7 @@ export type Database = {
           decision_map: Json | null
           description: string | null
           echr_article: string[] | null
+          echr_case_id: string | null
           echr_principle_formula: string | null
           echr_test_applied: string | null
           embedding: string | null
@@ -1325,11 +1326,13 @@ export type Database = {
           embedding_error: string | null
           embedding_last_attempt: string | null
           embedding_status: string
+          facts_hy: string | null
           id: string
           import_ref: string | null
           interpreted_norms: Json | null
           is_active: boolean
           is_anonymized: boolean
+          judgment_hy: string | null
           key_paragraphs: Json | null
           key_violations: string[] | null
           keywords: string[] | null
@@ -1344,7 +1347,13 @@ export type Database = {
           related_cases: string[] | null
           source_name: string | null
           source_url: string | null
+          summary_hy: string | null
+          text_hy: string | null
           title: string
+          translation_errors: string | null
+          translation_provider: string | null
+          translation_status: string | null
+          translation_ts: string | null
           updated_at: string
           uploaded_by: string | null
           violation_type: string | null
@@ -1365,6 +1374,7 @@ export type Database = {
           decision_map?: Json | null
           description?: string | null
           echr_article?: string[] | null
+          echr_case_id?: string | null
           echr_principle_formula?: string | null
           echr_test_applied?: string | null
           embedding?: string | null
@@ -1372,11 +1382,13 @@ export type Database = {
           embedding_error?: string | null
           embedding_last_attempt?: string | null
           embedding_status?: string
+          facts_hy?: string | null
           id?: string
           import_ref?: string | null
           interpreted_norms?: Json | null
           is_active?: boolean
           is_anonymized?: boolean
+          judgment_hy?: string | null
           key_paragraphs?: Json | null
           key_violations?: string[] | null
           keywords?: string[] | null
@@ -1391,7 +1403,13 @@ export type Database = {
           related_cases?: string[] | null
           source_name?: string | null
           source_url?: string | null
+          summary_hy?: string | null
+          text_hy?: string | null
           title: string
+          translation_errors?: string | null
+          translation_provider?: string | null
+          translation_status?: string | null
+          translation_ts?: string | null
           updated_at?: string
           uploaded_by?: string | null
           violation_type?: string | null
@@ -1412,6 +1430,7 @@ export type Database = {
           decision_map?: Json | null
           description?: string | null
           echr_article?: string[] | null
+          echr_case_id?: string | null
           echr_principle_formula?: string | null
           echr_test_applied?: string | null
           embedding?: string | null
@@ -1419,11 +1438,13 @@ export type Database = {
           embedding_error?: string | null
           embedding_last_attempt?: string | null
           embedding_status?: string
+          facts_hy?: string | null
           id?: string
           import_ref?: string | null
           interpreted_norms?: Json | null
           is_active?: boolean
           is_anonymized?: boolean
+          judgment_hy?: string | null
           key_paragraphs?: Json | null
           key_violations?: string[] | null
           keywords?: string[] | null
@@ -1438,7 +1459,13 @@ export type Database = {
           related_cases?: string[] | null
           source_name?: string | null
           source_url?: string | null
+          summary_hy?: string | null
+          text_hy?: string | null
           title?: string
+          translation_errors?: string | null
+          translation_provider?: string | null
+          translation_status?: string | null
+          translation_ts?: string | null
           updated_at?: string
           uploaded_by?: string | null
           violation_type?: string | null
@@ -1795,6 +1822,36 @@ export type Database = {
         }
         Relationships: []
       }
+      translations_cache: {
+        Row: {
+          cache_key: string
+          created_at: string
+          field_name: string
+          id: string
+          provider: string
+          source_text: string
+          translated_text: string
+        }
+        Insert: {
+          cache_key: string
+          created_at?: string
+          field_name: string
+          id?: string
+          provider?: string
+          source_text: string
+          translated_text: string
+        }
+        Update: {
+          cache_key?: string
+          created_at?: string
+          field_name?: string
+          id?: string
+          provider?: string
+          source_text?: string
+          translated_text?: string
+        }
+        Relationships: []
+      }
       user_feedback: {
         Row: {
           analysis_id: string | null
@@ -1978,6 +2035,7 @@ export type Database = {
           decision_map: Json | null
           description: string | null
           echr_article: string[] | null
+          echr_case_id: string | null
           echr_principle_formula: string | null
           echr_test_applied: string | null
           embedding: string | null
@@ -1985,11 +2043,13 @@ export type Database = {
           embedding_error: string | null
           embedding_last_attempt: string | null
           embedding_status: string
+          facts_hy: string | null
           id: string
           import_ref: string | null
           interpreted_norms: Json | null
           is_active: boolean
           is_anonymized: boolean
+          judgment_hy: string | null
           key_paragraphs: Json | null
           key_violations: string[] | null
           keywords: string[] | null
@@ -2004,7 +2064,13 @@ export type Database = {
           related_cases: string[] | null
           source_name: string | null
           source_url: string | null
+          summary_hy: string | null
+          text_hy: string | null
           title: string
+          translation_errors: string | null
+          translation_provider: string | null
+          translation_status: string | null
+          translation_ts: string | null
           updated_at: string
           uploaded_by: string | null
           violation_type: string | null

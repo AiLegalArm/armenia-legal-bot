@@ -14,6 +14,7 @@ import { KBJsonlImport } from "@/components/kb/KBJsonlImport";
 import { KBMultiFileUpload } from "@/components/kb/KBMultiFileUpload";
 import { KBExport } from "@/components/kb/KBExport";
 import { ImportWizard, type ImportPayload } from "@/components/kb/ImportWizard";
+import { EchrImportWizard } from "@/components/kb/EchrImportWizard";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
@@ -50,6 +51,7 @@ export function AdminKnowledgeBaseTab() {
   const [filters, setFilters] = useState<KBFilters>({ page: 1, pageSize: 12 });
   const [formOpen, setFormOpen] = useState(false);
   const [importWizardOpen, setImportWizardOpen] = useState(false);
+  const [echrImportOpen, setEchrImportOpen] = useState(false);
   const [exportOpen, setExportOpen] = useState(false);
   const [editingDoc, setEditingDoc] = useState<KnowledgeBase | null>(null);
   const [deletingDocId, setDeletingDocId] = useState<string | null>(null);
@@ -313,6 +315,10 @@ export function AdminKnowledgeBaseTab() {
                 <Upload className="mr-1.5 h-4 w-4" />
                 <span className="text-xs sm:text-sm">Импорт</span>
               </Button>
+              <Button variant="outline" onClick={() => setEchrImportOpen(true)}>
+                <Upload className="mr-1.5 h-4 w-4" />
+                <span className="text-xs sm:text-sm">ECHR + HY</span>
+              </Button>
               <Button variant="secondary" onClick={() => setExportOpen(true)}>
                 <Download className="mr-1.5 h-4 w-4" />
                 <span className="text-xs sm:text-sm">Экспорт</span>
@@ -474,6 +480,12 @@ export function AdminKnowledgeBaseTab() {
         open={importWizardOpen}
         onOpenChange={setImportWizardOpen}
         onImport={handleImportWizard}
+      />
+
+      <EchrImportWizard
+        open={echrImportOpen}
+        onOpenChange={setEchrImportOpen}
+        onSuccess={() => refreshList()}
       />
 
       {/* Legacy modals — still needed as backends behind wizard dispatch */}
