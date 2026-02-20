@@ -162,9 +162,8 @@ async function translateCaseHY(
       const val = caseObj[field];
       if (!val || typeof val !== "string" || val.trim().length === 0) return null;
       try {
-        // Truncate very long fields to avoid timeout (max 6000 chars)
-        const truncated = val.length > 6000 ? val.slice(0, 6000) : val;
-        const translated = await translateFieldHY(truncated, field, openaiKey, supabase);
+        // Translate full text — chunkText() handles splitting into ≤3000 char pieces
+        const translated = await translateFieldHY(val, field, openaiKey, supabase);
         return { field, translated, ok: true };
       } catch (e) {
         return { field, error: e instanceof Error ? e.message : String(e), ok: false };
