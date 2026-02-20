@@ -136,5 +136,6 @@
   "inadmissible": "inadmissible",
   "regenerate": "Regenerate",
   "save_to_documents": "Save to documents",
-  "document_saved": "Document saved"
+  "document_saved": "Document saved",
+  "chat_bubble_hint": "Ask Legal AI"
 }
