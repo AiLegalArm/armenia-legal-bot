@@ -1,5 +1,7 @@
 {
+  "search": "Поиск",
   "bulk_txt_import_title": "Массовый импорт TXT",
+
   "bulk_txt_import_description": "Загрузите несколько TXT файлов для пакетного импорта",
   "bulk_clear_existing": "Очистить существующие записи",
   "knowledge_base": "База знаний",
