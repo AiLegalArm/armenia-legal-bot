@@ -154,13 +154,14 @@ export function EchrImportWizard({ open, onOpenChange, onSuccess }: EchrImportWi
       if (abortRef.current) break;
 
       try {
+        const batchCases = parsedCases.slice(batchIdx, batchIdx + BATCH_SIZE);
         const { data, error: fnErr } = await supabase.functions.invoke("echr-import", {
           body: {
-            rawContent,
+            rawContent: JSON.stringify(batchCases),
             storeInHyFields,
             generateJsonl,
             practiceCategory,
-            batchIndex: batchIdx,
+            batchIndex: 0,
             batchSize: BATCH_SIZE,
           },
         });
