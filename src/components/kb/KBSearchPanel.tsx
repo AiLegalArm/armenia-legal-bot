@@ -1,4 +1,4 @@
-import { useState, useCallback, useMemo, useRef } from "react";
+import { useState, useCallback, useMemo, useRef, useEffect } from "react";
 import { appendReferenceBlock, clearReferences, useReferencesText } from "@/lib/references-store";
 import { useTranslation } from "react-i18next";
 import { Search, FileText, ChevronDown, ChevronRight, Loader2, Scale, AlertTriangle, BookOpen, Gavel, Maximize2, Minimize2, Copy, ClipboardList } from "lucide-react";
@@ -176,7 +176,7 @@ export function KBSearchPanel({ caseId, onInsertReference, onReferencesChange }:
   const storeReferencesText = useReferencesText(storeKey);
   const { t } = useTranslation("kb");
   const [query, setQuery] = useState("");
-  const [viewFilter, setViewFilter] = useState<ViewFilter>("all");
+  const [viewFilter, setViewFilter] = useState<ViewFilter>("practice");
   const [mergedVisibleCount, setMergedVisibleCount] = useState(MERGED_PAGE_SIZE);
 
   // Internal references collector (used when no external consumer)
@@ -388,6 +388,40 @@ export function KBSearchPanel({ caseId, onInsertReference, onReferencesChange }:
     }
   }, [setPracticeDocuments]);
 
+  // ─── Load recent practice docs on mount (no query needed) ────────
+  useEffect(() => {
+    let cancelled = false;
+    const loadRecent = async () => {
+      try {
+        const { data, error } = await supabase
+          .from("legal_practice_kb")
+          .select("id, title, practice_category, court_type, outcome, legal_reasoning_summary, key_violations, applied_articles, decision_map, key_paragraphs, content_chunks, is_active")
+          .eq("is_active", true)
+          .order("created_at", { ascending: false })
+          .limit(50);
+        if (cancelled || error || !data) return;
+        const docs = data.map((row) => ({
+          id: row.id,
+          title: row.title,
+          practice_category: row.practice_category as import("@/hooks/useLegalPracticeKB").PracticeCategory,
+          court_type: row.court_type as import("@/hooks/useLegalPracticeKB").CourtType,
+          outcome: row.outcome as import("@/hooks/useLegalPracticeKB").Outcome,
+          applied_articles: [],
+          key_violations: (row.key_violations as string[]) || [],
+          legal_reasoning_summary: (row.legal_reasoning_summary as string) || null,
+          decision_map: null,
+          key_paragraphs: [],
+          top_chunks: [],
+          totalChunks: Array.isArray(row.content_chunks) ? (row.content_chunks as string[]).length : 0,
+          max_score: 0,
+        }));
+        setPracticeDocuments(docs);
+      } catch { /* silent */ }
+    };
+    loadRecent();
+    return () => { cancelled = true; };
+  }, [setPracticeDocuments]);
+
   const handleSearch = async () => {
     if (!query.trim()) return;
     setMergedVisibleCount(MERGED_PAGE_SIZE);
@@ -520,7 +554,7 @@ export function KBSearchPanel({ caseId, onInsertReference, onReferencesChange }:
         </div>
 
         {/* View filter tabs */}
-        {hasAnyResults && (
+        {(hasAnyResults || documents.length > 0) && (
           <Tabs value={viewFilter} onValueChange={(v) => setViewFilter(v as ViewFilter)} className="w-full">
             <TabsList className="w-full h-8">
               <TabsTrigger value="all" className="flex-1 text-xs h-7">
@@ -670,15 +704,23 @@ export function KBSearchPanel({ caseId, onInsertReference, onReferencesChange }:
               </div>
             )}
 
-            {/* Empty state */}
-            {!hasAnyResults && !isLoading && query && (
+            {/* Empty state after search */}
+            {!hasAnyResults && !isLoading && query.trim().length >= 2 && (
               <div className="text-center py-6 text-muted-foreground text-sm">
                 {"\u0531\u0580\u0564\u0575\u0578\u0582\u0576\u0584\u0576\u0565\u0580 \u0579\u0565\u0576 \u0563\u057F\u0576\u057E\u0565\u056C"}
               </div>
             )}
 
+            {/* Default state: show practice docs before any search */}
+            {!query.trim() && documents.length === 0 && !isLoading && (
+              <div className="text-center py-8 text-muted-foreground text-sm">
+                <Gavel className="h-8 w-8 mx-auto mb-2 opacity-30" />
+                {"\u0531\u056f\u056f\u0561\u056e\u0561\u0562\u0561\u0576\u0561\u056f\u0561\u0576 \u0563\u0580\u0561\u057c\u0578\u0582\u0569\u0575\u0578\u0582\u0576\u0576\u0565\u0580 \u0579\u056f\u0561\u0576"}
+              </div>
+            )}
+
             {/* Empty for current filter */}
-            {hasAnyResults && (
+            {hasAnyResults && query.trim() && (
               (viewFilter === "kb" && kbResults.length === 0) ||
               (viewFilter === "practice" && documents.length === 0)
             ) && (
