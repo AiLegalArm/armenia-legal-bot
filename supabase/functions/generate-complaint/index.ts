@@ -1,6 +1,6 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
-import { COMPLAINT_GENERATION, buildModelParams } from "../_shared/model-config.ts";
+import { callText } from "../_shared/openai-router.ts";
 
 import { SYSTEM_PROMPT, COURT_INSTRUCTIONS, LANGUAGE_INSTRUCTIONS } from "./prompts/index.ts";
 import { validateRequest } from "./validators.ts";
@@ -67,11 +67,6 @@ serve(async (req) => {
         userSourcesBlock += "\nNOTE: Only first 10 of " + refs.length + " user-selected sources included due to token budget.\n";
       }
       log("generate-complaint", "User sources parsed", { count: capped.length, total: refs.length });
-    }
-
-    const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
-    if (!LOVABLE_API_KEY) {
-      throw new Error("LOVABLE_API_KEY is not configured");
     }
 
     // Search Knowledge Base for relevant legal context
@@ -227,41 +222,16 @@ ${userSourcesBlock ? "When user-selected sources are provided, you MUST cite the
 
     log("generate-complaint", "Generating complaint", { courtType: request.courtType, language: request.language, textLen: request.extractedText.length });
 
-    const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${LOVABLE_API_KEY}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        ...buildModelParams(COMPLAINT_GENERATION),
-        messages: [
-          { role: "system", content: SYSTEM_PROMPT },
-          { role: "user", content: userPrompt }
-        ],
-      }),
-    });
-
-    if (!response.ok) {
-      if (response.status === 429) {
-        return new Response(
-          JSON.stringify({ error: "Rate limit exceeded. Please try again later." }),
-          { status: 429, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-        );
-      }
-      if (response.status === 402) {
-        return new Response(
-          JSON.stringify({ error: "AI credits need to be replenished." }),
-          { status: 402, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-        );
-      }
-      const errorText = await response.text();
-      err("generate-complaint", "AI gateway error", undefined, { status: response.status });
-      throw new Error(`AI gateway error: ${response.status}`);
-    }
-
-    const data = await response.json();
-    let generatedContent = data.choices?.[0]?.message?.content || "";
+    // Use centralized OpenAI router — no direct fetch calls allowed
+    const routerResult = await callText(
+      "generate-complaint",
+      [
+        { role: "system", content: SYSTEM_PROMPT },
+        { role: "user", content: userPrompt },
+      ],
+      { timeoutMs: 120000 }
+    );
+    let generatedContent = routerResult.text;
 
     // Optional: redact PII from AI output when user requests anonymized draft
     if (anonymize && generatedContent) {
@@ -314,7 +284,7 @@ ${userSourcesBlock ? "When user-selected sources are provided, you MUST cite the
     return new Response(
       JSON.stringify({ 
         content: generatedContent,
-        tokensUsed: data.usage?.total_tokens || 0,
+        tokensUsed: routerResult.usage?.total_tokens || 0,
         courtType: request.courtType,
         category: request.category,
         ragSourcesUsed: kbContext.length > 0 || legalPracticeContext.length > 0,
