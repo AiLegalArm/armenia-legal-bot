@@ -75,8 +75,8 @@ export function KBBulkImport({ open, onOpenChange, onSuccess }: KBBulkImportProp
     const validFiles: JsonFileItem[] = [];
     
     for (const file of fileArray) {
-      if (!file.name.endsWith('.json')) {
-        toast.error(`${file.name}: Only .json files are accepted`);
+      if (!file.name.endsWith('.json') && !file.name.endsWith('.jsonl')) {
+        toast.error(`${file.name}: Only .json and .jsonl files are accepted`);
         continue;
       }
       
@@ -85,7 +85,7 @@ export function KBBulkImport({ open, onOpenChange, onSuccess }: KBBulkImportProp
         continue;
       }
       
-      const fileName = file.name.replace('.json', '');
+      const fileName = file.name.replace(/\.(jsonl?|json)$/i, '');
       
       validFiles.push({
         id: crypto.randomUUID(),
@@ -142,14 +142,30 @@ export function KBBulkImport({ open, onOpenChange, onSuccess }: KBBulkImportProp
       updateFile(id, { status: 'reading', progress: 20 });
       
       const textContent = await file.text();
-      let jsonData: unknown;
-      try {
-        jsonData = JSON.parse(textContent);
-      } catch {
-        throw new Error('Invalid JSON format');
+      let items: unknown[];
+
+      if (file.name.endsWith('.jsonl')) {
+        // JSONL: one JSON object per line
+        items = textContent
+          .split('\n')
+          .map(l => l.trim())
+          .filter(l => l.length > 0)
+          .flatMap(l => {
+            try {
+              const parsed = JSON.parse(l);
+              return Array.isArray(parsed) ? parsed : [parsed];
+            } catch { return []; }
+          });
+      } else {
+        let jsonData: unknown;
+        try {
+          jsonData = JSON.parse(textContent);
+        } catch {
+          throw new Error('Invalid JSON format');
+        }
+        items = Array.isArray(jsonData) ? jsonData : [jsonData];
       }
       
-      const items = Array.isArray(jsonData) ? jsonData : [jsonData];
       updateFile(id, { progress: 40, itemCount: items.length });
       
       updateFile(id, { status: 'importing', progress: 60 });
@@ -305,7 +321,7 @@ export function KBBulkImport({ open, onOpenChange, onSuccess }: KBBulkImportProp
             <input
               ref={fileInputRef}
               type="file"
-              accept=".json"
+              accept=".json,.jsonl"
               multiple
               onChange={handleFileSelect}
               className="hidden"
@@ -315,7 +331,7 @@ export function KBBulkImport({ open, onOpenChange, onSuccess }: KBBulkImportProp
               {t('multi_upload_drop_hint')}
             </p>
             <p className="mt-1 text-xs text-muted-foreground">
-              JSON (max 100MB) — [{'{'}title, content_text, ...{'}'}]
+              JSON / JSONL (max 100MB) — [{'{'}title, content_text, ...{'}'}]
             </p>
           </div>
 
