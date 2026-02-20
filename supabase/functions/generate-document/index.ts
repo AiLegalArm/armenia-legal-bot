@@ -21,13 +21,21 @@ import {
 import { getRolePrompt, ROLE_CONFIGS, LegalRole } from "./prompts/role-prompts.ts";
 import { dualSearch } from "../_shared/rag-search.ts";
 import { buildSearchQuery, mapCategoryToPracticeCategory } from "./rag-search.ts";
-import { handleCors } from "../_shared/edge-security.ts";
 import { parseReferencesText, buildUserSourcesBlock } from "../_shared/reference-sources.ts";
 
+// =============================================================================
+// CORS HEADERS (wildcard for browser compatibility)
+// =============================================================================
+const corsHeaders = {
+  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-internal-key",
+  "Access-Control-Allow-Methods": "POST, OPTIONS",
+};
+
 serve(async (req) => {
-  const cors = handleCors(req);
-  if (cors.errorResponse) return cors.errorResponse;
-  const corsHeaders = cors.corsHeaders!;
+  if (req.method === "OPTIONS") {
+    return new Response(null, { status: 204, headers: corsHeaders });
+  }
 
   try {
     // === AUTH GUARD (Audit Fix: Stage 2/5 — Critical) ===
