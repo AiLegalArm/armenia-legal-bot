@@ -1,23 +1,59 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.91.1";
-import { AUDIO_TRANSCRIPTION, buildModelParams } from "../_shared/model-config.ts";
-import { handleCors } from "../_shared/edge-security.ts";
 
 const CONFIDENCE_THRESHOLD = 0.50;
-// Lovable AI Gateway supports large inline files - setting limit to 100MB
-// Beyond this, video compression is recommended
 const MAX_FILE_SIZE_MB = 100;
 const MAX_FILE_SIZE_BYTES = MAX_FILE_SIZE_MB * 1024 * 1024;
 
-// ... keep existing code (TRANSCRIPTION_SYSTEM_PROMPT, getMimeType, isVideoFile, arrayBufferToBase64)
+const corsHeaders = {
+  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
+};
+
+const TRANSCRIPTION_SYSTEM_PROMPT = `You are an expert transcription AI specializing in Armenian, Russian, and other languages.
+Transcribe the provided audio/video accurately.
+Return a JSON object with:
+- transcription: the full text transcription
+- language_detected: language code (hy, ru, en, etc.)
+- speakers_count: number of distinct speakers (integer)
+- confidence_score: float 0-1 representing transcription confidence
+- confidence_reason: brief explanation of confidence level
+- duration_seconds: estimated duration in seconds
+- warnings: array of any issues encountered
+- word_count: number of words
+Focus on Armenian legal terminology accuracy if applicable.`;
+
+function getMimeType(fileName: string): string {
+  const ext = fileName?.split(".").pop()?.toLowerCase();
+  const map: Record<string, string> = {
+    mp3: "audio/mpeg", wav: "audio/wav", m4a: "audio/mp4",
+    ogg: "audio/ogg", flac: "audio/flac", webm: "audio/webm",
+    mp4: "video/mp4", avi: "video/x-msvideo", mov: "video/quicktime",
+    mkv: "video/x-matroska",
+  };
+  return map[ext || ""] || "audio/mpeg";
+}
+
+function isVideoFile(fileName: string): boolean {
+  const ext = fileName?.split(".").pop()?.toLowerCase();
+  return ["mp4", "avi", "mov", "mkv", "webm"].includes(ext || "");
+}
+
+function arrayBufferToBase64(buffer: ArrayBuffer): string {
+  const bytes = new Uint8Array(buffer);
+  let binary = "";
+  for (let i = 0; i < bytes.byteLength; i++) {
+    binary += String.fromCharCode(bytes[i]);
+  }
+  return btoa(binary);
+}
 
 serve(async (req) => {
-  const cors = handleCors(req);
-  if (cors.errorResponse) return cors.errorResponse;
-  const corsHeaders = cors.corsHeaders!;
+  if (req.method === "OPTIONS") {
+    return new Response(null, { headers: corsHeaders });
+  }
 
   try {
-    // === AUTH GUARD (Prevent Anonymous Access) ===
     const authHeader = req.headers.get("Authorization") ?? "";
     const sb = createClient(
       Deno.env.get("SUPABASE_URL")!,
@@ -31,7 +67,6 @@ serve(async (req) => {
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
-    // === END AUTH GUARD ===
 
     const { audioUrl, fileName, caseId, fileId } = await req.json();
 
@@ -42,69 +77,40 @@ serve(async (req) => {
       });
     }
 
-    const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
-    if (!LOVABLE_API_KEY) {
-      throw new Error("LOVABLE_API_KEY is not configured");
-    }
-
-    const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
-    const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
-    const supabase = createClient(supabaseUrl, supabaseServiceKey);
-
-    // User ID from auth guard
-    const userId = authUser.id;
+    const supabase = createClient(
+      Deno.env.get("SUPABASE_URL")!,
+      Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
+    );
 
     console.log(`Processing audio transcription for: ${fileName}`);
 
-    // Fetch audio with HEAD request first to check size
     const headResponse = await fetch(audioUrl, { method: "HEAD" });
     const contentLength = headResponse.headers.get("content-length");
     const fileSize = contentLength ? parseInt(contentLength, 10) : 0;
-    
     console.log(`File size: ${(fileSize / 1024 / 1024).toFixed(2)} MB`);
 
     if (fileSize > MAX_FILE_SIZE_BYTES) {
-      const errorMsg = `File size (${(fileSize / 1024 / 1024).toFixed(1)} MB) exceeds maximum allowed (${MAX_FILE_SIZE_MB} MB). Please compress your video or extract only the audio track.`;
-      
-      await supabase.rpc("log_error", {
-        _error_type: "audio",
-        _error_message: errorMsg,
-        _error_details: { fileSize, maxSize: MAX_FILE_SIZE_BYTES, fileName },
-        _case_id: caseId || null,
-        _file_id: fileId || null
-      });
-
-      return new Response(JSON.stringify({ 
+      const errorMsg = `File size (${(fileSize / 1024 / 1024).toFixed(1)} MB) exceeds maximum allowed (${MAX_FILE_SIZE_MB} MB).`;
+      return new Response(JSON.stringify({
         error: errorMsg,
         error_code: "file_too_large",
-        error_hy: ` Delays\u0576\u056B \u0579\u0561\u0583\u0568 (${(fileSize / 1024 / 1024).toFixed(1)} MB) \u0563\u0565\u0580\u0561\u0566\u0561\u0576\u0581\u0578\u0582\u0574 \u0567 \u0569\u0578\u0582\u0575\u056C\u0561\u057F\u0580\u0565\u056C\u056B \u0561\u057C\u0561\u057E\u0565\u056C\u0561\u0563\u0578\u0582\u0575\u0576\u0568 (${MAX_FILE_SIZE_MB} MB): \u053D\u0576\u0564\u0580\u0578\u0582\u0574 \u0565\u0576\u0584 \u057D\u0565\u0572\u0574\u0565\u056C \u057F\u0565\u057D\u0561\u0576\u0575\u0578\u0582\u0569\u0568 \u056F\u0561\u0574 \u0570\u0561\u0576\u0565\u056C \u0574\u056B\u0561\u0575\u0576 \u0561\u0578\u0582\u0564\u056B\u0578 \u0570\u0565\u057F\u0584\u0568\u0589`,
-        error_ru: `\u0420\u0430\u0437\u043C\u0435\u0440 \u0444\u0430\u0439\u043B\u0430 (${(fileSize / 1024 / 1024).toFixed(1)} MB) \u043F\u0440\u0435\u0432\u044B\u0448\u0430\u0435\u0442 \u043B\u0438\u043C\u0438\u0442 (${MAX_FILE_SIZE_MB} MB). \u0421\u0436\u043C\u0438\u0442\u0435 \u0432\u0438\u0434\u0435\u043E \u0438\u043B\u0438 \u0438\u0437\u0432\u043B\u0435\u043A\u0438\u0442\u0435 \u0442\u043E\u043B\u044C\u043A\u043E \u0430\u0443\u0434\u0438\u043E\u0434\u043E\u0440\u043E\u0436\u043A\u0443.`
-      }), {
-        status: 413,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
+        error_ru: `Размер файла превышает лимит ${MAX_FILE_SIZE_MB} MB. Сожмите видео или извлеките только аудиодорожку.`
+      }), { status: 413, headers: { ...corsHeaders, "Content-Type": "application/json" } });
     }
 
-    const mimeType = getMimeType(fileName);
     const isVideo = isVideoFile(fileName);
-    const ext = fileName?.split('.').pop()?.toLowerCase() || 'mp3';
+    const ext = fileName?.split(".").pop()?.toLowerCase() || "mp3";
 
-    // Fetch audio file
     console.log("Downloading audio/video file...");
     const audioResponse = await fetch(audioUrl);
-    if (!audioResponse.ok) {
-      throw new Error(`Failed to fetch audio: ${audioResponse.status}`);
-    }
-    
+    if (!audioResponse.ok) throw new Error(`Failed to fetch audio: ${audioResponse.status}`);
+
     const audioBuffer = await audioResponse.arrayBuffer();
     console.log(`Downloaded ${(audioBuffer.byteLength / 1024 / 1024).toFixed(2)} MB`);
-    
-    // Convert to base64
-    console.log("Converting to base64...");
+
     const audioBase64 = arrayBufferToBase64(audioBuffer);
     console.log(`Base64 length: ${(audioBase64.length / 1024 / 1024).toFixed(2)} MB`);
 
-    // Route via centralized OpenAI router (callTranscription for audio)
     const { callTranscription } = await import("../_shared/openai-router.ts");
 
     const transcribeMessages = [
@@ -114,13 +120,13 @@ serve(async (req) => {
         content: [
           {
             type: "text",
-            text: `Please transcribe this ${isVideo ? 'video' : 'audio'} file. File name: ${fileName}. Focus on accurate Armenian legal terminology if applicable. Extract and transcribe all spoken content.`
+            text: `Please transcribe this ${isVideo ? "video" : "audio"} file. File name: ${fileName}. Focus on accurate Armenian legal terminology if applicable.`
           },
           {
             type: isVideo ? "input_video" : "input_audio",
             [isVideo ? "input_video" : "input_audio"]: {
               data: audioBase64,
-              format: isVideo ? ext : (ext === 'wav' ? 'wav' : 'mp3')
+              format: isVideo ? ext : (ext === "wav" ? "wav" : "mp3")
             }
           }
         ]
@@ -130,87 +136,37 @@ serve(async (req) => {
     console.log("Sending to OpenAI router for transcription...");
     let rawContent: string;
     try {
-      const transcResult = await callTranscription("audio-transcribe", transcribeMessages as import("../_shared/openai-router.ts").RouterMessage[]);
+      const transcResult = await callTranscription(
+        "audio-transcribe",
+        transcribeMessages as import("../_shared/openai-router.ts").RouterMessage[]
+      );
       rawContent = transcResult.text;
     } catch (transcErr) {
-      const status = (transcErr as { status?: number })?.status;
-      const response = { status: status ?? 500, ok: false };
-      // fall through to existing error handling via synthetic response object
-      if (status === 429 || status === 402 || (status && status >= 400)) {
-        // reuse existing error response blocks below
-        throw transcErr;
+      const errStatus = (transcErr as { status?: number })?.status;
+      if (errStatus === 429) {
+        return new Response(JSON.stringify({ error: "Rate limit exceeded. Please try again later.", error_code: "rate_limit" }), {
+          status: 429, headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+      if (errStatus === 402) {
+        return new Response(JSON.stringify({
+          error: "AI credits exhausted. Please top up your Cloud & AI balance.",
+          error_code: "payment_required",
+          error_ru: "Кредиты AI исчерпаны. Пополните баланс Cloud & AI."
+        }), { status: 402, headers: { ...corsHeaders, "Content-Type": "application/json" } });
       }
       throw transcErr;
     }
-    // Synthetic response object for compatibility with existing parsing code
-    const response = { ok: true, status: 200, json: async () => ({ choices: [{ message: { content: rawContent } }], usage: { total_tokens: 0 } }) };
 
-    if (!response.ok) {
-      const errorText = await response.text();
-      console.error("Gemini transcription error:", response.status, errorText);
-      
-      await supabase.rpc("log_error", {
-        _error_type: "audio",
-        _error_message: `Gemini transcription failed: ${response.status}`,
-        _error_details: { status: response.status, error: errorText, fileName },
-        _case_id: caseId || null,
-        _file_id: fileId || null
-      });
-
-      if (response.status === 429) {
-        return new Response(JSON.stringify({ 
-          error: "Rate limit exceeded. Please try again later.",
-          error_code: "rate_limit"
-        }), {
-          status: 429,
-          headers: { ...corsHeaders, "Content-Type": "application/json" },
-        });
-      }
-
-      if (response.status === 402) {
-        return new Response(JSON.stringify({ 
-          error: "AI credits exhausted. Please top up your Cloud & AI balance to continue using audio transcription.",
-          error_code: "payment_required",
-          error_hy: "Արdelays\u0565\u057D\u057F\u0561\u056F\u0561\u0576 \u056B\u0576\u057F\u0565\u056C\u0565\u056F\u057F\u056B \u056F\u0580\u0565\u0564\u056B\u057F\u0576\u0565\u0580\u0568 \u057D\u057A\u0561\u057C\u057E\u0565\u056C \u0565\u0576\u0589 \u053D\u0576\u0564\u0580\u0578\u0582\u0574 \u0565\u0576\u0584 \u056C\u056B\u0581\u0584\u0561\u057E\u0578\u0580\u0565\u056C \u0571\u0565\u0580 Cloud & AI \u0570\u0561\u0577\u056B\u057E\u0568\u0589",
-          error_ru: "Кредиты AI исчерпаны. Пополните баланс Cloud & AI для продолжения работы."
-        }), {
-          status: 402,
-          headers: { ...corsHeaders, "Content-Type": "application/json" },
-        });
-      }
-
-      // Check if it's a payload too large error
-      if (response.status === 413 || errorText.includes("payload") || errorText.includes("too large")) {
-        return new Response(JSON.stringify({ 
-          error: `File is too large for processing. Please compress your ${isVideo ? 'video' : 'audio'} file or extract only the audio track.`,
-          error_code: "payload_too_large",
-          error_hy: `\u0556\u0561\u0575\u056C\u0568 \u0579\u0561\u0583\u0561\u0566\u0561\u0576\u0581 \u0574\u0565\u056E \u0567 \u0574\u0577\u0561\u056F\u0574\u0561\u0576 \u0570\u0561\u0574\u0561\u0580\u0589 \u053D\u0576\u0564\u0580\u0578\u0582\u0574 \u0565\u0576\u0584 \u057D\u0565\u0572\u0574\u0565\u056C \u0571\u0565\u0580 ${isVideo ? '\u057F\u0565\u057D\u0561\u0576\u0575\u0578\u0582\u0569\u0568' : '\u0561\u0578\u0582\u0564\u056B\u0578\u0576'}\u0589`,
-          error_ru: `\u0424\u0430\u0439\u043B \u0441\u043B\u0438\u0448\u043A\u043E\u043C \u0431\u043E\u043B\u044C\u0448\u043E\u0439 \u0434\u043B\u044F \u043E\u0431\u0440\u0430\u0431\u043E\u0442\u043A\u0438. \u0421\u0436\u043C\u0438\u0442\u0435 ${isVideo ? '\u0432\u0438\u0434\u0435\u043E' : '\u0430\u0443\u0434\u0438\u043E'} \u0438\u043B\u0438 \u0438\u0437\u0432\u043B\u0435\u043A\u0438\u0442\u0435 \u0430\u0443\u0434\u0438\u043E\u0434\u043E\u0440\u043E\u0436\u043A\u0443.`
-        }), {
-          status: 413,
-          headers: { ...corsHeaders, "Content-Type": "application/json" },
-        });
-      }
-      
-      throw new Error(`Transcription failed: ${response.status}`);
-    }
-
-    const aiResponse = await response.json();
-    const rawContent = aiResponse.choices?.[0]?.message?.content || "";
-    
     console.log("Raw transcription response:", rawContent.substring(0, 500));
 
-    // Parse JSON response
     let transcriptionResult;
     try {
       let jsonStr = rawContent;
       const jsonMatch = rawContent.match(/```(?:json)?\s*([\s\S]*?)```/);
-      if (jsonMatch) {
-        jsonStr = jsonMatch[1].trim();
-      }
+      if (jsonMatch) jsonStr = jsonMatch[1].trim();
       transcriptionResult = JSON.parse(jsonStr);
-    } catch (parseError) {
-      console.error("Failed to parse transcription JSON:", parseError);
+    } catch {
       transcriptionResult = {
         transcription: rawContent,
         language_detected: "unknown",
@@ -236,7 +192,6 @@ serve(async (req) => {
 
     const needsReview = confidence_score < CONFIDENCE_THRESHOLD;
 
-    // Save to audio_transcriptions table
     const { data: transcriptionRecord, error: insertError } = await supabase
       .from("audio_transcriptions")
       .insert({
@@ -254,28 +209,16 @@ serve(async (req) => {
 
     if (insertError) {
       console.error("Failed to save transcription:", insertError);
-      await supabase.rpc("log_error", {
-        _error_type: "audio",
-        _error_message: "Failed to save transcription result",
-        _error_details: { error: insertError, fileId },
-        _case_id: caseId || null,
-        _file_id: fileId || null
-      });
     }
 
-    // Log API usage for cost tracking
-    const tokensUsed = aiResponse.usage?.total_tokens || 0;
-    const estimatedCost = tokensUsed * 0.0000005;
-    
     await supabase.rpc("log_api_usage", {
       _service_type: "audio",
-      _model_name: "google/gemini-2.5-flash",
-      _tokens_used: tokensUsed,
-      _estimated_cost: estimatedCost,
+      _model_name: "openai/gpt-5-mini",
+      _tokens_used: 0,
+      _estimated_cost: 0,
       _metadata: { fileName, fileId: fileId || null, duration_seconds, fileSizeMB: (fileSize / 1024 / 1024).toFixed(2) }
     });
 
-    // Return result
     return new Response(JSON.stringify({
       success: true,
       transcription_id: transcriptionRecord?.id,
@@ -288,21 +231,14 @@ serve(async (req) => {
       warnings: warnings || [],
       word_count,
       needs_review: needsReview,
-      tokens_used: tokensUsed
-    }), {
-      status: 200,
-      headers: { ...corsHeaders, "Content-Type": "application/json" },
-    });
+      tokens_used: 0
+    }), { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } });
 
   } catch (error) {
     console.error("audio-transcribe error:", error);
-
-    return new Response(JSON.stringify({ 
+    return new Response(JSON.stringify({
       error: error instanceof Error ? error.message : "Transcription failed",
       error_code: "internal_error"
-    }), {
-      status: 500,
-      headers: { ...corsHeaders, "Content-Type": "application/json" },
-    });
+    }), { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } });
   }
 });
