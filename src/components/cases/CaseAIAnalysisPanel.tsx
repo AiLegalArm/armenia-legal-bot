@@ -13,9 +13,10 @@ import { Switch } from '@/components/ui/switch';
 import { Label } from '@/components/ui/label';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { exportAnalysisToPDF, exportMultipleAnalysesToPDF } from '@/lib/pdfExport';
-import { Loader2, Brain, Download, FileSignature, Save, AlertTriangle, Check, Scale } from 'lucide-react';
+import { Loader2, Brain, Download, FileSignature, Save, AlertTriangle, Check, Scale, Timer } from 'lucide-react';
 import { useReferencesText } from '@/lib/references-store';
 import { PrecedentCitationView, type PrecedentCitationResult } from '@/components/cases/PrecedentCitationView';
+import { DeadlineRulesView, type DeadlineRulesResult } from '@/components/cases/DeadlineRulesView';
 
 interface CaseAIAnalysisPanelProps {
   caseId: string;
@@ -65,6 +66,8 @@ export function CaseAIAnalysisPanel({
   const [loadingSavedAnalyses, setLoadingSavedAnalyses] = useState(false);
   const [precedentData, setPrecedentData] = useState<PrecedentCitationResult | null>(null);
   const [isPrecedentLoading, setIsPrecedentLoading] = useState(false);
+  const [deadlineData, setDeadlineData] = useState<DeadlineRulesResult | null>(null);
+  const [isDeadlineLoading, setIsDeadlineLoading] = useState(false);
 
   // If user clicks "Clear" while the initial saved-analyses load is still in-flight,
   // we must ignore that async result to prevent the content from "reappearing".
@@ -272,6 +275,42 @@ export function CaseAIAnalysisPanel({
                   {i18n.language === 'hy' ? '\u0546\u0561\u056D\u0561\u0564\u0565\u057A\u0565\u0580' : i18n.language === 'en' ? 'Precedents' : '\u041F\u0440\u0435\u0446\u0435\u0434\u0435\u043D\u0442\u044B'}
                 </span>
               </Button>
+              <Button 
+                variant="outline" 
+                size="sm" 
+                onClick={async () => {
+                  setIsDeadlineLoading(true);
+                  setDeadlineData(null);
+                  try {
+                    const result = await analyzeCase('deadline_rules', caseId, facts, legalQuestion || '', referencesText);
+                    if (result) {
+                      if (result.deadline_data) {
+                        setDeadlineData(result.deadline_data as DeadlineRulesResult);
+                      } else {
+                        try {
+                          const parsed = JSON.parse(result.analysis);
+                          setDeadlineData(parsed);
+                        } catch {
+                          setDeadlineData(null);
+                        }
+                      }
+                    }
+                  } finally {
+                    setIsDeadlineLoading(false);
+                  }
+                }}
+                disabled={isDeadlineLoading || isAnalyzing}
+                className="h-10 rounded-xl text-mobile-sm sm:text-sm"
+              >
+                {isDeadlineLoading ? (
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin shrink-0" />
+                ) : (
+                  <Timer className="mr-2 h-4 w-4 shrink-0" />
+                )}
+                <span className="truncate">
+                  {i18n.language === 'hy' ? '\u053a\u0561\u0574\u056F\u0565\u057F\u0576\u0565\u0580' : i18n.language === 'en' ? 'Deadlines' : '\u0421\u0440\u043E\u043A\u0438'}
+                </span>
+              </Button>
               {Object.values(results).some(r => r !== null) && (
                 <>
                   <Button
@@ -435,6 +474,18 @@ export function CaseAIAnalysisPanel({
                  : '\u0410\u043D\u0430\u043B\u0438\u0437 \u043F\u0440\u0435\u0446\u0435\u0434\u0435\u043D\u0442\u043E\u0432'}
               </h3>
               <PrecedentCitationView data={precedentData} />
+            </div>
+          )}
+
+          {/* Deadline Rules Results */}
+          {deadlineData && (
+            <div className="mt-6 pt-6 border-t">
+              <h3 className="font-semibold text-lg mb-3">
+                {i18n.language === 'hy' ? '\u0534\u0561\u057F\u0561\u057E\u0561\u0580\u0561\u056F\u0561\u0576 \u053a\u0561\u0574\u056F\u0565\u057F\u0576\u0565\u0580' 
+                 : i18n.language === 'en' ? 'Procedural Deadlines' 
+                 : '\u041F\u0440\u043E\u0446\u0435\u0441\u0441\u0443\u0430\u043B\u044C\u043D\u044B\u0435 \u0441\u0440\u043E\u043A\u0438'}
+              </h3>
+              <DeadlineRulesView data={deadlineData} />
             </div>
           )}
 
