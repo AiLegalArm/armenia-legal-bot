@@ -13,7 +13,7 @@ const SYSTEM_PROMPT = `You are an expert legal analyst for Armenian (RA) law cas
 1. CASE NUMBER (Գործի համար):
    - Look for patterns like: ԿԴ/1718/02/24, ԵԱԴ/1234/01/25, ԿԴ-1234-2024, etc.
    - Court case numbers often follow format: XX/NNNN/NN/NN or XX-NNNN-NNNN
-   - Also look for: "գործ N", "գործ թիվ", "case N", "դело N"
+   - Also look for: "գործ N", "գործ թիվ", "case N", "дело N"
    - Extract the EXACT case number as written in the document
 
 2. FACTS (Փաստեր): 
@@ -27,7 +27,7 @@ const SYSTEM_PROMPT = `You are an expert legal analyst for Armenian (RA) law cas
    - Which articles or laws may apply
    - What documents to collect, what questions to answer for lawyers
 
-Extract from case materials (description, OCR results, audio transcriptions).
+Extract from case materials (description, OCR results, audio transcriptions, or uploaded PDF files).
 
 IMPORTANT: 
 - Always respond in Armenian (Հայերեն). 
@@ -58,10 +58,7 @@ serve(async (req) => {
     // === END AUTH GUARD ===
 
     const { caseId } = await req.json();
-    
-    if (!caseId) {
-      throw new Error("caseId is required");
-    }
+    if (!caseId) throw new Error("caseId is required");
 
     console.log("Processing extraction for case:", caseId);
 
@@ -80,21 +77,30 @@ serve(async (req) => {
       throw new Error(`Case not found: ${caseError?.message}`);
     }
 
-    // Get OCR results from case files
+    // Get OCR results
     const { data: ocrResults } = await supabase
       .from("ocr_results")
       .select(`extracted_text, case_files!inner(case_id)`)
       .eq("case_files.case_id", caseId)
       .limit(5);
 
-    // Get audio transcriptions from case files
+    // Get audio transcriptions
     const { data: transcriptions } = await supabase
       .from("audio_transcriptions")
       .select(`transcription_text, case_files!inner(case_id)`)
       .eq("case_files.case_id", caseId)
       .limit(5);
 
-    // Build context from all sources
+    // Get uploaded case files (PDFs)
+    const { data: caseFiles } = await supabase
+      .from("case_files")
+      .select("id, original_filename, storage_path, file_type")
+      .eq("case_id", caseId)
+      .is("deleted_at", null)
+      .in("file_type", ["application/pdf", "image/jpeg", "image/png", "image/jpg"])
+      .limit(3);
+
+    // Build text context
     let context = "";
     
     if (caseData.description) {
@@ -104,36 +110,102 @@ serve(async (req) => {
     if (ocrResults && ocrResults.length > 0) {
       context += "\n\n=== OCR EXTRACTED TEXT ===";
       ocrResults.forEach((ocr, idx) => {
-        const text = ocr.extracted_text?.substring(0, 2000) || "";
-        context += `\n\n[Document ${idx + 1}]:\n${text}`;
+        context += `\n\n[Document ${idx + 1}]:\n${(ocr.extracted_text || "").substring(0, 2000)}`;
       });
     }
 
     if (transcriptions && transcriptions.length > 0) {
       context += "\n\n=== AUDIO TRANSCRIPTIONS ===";
       transcriptions.forEach((trans, idx) => {
-        const text = trans.transcription_text?.substring(0, 2000) || "";
-        context += `\n\n[Transcription ${idx + 1}]:\n${text}`;
+        context += `\n\n[Transcription ${idx + 1}]:\n${(trans.transcription_text || "").substring(0, 2000)}`;
       });
     }
 
-    if (!context.trim()) {
+    // Build multimodal message content
+    const userMessageContent: unknown[] = [];
+
+    if (context.trim()) {
+      userMessageContent.push({
+        type: "text",
+        text: `Extract case number, facts and legal question from the following case materials:\n${context}`
+      });
+    }
+
+    // If we have uploaded PDF/image files and no text context, download and send them
+    const hasTextContext = context.trim().length > 0;
+    const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
+    if (!LOVABLE_API_KEY) throw new Error("LOVABLE_API_KEY is not configured");
+
+    if (caseFiles && caseFiles.length > 0) {
+      for (const file of caseFiles) {
+        try {
+          console.log(`Downloading file from storage: ${file.storage_path}`);
+          
+          // Download file from Supabase storage
+          const { data: fileData, error: downloadError } = await supabase.storage
+            .from("case-files")
+            .download(file.storage_path);
+
+          if (downloadError || !fileData) {
+            console.warn(`Failed to download ${file.storage_path}: ${downloadError?.message}`);
+            continue;
+          }
+
+          const arrayBuffer = await fileData.arrayBuffer();
+          const bytes = new Uint8Array(arrayBuffer);
+
+          if (bytes.length > 15 * 1024 * 1024) {
+            console.warn(`File too large (${bytes.length} bytes), skipping`);
+            continue;
+          }
+
+          // Convert to base64
+          let binary = '';
+          const chunkSize = 8192;
+          for (let i = 0; i < bytes.length; i += chunkSize) {
+            const chunk = bytes.subarray(i, Math.min(i + chunkSize, bytes.length));
+            binary += String.fromCharCode(...chunk);
+          }
+          const base64 = btoa(binary);
+          const mimeType = file.file_type || "application/pdf";
+          const dataUrl = `data:${mimeType};base64,${base64}`;
+
+          console.log(`File ${file.original_filename} encoded (${Math.round(base64.length / 1024)}KB)`);
+
+          if (!hasTextContext && userMessageContent.length === 0) {
+            userMessageContent.push({
+              type: "text",
+              text: `Extract case number, facts and legal question from this uploaded document: "${file.original_filename}"`
+            });
+          } else if (hasTextContext) {
+            userMessageContent.push({
+              type: "text",
+              text: `\nAlso analyze this uploaded document: "${file.original_filename}"`
+            });
+          }
+
+          userMessageContent.push({
+            type: "image_url",
+            image_url: { url: dataUrl }
+          });
+
+        } catch (fileErr) {
+          console.warn(`Error processing file ${file.id}:`, fileErr);
+        }
+      }
+    }
+
+    if (userMessageContent.length === 0) {
       return new Response(
         JSON.stringify({
           success: false,
-          error: "No data available: no description, OCR or audio transcriptions found."
+          error: "No data available for extraction. Please add a case description or upload PDF/image documents first."
         }),
         { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
 
-    // Call Lovable AI Gateway
-    const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
-    if (!LOVABLE_API_KEY) {
-      throw new Error("LOVABLE_API_KEY is not configured");
-    }
-
-    console.log("Calling AI for extraction...");
+    console.log("Calling AI for extraction with", userMessageContent.length, "content parts...");
 
     const aiResponse = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
       method: "POST",
@@ -145,7 +217,7 @@ serve(async (req) => {
         ...buildModelParams(FIELD_EXTRACTION),
         messages: [
           { role: "system", content: SYSTEM_PROMPT },
-          { role: "user", content: `Extract facts and legal question from this case:\n\n${context}` }
+          { role: "user", content: userMessageContent }
         ],
         tools: [
           {
@@ -162,11 +234,11 @@ serve(async (req) => {
                   },
                   facts: {
                     type: "string",
-                    description: "Case facts in Armenian - concrete details of what happened"
+                    description: "Case facts in Armenian - concrete details of what happened, when, where, involved parties, amounts"
                   },
                   legal_question: {
                     type: "string",
-                    description: "Legal question in Armenian - what legal issue needs resolution"
+                    description: "Legal question in Armenian - what legal issue needs resolution, which laws apply"
                   }
                 },
                 required: ["case_number", "facts", "legal_question"]
@@ -187,7 +259,7 @@ serve(async (req) => {
           { status: 429, headers: { ...corsHeaders, "Content-Type": "application/json" } }
         );
       }
-      throw new Error(`AI Gateway error: ${aiResponse.status}`);
+      throw new Error(`AI Gateway error: ${aiResponse.status} - ${errorText.substring(0, 300)}`);
     }
 
     const aiData = await aiResponse.json();
@@ -214,9 +286,7 @@ serve(async (req) => {
       .update(updateData)
       .eq("id", caseId);
 
-    if (updateError) {
-      throw new Error(`Failed to update case: ${updateError.message}`);
-    }
+    if (updateError) throw new Error(`Failed to update case: ${updateError.message}`);
 
     console.log("Case updated successfully");
 
