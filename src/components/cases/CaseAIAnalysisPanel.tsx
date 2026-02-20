@@ -13,8 +13,9 @@ import { Switch } from '@/components/ui/switch';
 import { Label } from '@/components/ui/label';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { exportAnalysisToPDF, exportMultipleAnalysesToPDF } from '@/lib/pdfExport';
-import { Loader2, Brain, Download, FileSignature, Save, AlertTriangle, Check } from 'lucide-react';
+import { Loader2, Brain, Download, FileSignature, Save, AlertTriangle, Check, Scale } from 'lucide-react';
 import { useReferencesText } from '@/lib/references-store';
+import { PrecedentCitationView, type PrecedentCitationResult } from '@/components/cases/PrecedentCitationView';
 
 interface CaseAIAnalysisPanelProps {
   caseId: string;
@@ -62,6 +63,8 @@ export function CaseAIAnalysisPanel({
   const [savingAnalysisRole, setSavingAnalysisRole] = useState<AIRole | null>(null);
   const [savedAnalysisRoles, setSavedAnalysisRoles] = useState<Set<AIRole>>(new Set());
   const [loadingSavedAnalyses, setLoadingSavedAnalyses] = useState(false);
+  const [precedentData, setPrecedentData] = useState<PrecedentCitationResult | null>(null);
+  const [isPrecedentLoading, setIsPrecedentLoading] = useState(false);
 
   // If user clicks "Clear" while the initial saved-analyses load is still in-flight,
   // we must ignore that async result to prevent the content from "reappearing".
@@ -233,6 +236,42 @@ export function CaseAIAnalysisPanel({
                   {i18n.language === 'hy' ? '\u0532\u0578\u0572\u0578\u0584' : i18n.language === 'en' ? 'Complaint' : '\u0416\u0430\u043B\u043E\u0431\u0430'}
                 </span>
               </Button>
+              <Button 
+                variant="outline" 
+                size="sm" 
+                onClick={async () => {
+                  setIsPrecedentLoading(true);
+                  setPrecedentData(null);
+                  try {
+                    const result = await analyzeCase('precedent_citation', caseId, facts, legalQuestion || '', referencesText);
+                    if (result) {
+                      if (result.precedent_data) {
+                        setPrecedentData(result.precedent_data as PrecedentCitationResult);
+                      } else {
+                        try {
+                          const parsed = JSON.parse(result.analysis);
+                          setPrecedentData(parsed);
+                        } catch {
+                          setPrecedentData(null);
+                        }
+                      }
+                    }
+                  } finally {
+                    setIsPrecedentLoading(false);
+                  }
+                }}
+                disabled={isPrecedentLoading || isAnalyzing}
+                className="h-10 rounded-xl text-mobile-sm sm:text-sm"
+              >
+                {isPrecedentLoading ? (
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin shrink-0" />
+                ) : (
+                  <Scale className="mr-2 h-4 w-4 shrink-0" />
+                )}
+                <span className="truncate">
+                  {i18n.language === 'hy' ? '\u0546\u0561\u056D\u0561\u0564\u0565\u057A\u0565\u0580' : i18n.language === 'en' ? 'Precedents' : '\u041F\u0440\u0435\u0446\u0435\u0434\u0435\u043D\u0442\u044B'}
+                </span>
+              </Button>
               {Object.values(results).some(r => r !== null) && (
                 <>
                   <Button
@@ -387,6 +426,18 @@ export function CaseAIAnalysisPanel({
             </div>
           )}
           
+          {/* Precedent Citation Results */}
+          {precedentData && (
+            <div className="mt-6 pt-6 border-t">
+              <h3 className="font-semibold text-lg mb-3">
+                {i18n.language === 'hy' ? '\u0546\u0561\u056D\u0561\u0564\u0565\u057A\u0565\u0580\u056B \u057E\u0565\u0580\u056C\u0578\u0582\u056E\u0578\u0582\u0569\u0575\u0578\u0582\u0576' 
+                 : i18n.language === 'en' ? 'Precedent Analysis' 
+                 : '\u0410\u043D\u0430\u043B\u0438\u0437 \u043F\u0440\u0435\u0446\u0435\u0434\u0435\u043D\u0442\u043E\u0432'}
+              </h3>
+              <PrecedentCitationView data={precedentData} />
+            </div>
+          )}
+
           {Object.values(results).some(r => r !== null) && (
             <div className="mt-6 pt-6 border-t">
               <FeedbackStars caseId={caseId} />
