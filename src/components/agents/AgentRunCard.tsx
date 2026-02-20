@@ -169,8 +169,8 @@ export function AgentRunCard({ agent, run, isRunning, onRun, disabled }: AgentRu
                 {run.analysis_result && (
                   <div>
                     <h4 className="text-sm font-medium mb-2">{t("ai:full_analysis")}</h4>
-                    <ScrollArea className="h-[300px] border rounded-lg p-4">
-                      <div className="prose prose-sm max-w-none dark:prose-invert">
+                    <ScrollArea className="h-[500px] border rounded-lg">
+                      <div className="p-4 prose prose-sm max-w-none dark:prose-invert whitespace-pre-wrap break-words">
                         <ReactMarkdown>{run.analysis_result}</ReactMarkdown>
                       </div>
                     </ScrollArea>
