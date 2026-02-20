@@ -284,7 +284,9 @@ serve(async (req) => {
             ? "administrative_procedure"
             : caseType === "criminal"
               ? "criminal_procedure"
-              : "unknown";
+              : caseType === "echr"
+                ? "echr_procedure"
+                : "unknown";
 
       if (!partyRole) {
         return new Response(
