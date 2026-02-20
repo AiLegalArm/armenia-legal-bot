@@ -43,7 +43,7 @@ interface ImportStats {
 }
 
 const PRACTICE_CATEGORIES = [
-  { value: "echr", label: "ԵԽԴМ" },
+  { value: "echr", label: "\u0544\u056B\u0535\u0564" },
   { value: "criminal", label: "Քրեական" },
   { value: "civil", label: "Քաղաքացիական" },
   { value: "administrative", label: "Վարչական" },
