@@ -59,14 +59,16 @@ const PRACTICE_CATEGORIES = [
 ];
 
 // Client-side parser: handles all HUDOC/ECHR export formats
+// Supports: JSON array [...], JSONL (one object per line), {results:[...]}, plain .txt with JSON inside
 function parseRaw(text: string): { cases: ParsedCase[]; skipped: number } {
-  const trimmed = text.trim();
+  // Strip BOM and normalize line endings
+  const trimmed = text.replace(/^\uFEFF/, "").trim();
   let cases: ParsedCase[] = [];
   let skipped = 0;
 
   // ── Format 1: Single JSON value (object or array) ─────────────
   // Covers: [{...},{...}] (big array), {"results":[...]}, etc.
-  // This handles files like chunk_1.jsonl which are actually a JSON array
+  // This handles files like chunk_1.jsonl.txt which are actually a JSON array
   // spread across many lines — NOT one-object-per-line.
   if (trimmed.startsWith("[") || trimmed.startsWith("{")) {
     try {
@@ -399,10 +401,10 @@ export function EchrImportWizard({ open, onOpenChange, onSuccess }: EchrImportWi
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <Globe className="h-5 w-5" />
-            ECHR Массовый импорт — Հայ Թарг.
+            Импорт дел ЕСПЧ → Судебная практика (папка ЕСПЧ)
           </DialogTitle>
           <DialogDescription>
-            Выберите один или несколько .json / .jsonl файлов. Импорт с переводом на армянский язык.
+            Загрузите файл JSON/JSONL/TXT с делами HUDOC — каждое дело будет сохранено отдельной записью в папку «ЕСПЧ» раздела Судебная практика.
           </DialogDescription>
         </DialogHeader>
 
@@ -411,7 +413,7 @@ export function EchrImportWizard({ open, onOpenChange, onSuccess }: EchrImportWi
           <div className="space-y-2">
             <Label className="flex items-center gap-2">
               <Files className="h-4 w-4" />
-              ECHR ֆayleri (.json / .jsonl / .txt) — կareli e yntel mi qani
+              Файл с делами ЕСПЧ (.json / .jsonl / .txt) — можно несколько файлов
             </Label>
             <Input
               ref={fileInputRef}
@@ -445,26 +447,32 @@ export function EchrImportWizard({ open, onOpenChange, onSuccess }: EchrImportWi
           {/* Preview */}
           {parsedCases.length > 0 && status === "idle" && (
             <div className="space-y-2">
-              <Label className="text-xs">Нахат. (ara jna 3)</Label>
-              <ScrollArea className="h-36 rounded-lg border">
-                <div className="p-2 space-y-2">
-                  {parsedCases.slice(0, 3).map((c, i) => (
-                    <div key={i} className="rounded border bg-muted/40 p-2 text-xs">
-                      <p className="font-medium truncate">
-                        {c.docname || c.title || `Case ${i + 1}`}
-                      </p>
-                      <p className="text-muted-foreground truncate">
-                        {c.itemid || c.application_no || c.appno || "—"}
-                        {c.respondent ? ` · ${c.respondent}` : ""}
-                      </p>
-                      {c.summary && (
-                        <p className="line-clamp-2 text-[10px] mt-0.5 text-muted-foreground">
-                          {String(c.summary).slice(0, 120)}
-                          {String(c.summary).length > 120 ? "…" : ""}
+              <Label className="text-xs flex items-center gap-1.5">
+                <CheckCircle className="h-3.5 w-3.5 text-primary" />
+                Найдено <span className="font-bold text-primary">{parsedCases.length.toLocaleString()}</span> дел ЕСПЧ — каждое будет сохранено отдельно
+              </Label>
+              <ScrollArea className="h-44 rounded-lg border">
+                <div className="p-2 space-y-1.5">
+                  {parsedCases.slice(0, 8).map((c, i) => (
+                    <div key={i} className="rounded border bg-muted/40 p-2 text-xs flex items-start gap-2">
+                      <span className="text-muted-foreground font-mono shrink-0 w-5">{i+1}.</span>
+                      <div className="flex-1 min-w-0">
+                        <p className="font-medium truncate">
+                          {c.docname || c.title || c.case_name || `Case ${i + 1}`}
                         </p>
-                      )}
+                        <p className="text-muted-foreground truncate text-[10px]">
+                          № {c.appno || c.itemid || c.application_no || "—"}
+                          {c.respondent ? ` · ${c.respondent}` : ""}
+                          {c.judgementdate ? ` · ${c.judgementdate}` : ""}
+                        </p>
+                      </div>
                     </div>
                   ))}
+                  {parsedCases.length > 8 && (
+                    <p className="text-xs text-center text-muted-foreground py-1">
+                      ... и ещё {parsedCases.length - 8} дел
+                    </p>
+                  )}
                 </div>
               </ScrollArea>
             </div>
@@ -619,9 +627,9 @@ export function EchrImportWizard({ open, onOpenChange, onSuccess }: EchrImportWi
           {/* Actions */}
           <div className="flex gap-2">
             {status === "idle" && parsedCases.length > 0 && (
-              <Button onClick={handleImport} className="flex-1">
-                <Upload className="mr-2 h-4 w-4" />
-                Импортировать + Перевести {totalCases.toLocaleString()} дел
+              <Button onClick={handleImport} className="flex-1 h-11 text-base font-semibold">
+                <Upload className="mr-2 h-5 w-5" />
+                Импортировать {totalCases.toLocaleString()} дел в папку ЕСПЧ
               </Button>
             )}
 

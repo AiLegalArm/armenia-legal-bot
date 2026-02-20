@@ -543,10 +543,10 @@ export function LegalPracticeKB() {
           <Button 
             variant="outline" 
             onClick={() => setEchrImportOpen(true)}
-            className="border-green-500/50 text-green-600 hover:bg-green-500/10"
+            className="border-green-500/50 text-green-700 hover:bg-green-500/10 font-medium"
           >
             <FileText className="h-4 w-4 mr-2" />
-            ECHR + HY
+            Импорт файла ЕСПЧ (JSON/TXT)
           </Button>
           <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
             <DialogTrigger asChild>
@@ -725,6 +725,16 @@ export function LegalPracticeKB() {
                     )}
                     <span className="flex-1 font-medium">{folderLabel}</span>
                     <span className="text-sm text-muted-foreground">{docs.length}</span>
+                    {catKey === 'echr' && (
+                      <span
+                        role="button"
+                        onClick={(e) => { e.stopPropagation(); setEchrImportOpen(true); }}
+                        className="ml-2 inline-flex items-center gap-1 rounded-md border border-primary/40 bg-primary/10 px-2 py-0.5 text-xs font-medium text-primary hover:bg-primary/20 transition-colors"
+                      >
+                        <FileText className="h-3 w-3" />
+                        Импорт файла ЕСПЧ
+                      </span>
+                    )}
                   </button>
                   {isOpen && (
                     <div className="mt-1 ml-6">
