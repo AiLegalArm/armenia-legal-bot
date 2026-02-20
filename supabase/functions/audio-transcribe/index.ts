@@ -2,26 +2,13 @@ import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.91.1";
 
 const CONFIDENCE_THRESHOLD = 0.50;
-const MAX_FILE_SIZE_MB = 100;
+const MAX_FILE_SIZE_MB = 25; // Whisper API limit is 25MB
 const MAX_FILE_SIZE_BYTES = MAX_FILE_SIZE_MB * 1024 * 1024;
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
-
-const TRANSCRIPTION_SYSTEM_PROMPT = `You are an expert transcription AI specializing in Armenian, Russian, and other languages.
-Transcribe the provided audio/video accurately.
-Return a JSON object with:
-- transcription: the full text transcription
-- language_detected: language code (hy, ru, en, etc.)
-- speakers_count: number of distinct speakers (integer)
-- confidence_score: float 0-1 representing transcription confidence
-- confidence_reason: brief explanation of confidence level
-- duration_seconds: estimated duration in seconds
-- warnings: array of any issues encountered
-- word_count: number of words
-Focus on Armenian legal terminology accuracy if applicable.`;
 
 function getMimeType(fileName: string): string {
   const ext = fileName?.split(".").pop()?.toLowerCase();
@@ -32,20 +19,6 @@ function getMimeType(fileName: string): string {
     mkv: "video/x-matroska",
   };
   return map[ext || ""] || "audio/mpeg";
-}
-
-function isVideoFile(fileName: string): boolean {
-  const ext = fileName?.split(".").pop()?.toLowerCase();
-  return ["mp4", "avi", "mov", "mkv", "webm"].includes(ext || "");
-}
-
-function arrayBufferToBase64(buffer: ArrayBuffer): string {
-  const bytes = new Uint8Array(buffer);
-  let binary = "";
-  for (let i = 0; i < bytes.byteLength; i++) {
-    binary += String.fromCharCode(bytes[i]);
-  }
-  return btoa(binary);
 }
 
 serve(async (req) => {
@@ -77,6 +50,14 @@ serve(async (req) => {
       });
     }
 
+    const apiKey = Deno.env.get("OPENAI_API_KEY");
+    if (!apiKey) {
+      return new Response(JSON.stringify({ error: "OPENAI_API_KEY not configured" }), {
+        status: 500,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
     const supabase = createClient(
       Deno.env.get("SUPABASE_URL")!,
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
@@ -84,111 +65,87 @@ serve(async (req) => {
 
     console.log(`Processing audio transcription for: ${fileName}`);
 
+    // Check file size first
     const headResponse = await fetch(audioUrl, { method: "HEAD" });
     const contentLength = headResponse.headers.get("content-length");
     const fileSize = contentLength ? parseInt(contentLength, 10) : 0;
     console.log(`File size: ${(fileSize / 1024 / 1024).toFixed(2)} MB`);
 
     if (fileSize > MAX_FILE_SIZE_BYTES) {
-      const errorMsg = `File size (${(fileSize / 1024 / 1024).toFixed(1)} MB) exceeds maximum allowed (${MAX_FILE_SIZE_MB} MB).`;
+      const errorMsg = `File size (${(fileSize / 1024 / 1024).toFixed(1)} MB) exceeds Whisper API limit (${MAX_FILE_SIZE_MB} MB). Please compress the audio or extract just the audio track.`;
       return new Response(JSON.stringify({
         error: errorMsg,
         error_code: "file_too_large",
-        error_ru: `Размер файла превышает лимит ${MAX_FILE_SIZE_MB} MB. Сожмите видео или извлеките только аудиодорожку.`
+        error_ru: `Размер файла превышает лимит Whisper API ${MAX_FILE_SIZE_MB} MB. Сожмите аудио или извлеките только аудиодорожку.`
       }), { status: 413, headers: { ...corsHeaders, "Content-Type": "application/json" } });
     }
 
-    const isVideo = isVideoFile(fileName);
-    const ext = fileName?.split(".").pop()?.toLowerCase() || "mp3";
-
-    console.log("Downloading audio/video file...");
+    // Download the audio file
+    console.log("Downloading audio file...");
     const audioResponse = await fetch(audioUrl);
     if (!audioResponse.ok) throw new Error(`Failed to fetch audio: ${audioResponse.status}`);
 
     const audioBuffer = await audioResponse.arrayBuffer();
     console.log(`Downloaded ${(audioBuffer.byteLength / 1024 / 1024).toFixed(2)} MB`);
 
-    const audioBase64 = arrayBufferToBase64(audioBuffer);
-    console.log(`Base64 length: ${(audioBase64.length / 1024 / 1024).toFixed(2)} MB`);
+    // Determine MIME type and extension for Whisper
+    const ext = fileName?.split(".").pop()?.toLowerCase() || "mp3";
+    const mimeType = getMimeType(fileName);
 
-    const { callTranscription } = await import("../_shared/openai-router.ts");
+    // Build multipart form for Whisper API
+    const formData = new FormData();
+    const audioBlob = new Blob([audioBuffer], { type: mimeType });
+    formData.append("file", audioBlob, fileName || `audio.${ext}`);
+    formData.append("model", "whisper-1");
+    formData.append("response_format", "verbose_json");
+    // Hint that we may have Armenian — Whisper will auto-detect but this helps
+    formData.append("prompt", "Armenian, Russian, legal terminology, court hearing");
 
-    const transcribeMessages = [
-      { role: "system" as const, content: TRANSCRIPTION_SYSTEM_PROMPT },
-      {
-        role: "user" as const,
-        content: [
-          {
-            type: "text",
-            text: `Please transcribe this ${isVideo ? "video" : "audio"} file. File name: ${fileName}. Focus on accurate Armenian legal terminology if applicable.`
-          },
-          {
-            type: isVideo ? "input_video" : "input_audio",
-            [isVideo ? "input_video" : "input_audio"]: {
-              data: audioBase64,
-              format: isVideo ? ext : (ext === "wav" ? "wav" : "mp3")
-            }
-          }
-        ]
-      }
-    ];
+    console.log("Sending to OpenAI Whisper API...");
+    const whisperResponse = await fetch("https://api.openai.com/v1/audio/transcriptions", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${apiKey}`,
+      },
+      body: formData,
+    });
 
-    console.log("Sending to OpenAI router for transcription...");
-    let rawContent: string;
-    try {
-      const transcResult = await callTranscription(
-        "audio-transcribe",
-        transcribeMessages as import("../_shared/openai-router.ts").RouterMessage[]
-      );
-      rawContent = transcResult.text;
-    } catch (transcErr) {
-      const errStatus = (transcErr as { status?: number })?.status;
-      if (errStatus === 429) {
+    if (!whisperResponse.ok) {
+      const errText = await whisperResponse.text();
+      console.error(`Whisper API error ${whisperResponse.status}: ${errText}`);
+
+      if (whisperResponse.status === 429) {
         return new Response(JSON.stringify({ error: "Rate limit exceeded. Please try again later.", error_code: "rate_limit" }), {
           status: 429, headers: { ...corsHeaders, "Content-Type": "application/json" },
         });
       }
-      if (errStatus === 402) {
-        return new Response(JSON.stringify({
-          error: "AI credits exhausted. Please top up your Cloud & AI balance.",
-          error_code: "payment_required",
-          error_ru: "Кредиты AI исчерпаны. Пополните баланс Cloud & AI."
-        }), { status: 402, headers: { ...corsHeaders, "Content-Type": "application/json" } });
-      }
-      throw transcErr;
+      throw new Error(`Whisper API error ${whisperResponse.status}: ${errText.substring(0, 300)}`);
     }
 
-    console.log("Raw transcription response:", rawContent.substring(0, 500));
+    const whisperResult = await whisperResponse.json();
+    console.log("Whisper response received, language:", whisperResult.language);
 
-    let transcriptionResult;
-    try {
-      let jsonStr = rawContent;
-      const jsonMatch = rawContent.match(/```(?:json)?\s*([\s\S]*?)```/);
-      if (jsonMatch) jsonStr = jsonMatch[1].trim();
-      transcriptionResult = JSON.parse(jsonStr);
-    } catch {
-      transcriptionResult = {
-        transcription: rawContent,
-        language_detected: "unknown",
-        speakers_count: 1,
-        confidence_score: 0.4,
-        confidence_reason: "Failed to parse structured response",
-        duration_seconds: 0,
-        warnings: ["Response format was unexpected"],
-        word_count: rawContent.split(/\s+/).length
-      };
+    const transcription = whisperResult.text || "";
+    const language_detected = whisperResult.language || "unknown";
+    const duration_seconds = whisperResult.duration || 0;
+    const word_count = transcription.split(/\s+/).filter(Boolean).length;
+
+    // Estimate confidence from avg_logprob if available in segments
+    let confidence_score = 0.8; // default
+    if (whisperResult.segments && whisperResult.segments.length > 0) {
+      const avgLogprob = whisperResult.segments.reduce(
+        (sum: number, seg: { avg_logprob?: number }) => sum + (seg.avg_logprob ?? -0.5),
+        0
+      ) / whisperResult.segments.length;
+      // Convert log probability to 0-1 scale (logprob 0 = perfect, -1 = ~37%, -2 = ~13%)
+      confidence_score = Math.min(1, Math.max(0, Math.exp(avgLogprob)));
     }
 
-    const {
-      transcription,
-      language_detected,
-      speakers_count,
-      confidence_score,
-      confidence_reason,
-      duration_seconds,
-      warnings,
-      word_count
-    } = transcriptionResult;
+    const confidence_reason = confidence_score >= 0.8
+      ? "High confidence transcription"
+      : confidence_score >= 0.5
+      ? "Medium confidence — review recommended"
+      : "Low confidence — manual review required";
 
     const needsReview = confidence_score < CONFIDENCE_THRESHOLD;
 
@@ -198,11 +155,11 @@ serve(async (req) => {
         file_id: fileId,
         transcription_text: transcription,
         confidence: confidence_score,
-        language: language_detected || "unknown",
-        duration_seconds: duration_seconds || 0,
+        language: language_detected,
+        duration_seconds: duration_seconds,
         needs_review: needsReview,
         reviewed_by: null,
-        speaker_labels: speakers_count > 1 ? { count: speakers_count } : null
+        speaker_labels: null
       })
       .select()
       .single();
@@ -213,22 +170,22 @@ serve(async (req) => {
 
     await supabase.rpc("log_api_usage", {
       _service_type: "audio",
-      _model_name: "openai/gpt-5-mini",
+      _model_name: "openai/whisper-1",
       _tokens_used: 0,
       _estimated_cost: 0,
       _metadata: { fileName, fileId: fileId || null, duration_seconds, fileSizeMB: (fileSize / 1024 / 1024).toFixed(2) }
-    });
+    }).catch(() => {/* non-critical */});
 
     return new Response(JSON.stringify({
       success: true,
       transcription_id: transcriptionRecord?.id,
       transcription,
       language_detected,
-      speakers_count,
+      speakers_count: 1,
       confidence_score,
       confidence_reason,
       duration_seconds,
-      warnings: warnings || [],
+      warnings: [],
       word_count,
       needs_review: needsReview,
       tokens_used: 0
