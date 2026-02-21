@@ -681,7 +681,8 @@ Please provide your professional legal analysis from your designated role perspe
     const { callText, callJSON } = await import("../_shared/openai-router.ts");
 
     let aiResponseText: string;
-    let precedentJson: unknown = null;
+    let structuredJson: unknown = null;
+    let modelUsed = "unknown";
 
     try {
       const routerMessages = [
@@ -690,65 +691,69 @@ Please provide your professional legal analysis from your designated role perspe
       ];
 
       if (role === "precedent_citation") {
-        // Use JSON extraction for structured precedent output
         const result = await callJSON("ai-analyze", routerMessages, PRECEDENT_CITATION_SCHEMA);
-        precedentJson = result.json;
+        structuredJson = result.json;
+        modelUsed = result.model_used;
         aiResponseText = JSON.stringify(result.json, null, 2);
-        console.log(JSON.stringify({ ts: new Date().toISOString(), lvl: "info", fn: "ai-analyze", mode: "precedent_citation", model: result.model_used, latency_ms: result.latency_ms }));
+        console.log(JSON.stringify({ ts: new Date().toISOString(), lvl: "info", fn: "ai-analyze", mode: "precedent_citation", model: modelUsed, latency_ms: result.latency_ms }));
       } else if (role === "deadline_rules") {
-        // Use JSON extraction for structured deadline output
         const result = await callJSON("ai-analyze", routerMessages, DEADLINE_RULES_SCHEMA);
-        precedentJson = result.json;
+        structuredJson = result.json;
+        modelUsed = result.model_used;
         aiResponseText = JSON.stringify(result.json, null, 2);
-        console.log(JSON.stringify({ ts: new Date().toISOString(), lvl: "info", fn: "ai-analyze", mode: "deadline_rules", model: result.model_used, latency_ms: result.latency_ms }));
+        console.log(JSON.stringify({ ts: new Date().toISOString(), lvl: "info", fn: "ai-analyze", mode: "deadline_rules", model: modelUsed, latency_ms: result.latency_ms }));
       } else if (role === "legal_position_comparator") {
-        // Use JSON extraction for structured comparator output
         const result = await callJSON("ai-analyze", routerMessages, LEGAL_POSITION_COMPARATOR_SCHEMA);
-        precedentJson = result.json;
+        structuredJson = result.json;
+        modelUsed = result.model_used;
         aiResponseText = JSON.stringify(result.json, null, 2);
-        console.log(JSON.stringify({ ts: new Date().toISOString(), lvl: "info", fn: "ai-analyze", mode: "legal_position_comparator", model: result.model_used, latency_ms: result.latency_ms }));
+        console.log(JSON.stringify({ ts: new Date().toISOString(), lvl: "info", fn: "ai-analyze", mode: "legal_position_comparator", model: modelUsed, latency_ms: result.latency_ms }));
       } else if (role === "hallucination_audit") {
-        // Use JSON extraction for structured audit output
         const result = await callJSON("ai-analyze", routerMessages, HALLUCINATION_AUDIT_SCHEMA);
-        precedentJson = result.json;
+        structuredJson = result.json;
+        modelUsed = result.model_used;
         aiResponseText = JSON.stringify(result.json, null, 2);
-        console.log(JSON.stringify({ ts: new Date().toISOString(), lvl: "info", fn: "ai-analyze", mode: "hallucination_audit", model: result.model_used, latency_ms: result.latency_ms }));
+        console.log(JSON.stringify({ ts: new Date().toISOString(), lvl: "info", fn: "ai-analyze", mode: "hallucination_audit", model: modelUsed, latency_ms: result.latency_ms }));
       } else if (role === "draft_deterministic") {
-        // Plain text output — court-ready document draft
         const result = await callText("ai-analyze", routerMessages);
         aiResponseText = result.text;
-        console.log(JSON.stringify({ ts: new Date().toISOString(), lvl: "info", fn: "ai-analyze", mode: "draft_deterministic", model: result.model_used, latency_ms: result.latency_ms }));
+        modelUsed = result.model_used;
+        console.log(JSON.stringify({ ts: new Date().toISOString(), lvl: "info", fn: "ai-analyze", mode: "draft_deterministic", model: modelUsed, latency_ms: result.latency_ms }));
       } else if (role === "strategy_builder") {
-        // Use JSON extraction for structured strategy output
         const result = await callJSON("ai-analyze", routerMessages, STRATEGY_BUILDER_SCHEMA);
-        precedentJson = result.json;
+        structuredJson = result.json;
+        modelUsed = result.model_used;
         aiResponseText = JSON.stringify(result.json, null, 2);
-        console.log(JSON.stringify({ ts: new Date().toISOString(), lvl: "info", fn: "ai-analyze", mode: "strategy_builder", model: result.model_used, latency_ms: result.latency_ms }));
+        console.log(JSON.stringify({ ts: new Date().toISOString(), lvl: "info", fn: "ai-analyze", mode: "strategy_builder", model: modelUsed, latency_ms: result.latency_ms }));
       } else if (role === "evidence_weakness") {
-        // Use JSON extraction for structured evidence weakness output
         const result = await callJSON("ai-analyze", routerMessages, EVIDENCE_WEAKNESS_SCHEMA);
-        precedentJson = result.json;
+        structuredJson = result.json;
+        modelUsed = result.model_used;
         aiResponseText = JSON.stringify(result.json, null, 2);
-        console.log(JSON.stringify({ ts: new Date().toISOString(), lvl: "info", fn: "ai-analyze", mode: "evidence_weakness", model: result.model_used, latency_ms: result.latency_ms }));
+        console.log(JSON.stringify({ ts: new Date().toISOString(), lvl: "info", fn: "ai-analyze", mode: "evidence_weakness", model: modelUsed, latency_ms: result.latency_ms }));
       } else if (role === "risk_factors") {
         const result = await callJSON("ai-analyze", routerMessages, RISK_FACTORS_SCHEMA);
-        precedentJson = result.json;
+        structuredJson = result.json;
+        modelUsed = result.model_used;
         aiResponseText = JSON.stringify(result.json, null, 2);
-        console.log(JSON.stringify({ ts: new Date().toISOString(), lvl: "info", fn: "ai-analyze", mode: "risk_factors", model: result.model_used, latency_ms: result.latency_ms }));
+        console.log(JSON.stringify({ ts: new Date().toISOString(), lvl: "info", fn: "ai-analyze", mode: "risk_factors", model: modelUsed, latency_ms: result.latency_ms }));
       } else if (role === "law_update_summary") {
         const result = await callJSON("ai-analyze", routerMessages, LAW_UPDATE_SUMMARY_SCHEMA);
-        precedentJson = result.json;
+        structuredJson = result.json;
+        modelUsed = result.model_used;
         aiResponseText = JSON.stringify(result.json, null, 2);
-        console.log(JSON.stringify({ ts: new Date().toISOString(), lvl: "info", fn: "ai-analyze", mode: "law_update_summary", model: result.model_used, latency_ms: result.latency_ms }));
+        console.log(JSON.stringify({ ts: new Date().toISOString(), lvl: "info", fn: "ai-analyze", mode: "law_update_summary", model: modelUsed, latency_ms: result.latency_ms }));
       } else if (role === "cross_exam") {
         const result = await callJSON("ai-analyze", routerMessages, CROSS_EXAM_SCHEMA);
-        precedentJson = result.json;
+        structuredJson = result.json;
+        modelUsed = result.model_used;
         aiResponseText = JSON.stringify(result.json, null, 2);
-        console.log(JSON.stringify({ ts: new Date().toISOString(), lvl: "info", fn: "ai-analyze", mode: "cross_exam", model: result.model_used, latency_ms: result.latency_ms }));
+        console.log(JSON.stringify({ ts: new Date().toISOString(), lvl: "info", fn: "ai-analyze", mode: "cross_exam", model: modelUsed, latency_ms: result.latency_ms }));
       } else {
         const result = await callText("ai-analyze", routerMessages);
         aiResponseText = result.text;
-        console.log(JSON.stringify({ ts: new Date().toISOString(), lvl: "info", fn: "ai-analyze", model: result.model_used, latency_ms: result.latency_ms }));
+        modelUsed = result.model_used;
+        console.log(JSON.stringify({ ts: new Date().toISOString(), lvl: "info", fn: "ai-analyze", model: modelUsed, latency_ms: result.latency_ms }));
       }
     } catch (routerErr) {
       const status = (routerErr as { status?: number })?.status;
@@ -764,7 +769,7 @@ Please provide your professional legal analysis from your designated role perspe
     }
 
     // For diagnostic engines returning structured JSON
-    if ((role === "precedent_citation" || role === "deadline_rules" || role === "legal_position_comparator" || role === "hallucination_audit" || role === "strategy_builder" || role === "evidence_weakness" || role === "risk_factors" || role === "law_update_summary" || role === "cross_exam") && precedentJson) {
+    if ((role === "precedent_citation" || role === "deadline_rules" || role === "legal_position_comparator" || role === "hallucination_audit" || role === "strategy_builder" || role === "evidence_weakness" || role === "risk_factors" || role === "law_update_summary" || role === "cross_exam") && structuredJson) {
       // Save to database if caseId provided
       if (caseId) {
         await supabase.from("ai_analysis").insert({
@@ -782,9 +787,9 @@ Please provide your professional legal analysis from your designated role perspe
         JSON.stringify({
           role,
           analysis: aiResponseText,
-          [responseKey]: precedentJson,
+          [responseKey]: structuredJson,
           sources: sourcesUsed,
-          model: "Legal AI (openai/gpt-5)",
+          model: modelUsed,
         }),
         { headers: { ...corsHeaders, "Content-Type": "application/json" } },
       );
@@ -809,7 +814,7 @@ Please provide your professional legal analysis from your designated role perspe
           analysis: aiResponseText,
           draft_text: aiResponseText,
           sources: sourcesUsed,
-          model: "Legal AI (openai/gpt-5)",
+          model: modelUsed,
         }),
         { headers: { ...corsHeaders, "Content-Type": "application/json" } },
       );
@@ -932,7 +937,7 @@ Please provide your professional legal analysis from your designated role perspe
 
     await supabase.rpc("log_api_usage", {
       _service_type: "llm",
-      _model_name: "google/gemini-2.5-pro",
+      _model_name: modelUsed,
       _tokens_used: tokensUsed,
       _estimated_cost: estimatedCost,
       _metadata: { role, caseId: caseId || null },
@@ -944,7 +949,7 @@ Please provide your professional legal analysis from your designated role perspe
         moduleId: moduleId || null,
         analysis: analysisText,
         sources: sourcesUsed,
-        model: "Legal AI (google/gemini-2.5-pro)",
+        model: modelUsed,
       }),
       {
         headers: { ...corsHeaders, "Content-Type": "application/json" },
