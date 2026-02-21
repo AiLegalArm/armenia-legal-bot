@@ -70,7 +70,7 @@ export function PrecedentCitationView({ data }: PrecedentCitationViewProps) {
                       <span className="text-xs text-muted-foreground">{p.date}</span>
                     )}
                     <Badge variant={p.binding_status === 'binding' ? 'default' : 'secondary'} className="text-xs">
-                      {p.binding_status === 'binding' ? '\u054A\u0561\u0580\u057F\u0561\u0564\u056B\u0580' : '\u0540\u0561\u0574\u0578\u0566\u0578\u0582\u0574'}
+                      {p.binding_status === 'binding' ? '\u054A\u0561\u0580\u057F\u0561\u0564\u056B\u0580' : '\u0540\u0561\u0574\u0578\u0566\u056B\u0579'}
                     </Badge>
                   </div>
                 </CardTitle>
