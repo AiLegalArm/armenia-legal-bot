@@ -206,6 +206,18 @@ const STRICT_JSON_ROLES = new Set([
   "ai-analyze:law_update_summary",
 ]);
 
+/** Functions that use callJSON with Gemini Pro (tool_calling or schema extraction) */
+const STRICT_JSON_FUNCTIONS = new Set([
+  "extract-case-fields",
+  "kb-search-assistant",
+]);
+
+/** Combined set of all roleLabels/functionNames allowed to use callJSON */
+const CALLJSON_ALLOWED = new Set([
+  ...STRICT_JSON_ROLES,
+  ...STRICT_JSON_FUNCTIONS,
+]);
+
 /**
  * Governance-enforced model config resolution.
  */
@@ -611,11 +623,11 @@ export async function callJSON<T = Record<string, unknown>>(
   const roleLabel = options.role ? `${functionName}:${options.role}` : functionName;
   const cfg = getModelConfig(functionName, options.role);
 
-  // FIX #3: callJSON is forbidden for OpenAI chat models — use Gemini Pro JSON roles only
-  if (cfg.model.startsWith("openai/") && !cfg.model.startsWith("openai/text-embedding-")) {
+  // Governance: callJSON allowed ONLY for strict JSON roles/functions (Gemini Pro)
+  if (!CALLJSON_ALLOWED.has(roleLabel) && !CALLJSON_ALLOWED.has(functionName)) {
     throw new Error(
-      `[openai-router] GOVERNANCE VIOLATION: callJSON is forbidden for OpenAI chat model "${cfg.model}" ` +
-        `(role: "${roleLabel}"). Use Gemini Pro JSON roles only.`
+      `[openai-router] GOVERNANCE VIOLATION: callJSON is not allowed for "${roleLabel}". ` +
+        `Only strict JSON roles (Gemini Pro) may use callJSON. Use callText for GPT-5 text roles.`
     );
   }
   const governance = buildGovernanceMeta(cfg, roleLabel);

@@ -26,6 +26,21 @@ import { redactPII } from "../_shared/pii-redactor.ts";
 import { dualSearch, formatKBContext, formatPracticeContext as formatPracticeCtx, temporalDisclaimer } from "../_shared/rag-search.ts";
 import { parseReferencesText, buildUserSourcesBlock } from "../_shared/reference-sources.ts";
 
+/** Parse JSON from GPT-5 text response (best-effort, returns null on failure) */
+function tryParseJson(text: string): unknown | null {
+  try {
+    const fenceMatch = text.match(/```(?:json)?\s*([\s\S]*?)```/);
+    const cleaned = fenceMatch ? fenceMatch[1].trim() : text.trim();
+    return JSON.parse(cleaned);
+  } catch {
+    const objMatch = text.match(/\{[\s\S]*\}/);
+    if (objMatch) {
+      try { return JSON.parse(objMatch[0]); } catch { /* ignore */ }
+    }
+    return null;
+  }
+}
+
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version',
@@ -703,16 +718,16 @@ Please provide your professional legal analysis from your designated role perspe
         aiResponseText = JSON.stringify(result.json, null, 2);
         console.log(JSON.stringify({ ts: new Date().toISOString(), lvl: "info", fn: "ai-analyze", mode: "deadline_rules", model: modelUsed, latency_ms: result.latency_ms }));
       } else if (role === "legal_position_comparator") {
-        const result = await callJSON("ai-analyze", routerMessages, LEGAL_POSITION_COMPARATOR_SCHEMA, { role });
-        structuredJson = result.json;
+        const result = await callText("ai-analyze", routerMessages, { role });
+        structuredJson = tryParseJson(result.text);
         modelUsed = result.model_used;
-        aiResponseText = JSON.stringify(result.json, null, 2);
+        aiResponseText = structuredJson ? JSON.stringify(structuredJson, null, 2) : result.text;
         console.log(JSON.stringify({ ts: new Date().toISOString(), lvl: "info", fn: "ai-analyze", mode: "legal_position_comparator", model: modelUsed, latency_ms: result.latency_ms }));
       } else if (role === "hallucination_audit") {
-        const result = await callJSON("ai-analyze", routerMessages, HALLUCINATION_AUDIT_SCHEMA, { role });
-        structuredJson = result.json;
+        const result = await callText("ai-analyze", routerMessages, { role });
+        structuredJson = tryParseJson(result.text);
         modelUsed = result.model_used;
-        aiResponseText = JSON.stringify(result.json, null, 2);
+        aiResponseText = structuredJson ? JSON.stringify(structuredJson, null, 2) : result.text;
         console.log(JSON.stringify({ ts: new Date().toISOString(), lvl: "info", fn: "ai-analyze", mode: "hallucination_audit", model: modelUsed, latency_ms: result.latency_ms }));
       } else if (role === "draft_deterministic") {
         // Cost control: reject if prompt exceeds 15k tokens (~4 chars/token estimate)
@@ -733,22 +748,22 @@ Please provide your professional legal analysis from your designated role perspe
         modelUsed = result.model_used;
         console.log(JSON.stringify({ ts: new Date().toISOString(), lvl: "info", fn: "ai-analyze", mode: "draft_deterministic", model: modelUsed, latency_ms: result.latency_ms }));
       } else if (role === "strategy_builder") {
-        const result = await callJSON("ai-analyze", routerMessages, STRATEGY_BUILDER_SCHEMA, { role });
-        structuredJson = result.json;
+        const result = await callText("ai-analyze", routerMessages, { role });
+        structuredJson = tryParseJson(result.text);
         modelUsed = result.model_used;
-        aiResponseText = JSON.stringify(result.json, null, 2);
+        aiResponseText = structuredJson ? JSON.stringify(structuredJson, null, 2) : result.text;
         console.log(JSON.stringify({ ts: new Date().toISOString(), lvl: "info", fn: "ai-analyze", mode: "strategy_builder", model: modelUsed, latency_ms: result.latency_ms }));
       } else if (role === "evidence_weakness") {
-        const result = await callJSON("ai-analyze", routerMessages, EVIDENCE_WEAKNESS_SCHEMA, { role });
-        structuredJson = result.json;
+        const result = await callText("ai-analyze", routerMessages, { role });
+        structuredJson = tryParseJson(result.text);
         modelUsed = result.model_used;
-        aiResponseText = JSON.stringify(result.json, null, 2);
+        aiResponseText = structuredJson ? JSON.stringify(structuredJson, null, 2) : result.text;
         console.log(JSON.stringify({ ts: new Date().toISOString(), lvl: "info", fn: "ai-analyze", mode: "evidence_weakness", model: modelUsed, latency_ms: result.latency_ms }));
       } else if (role === "risk_factors") {
-        const result = await callJSON("ai-analyze", routerMessages, RISK_FACTORS_SCHEMA, { role });
-        structuredJson = result.json;
+        const result = await callText("ai-analyze", routerMessages, { role });
+        structuredJson = tryParseJson(result.text);
         modelUsed = result.model_used;
-        aiResponseText = JSON.stringify(result.json, null, 2);
+        aiResponseText = structuredJson ? JSON.stringify(structuredJson, null, 2) : result.text;
         console.log(JSON.stringify({ ts: new Date().toISOString(), lvl: "info", fn: "ai-analyze", mode: "risk_factors", model: modelUsed, latency_ms: result.latency_ms }));
       } else if (role === "law_update_summary") {
         const result = await callJSON("ai-analyze", routerMessages, LAW_UPDATE_SUMMARY_SCHEMA, { role });
