@@ -1,17 +1,18 @@
 /**
  * _shared/openai-router.ts — Centralized AI router for all non-OCR edge functions.
  *
- * CRITICAL RULES:
- * - This is the ONLY file that calls the AI gateway.
- * - OCR functions (ocr-process, kb-table-screenshots) MUST NOT import this module.
- * - All functions must call by functionName; model is resolved here via MODEL_MAP.
- * - openai/* models are FORBIDDEN. The governance layer rejects them at runtime.
+ * MODEL GOVERNANCE (OpenAI-first):
+ * - openai/gpt-5 is the DEFAULT for all legal text reasoning and drafting.
+ * - google/gemini-2.5-pro is ONLY for strict JSON-output roles.
+ * - google/gemini-2.5-flash / flash-lite for cheap utilities.
+ * - openai/text-embedding-* ONLY for generate-embeddings.
+ * - No silent fallbacks. No hardcoded model strings. model_used always from router.
  *
  * Required env vars:
- *   LOVABLE_API_KEY     — AI Gateway key (auto-provisioned)
- *   OPENAI_TIMEOUT_MS   — optional, default 60000
+ *   LOVABLE_API_KEY        — AI Gateway key (auto-provisioned)
+ *   OPENAI_TIMEOUT_MS      — optional, default 60000
  *   OPENAI_AUDIO_TIMEOUT_MS — optional, default 120000
- *   OPENAI_MAX_RETRIES  — optional, default 2
+ *   OPENAI_MAX_RETRIES     — optional, default 2
  */
 
 // ── Model map ────────────────────────────────────────────────────────────────
@@ -33,24 +34,28 @@ export interface GovernanceMeta {
 }
 
 /**
- * Strict per-function model assignment.
- * No function may override these; they must call by functionName only.
- * OpenAI chat models are allowed ONLY for functions in OPENAI_CHAT_ALLOWLIST.
- * OpenAI embedding models are allowed ONLY for functions in OPENAI_EMBEDDING_ALLOWLIST.
+ * Strict per-function model assignment — OpenAI-first for quality.
+ * Gemini Pro reserved for strict JSON. Flash/Flash-lite for cheap utils.
  */
 export const MODEL_MAP: Record<string, ModelConfig> = {
-  // ── High-quality drafting & complex reasoning (OpenAI GPT-5) ──────────────
-  "generate-complaint": {
+  // ── OpenAI GPT-5 (quality-first) ──────────────────────────────────────────
+  "ai-analyze": {
     model: "openai/gpt-5",
-    temperature: 0.1,
+    temperature: 0.15,
     max_tokens: 14000,
-    description: "Complaint drafting (GPT-5)",
+    description: "Case analysis (GPT-5)",
   },
   "multi-agent-analyze": {
     model: "openai/gpt-5",
     temperature: 0.2,
     max_tokens: 16000,
     description: "Multi-agent analysis (GPT-5)",
+  },
+  "generate-complaint": {
+    model: "openai/gpt-5",
+    temperature: 0.1,
+    max_tokens: 14000,
+    description: "Complaint drafting (GPT-5)",
   },
   "legal-chat": {
     model: "openai/gpt-5",
@@ -64,46 +69,42 @@ export const MODEL_MAP: Record<string, ModelConfig> = {
     max_tokens: 16000,
     description: "File analysis (GPT-5)",
   },
-
-  // ── Core ai-analyze base (reasoning stability) ────────────────────────────
-  "ai-analyze": {
-    model: "anthropic/claude-3.7-sonnet",
-    temperature: 0.1,
+  "generate-document": {
+    model: "openai/gpt-5",
+    temperature: 0.15,
     max_tokens: 12000,
-    description: "Case analysis (Claude Sonnet)",
+    description: "Document generation (GPT-5)",
   },
 
-  // ── Structured JSON ───────────────────────────────────────────────────────
+  // ── Strict JSON (Gemini Pro) ──────────────────────────────────────────────
   "extract-case-fields": {
     model: "google/gemini-2.5-pro",
     temperature: 0.2,
     max_tokens: 4000,
     json_mode: true,
-    description: "Extract fields (Gemini Pro JSON)",
+    description: "Extract fields JSON (Gemini Pro)",
   },
   "kb-search-assistant": {
     model: "google/gemini-2.5-pro",
     temperature: 0.2,
     max_tokens: 200,
     json_mode: true,
-    description: "KB keywords (Gemini Pro JSON)",
+    description: "KB keywords JSON (Gemini Pro)",
   },
 
-  // ── Light tasks ───────────────────────────────────────────────────────────
-  "generate-document": {
-    model: "google/gemini-2.5-flash",
-    temperature: 0.2,
-    max_tokens: 10000,
-    description: "Documents (Gemini Flash)",
-  },
+  // ── Cheap utilities (Gemini Flash) ────────────────────────────────────────
   "audio-transcribe": {
     model: "google/gemini-2.5-flash",
     temperature: 0.1,
     max_tokens: 16000,
     description: "Transcription (Gemini Flash)",
   },
-
-  // ── Utilities ─────────────────────────────────────────────────────────────
+  "echr-translate": {
+    model: "google/gemini-2.5-flash",
+    temperature: 0.1,
+    max_tokens: 8000,
+    description: "ECHR translate (Gemini Flash)",
+  },
   "legal-practice-enrich": {
     model: "google/gemini-2.5-flash",
     temperature: 0.2,
@@ -116,14 +117,8 @@ export const MODEL_MAP: Record<string, ModelConfig> = {
     max_tokens: 1000,
     description: "Rerank (Flash-lite)",
   },
-  "echr-translate": {
-    model: "google/gemini-2.5-flash",
-    temperature: 0.1,
-    max_tokens: 8000,
-    description: "ECHR translate (Flash)",
-  },
 
-  // ── Embeddings (OpenAI allowed ONLY here) ─────────────────────────────────
+  // ── Embeddings (OpenAI only) ──────────────────────────────────────────────
   "generate-embeddings": {
     model: "openai/text-embedding-3-large",
     temperature: 0,
@@ -133,10 +128,11 @@ export const MODEL_MAP: Record<string, ModelConfig> = {
 };
 
 /**
- * Role-specific model overrides for ai-analyze diagnostic engines.
+ * Role-specific model overrides for ai-analyze engines.
+ * Reasoning roles inherit GPT-5 base. JSON roles forced to Gemini Pro.
  */
 const ROLE_OVERRIDES: Record<string, Partial<ModelConfig>> = {
-  // ── Reasoning roles (inherit Claude base) ──────────────────────────────────
+  // ── Reasoning roles (inherit GPT-5 base) ───────────────────────────────────
   "ai-analyze:strategy_builder": { description: "Strategy builder" },
   "ai-analyze:risk_factors": { description: "Risk factors" },
   "ai-analyze:evidence_weakness": { description: "Evidence weakness" },
@@ -149,7 +145,7 @@ const ROLE_OVERRIDES: Record<string, Partial<ModelConfig>> = {
     max_tokens: 14000,
     description: "Deterministic draft (GPT-5 temp=0)",
   },
-  // ── Structured JSON (Gemini Pro) ───────────────────────────────────────────
+  // ── Strict JSON roles (Gemini Pro) ─────────────────────────────────────────
   "ai-analyze:precedent_citation": {
     model: "google/gemini-2.5-pro",
     temperature: 0.2,
@@ -181,18 +177,17 @@ const ROLE_OVERRIDES: Record<string, Partial<ModelConfig>> = {
 const MAX_TEMPERATURE = 0.3;
 const MAX_TOKENS_CAP = 16384;
 
-/** OpenAI chat models allowed ONLY for these roleLabels/functionNames */
-const OPENAI_CHAT_ALLOWLIST = new Set([
-  "generate-complaint",
-  "multi-agent-analyze",
-  "legal-chat",
-  "analyze-files-for-complaint",
-  "ai-analyze:draft_deterministic",
-]);
-
 /** OpenAI embedding models allowed ONLY for these functionNames */
 const OPENAI_EMBEDDING_ALLOWLIST = new Set([
   "generate-embeddings",
+]);
+
+/** Roles that MUST use Gemini Pro strict JSON (callJSON only, callText forbidden) */
+const STRICT_JSON_ROLES = new Set([
+  "ai-analyze:precedent_citation",
+  "ai-analyze:cross_exam",
+  "ai-analyze:deadline_rules",
+  "ai-analyze:law_update_summary",
 ]);
 
 /**
@@ -239,10 +234,11 @@ export function buildGovernanceMeta(cfg: ModelConfig, roleLabel: string): Govern
 }
 
 /**
- * Allowlist-based governance enforcement.
- * OpenAI chat => allowed only if roleLabel in OPENAI_CHAT_ALLOWLIST.
- * OpenAI embedding => allowed only if roleLabel in OPENAI_EMBEDDING_ALLOWLIST.
- * Temperature and max_tokens: STRICT throw (no silent cap) for legal functions.
+ * Governance enforcement:
+ * - openai/gpt-5 chat: allowed for any registered function/role (OpenAI-first policy).
+ * - openai/text-embedding-*: allowed ONLY for generate-embeddings.
+ * - google/*, anthropic/*: allowed as configured.
+ * - Temperature > 0.3 or max_tokens > 16384: STRICT THROW (no silent cap).
  */
 function enforceGovernance(cfg: ModelConfig, roleLabel: string): ModelConfig {
   if (cfg.model.startsWith("openai/")) {
@@ -254,16 +250,9 @@ function enforceGovernance(cfg: ModelConfig, roleLabel: string): ModelConfig {
             `is not allowed for "${roleLabel}". Allowed only for: ${[...OPENAI_EMBEDDING_ALLOWLIST].join(", ")}.`
         );
       }
-      // Embedding models skip temperature/token caps
-      return cfg;
+      return cfg; // embeddings skip temperature/token caps
     }
-    // OpenAI chat model
-    if (!OPENAI_CHAT_ALLOWLIST.has(roleLabel)) {
-      throw new Error(
-        `[openai-router] GOVERNANCE VIOLATION: OpenAI chat model "${cfg.model}" ` +
-          `is not allowed for "${roleLabel}". Allowed only for: ${[...OPENAI_CHAT_ALLOWLIST].join(", ")}.`
-      );
-    }
+    // openai/gpt-5 chat: allowed for any registered function (OpenAI-first policy)
   }
 
   // Strict enforcement: throw on violation, no silent caps
@@ -289,6 +278,7 @@ const LEGAL_REASONING_FNS = new Set([
   "legal-chat",
   "generate-complaint",
   "analyze-files-for-complaint",
+  "generate-document",
 ]);
 
 const JSON_FNS = new Set(["extract-case-fields", "kb-search-assistant"]);
@@ -545,6 +535,14 @@ export async function callText(
   options: RouterCallOptions & { role?: string } = {}
 ): Promise<TextResult> {
   const roleLabel = options.role ? `${functionName}:${options.role}` : functionName;
+
+  // Strict JSON roles MUST use callJSON, not callText
+  if (STRICT_JSON_ROLES.has(roleLabel)) {
+    throw new Error(
+      `[openai-router] GOVERNANCE VIOLATION: "${roleLabel}" is a strict JSON role and MUST use callJSON, not callText.`
+    );
+  }
+
   const cfg = getModelConfig(functionName, options.role);
   const governance = buildGovernanceMeta(cfg, roleLabel);
   const requestId = newRequestId();
