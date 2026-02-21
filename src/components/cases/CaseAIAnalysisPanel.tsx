@@ -13,7 +13,7 @@ import { Switch } from '@/components/ui/switch';
 import { Label } from '@/components/ui/label';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { exportAnalysisToPDF, exportMultipleAnalysesToPDF } from '@/lib/pdfExport';
-import { Loader2, Brain, Download, FileSignature, Save, AlertTriangle, Check, Scale, Timer, GitCompare, ShieldCheck } from 'lucide-react';
+import { Loader2, Brain, Download, FileSignature, Save, AlertTriangle, Check, Scale, Timer, GitCompare, ShieldCheck, FileText } from 'lucide-react';
 import { useReferencesText } from '@/lib/references-store';
 import { PrecedentCitationView, type PrecedentCitationResult } from '@/components/cases/PrecedentCitationView';
 import { DeadlineRulesView, type DeadlineRulesResult } from '@/components/cases/DeadlineRulesView';
@@ -74,6 +74,8 @@ export function CaseAIAnalysisPanel({
   const [isComparatorLoading, setIsComparatorLoading] = useState(false);
   const [auditData, setAuditData] = useState<HallucinationAuditResult | null>(null);
   const [isAuditLoading, setIsAuditLoading] = useState(false);
+  const [draftText, setDraftText] = useState<string | null>(null);
+  const [isDraftLoading, setIsDraftLoading] = useState(false);
 
   // If user clicks "Clear" while the initial saved-analyses load is still in-flight,
   // we must ignore that async result to prevent the content from "reappearing".
@@ -389,6 +391,33 @@ export function CaseAIAnalysisPanel({
                   {i18n.language === 'hy' ? '\u054D\u057F\u0578\u0582\u0563\u0578\u0582\u0574' : i18n.language === 'en' ? 'Audit' : '\u0410\u0443\u0434\u0438\u057F'}
                 </span>
               </Button>
+              <Button 
+                variant="outline" 
+                size="sm" 
+                onClick={async () => {
+                  setIsDraftLoading(true);
+                  setDraftText(null);
+                  try {
+                    const result = await analyzeCase('draft_deterministic', caseId, facts, legalQuestion || '', referencesText);
+                    if (result) {
+                      setDraftText(result.draft_text || result.analysis || null);
+                    }
+                  } finally {
+                    setIsDraftLoading(false);
+                  }
+                }}
+                disabled={isDraftLoading || isAnalyzing}
+                className="h-10 rounded-xl text-mobile-sm sm:text-sm"
+              >
+                {isDraftLoading ? (
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin shrink-0" />
+                ) : (
+                  <FileText className="mr-2 h-4 w-4 shrink-0" />
+                )}
+                <span className="truncate">
+                  {i18n.language === 'hy' ? '\u0546\u0561\u056D\u0561\u0563\u056B\u056E' : i18n.language === 'en' ? 'Draft' : '\u0427\u0435\u0440\u043D\u043E\u0432\u0438\u043A'}
+                </span>
+              </Button>
               {Object.values(results).some(r => r !== null) && (
                 <>
                   <Button
@@ -588,6 +617,20 @@ export function CaseAIAnalysisPanel({
                  : '\u0410\u0443\u0434\u0438\u0442 \u0433\u0430\u043B\u043B\u044E\u0446\u0438\u043D\u0430\u0446\u0438\u0439'}
               </h3>
               <HallucinationAuditView data={auditData} />
+            </div>
+          )}
+
+          {/* Draft Deterministic Results */}
+          {draftText && (
+            <div className="mt-6 pt-6 border-t">
+              <h3 className="font-semibold text-lg mb-3">
+                {i18n.language === 'hy' ? '\u0546\u0561\u056D\u0561\u0563\u056B\u056E \u0583\u0561\u057D\u057F\u0561\u0569\u0578\u0582\u0572\u0569' 
+                 : i18n.language === 'en' ? 'Draft Document' 
+                 : '\u0427\u0435\u0440\u043D\u043E\u0432\u0438\u043A \u0434\u043E\u043A\u0443\u043C\u0435\u043D\u0442\u0430'}
+              </h3>
+              <div className="bg-muted/30 rounded-lg p-4 text-sm whitespace-pre-wrap font-mono leading-relaxed">
+                {draftText}
+              </div>
             </div>
           )}
 

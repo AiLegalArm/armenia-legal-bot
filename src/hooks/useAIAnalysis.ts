@@ -3,7 +3,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { useTranslation } from "react-i18next";
 
-export type AIRole = "advocate" | "prosecutor" | "judge" | "aggregator" | "precedent_citation" | "deadline_rules" | "legal_position_comparator" | "hallucination_audit";
+export type AIRole = "advocate" | "prosecutor" | "judge" | "aggregator" | "precedent_citation" | "deadline_rules" | "legal_position_comparator" | "hallucination_audit" | "draft_deterministic";
 
 interface AnalysisResult {
   role: AIRole;
@@ -14,6 +14,7 @@ interface AnalysisResult {
   deadline_data?: unknown;
   comparator_data?: unknown;
   audit_data?: unknown;
+  draft_text?: string;
 }
 
 interface UseAIAnalysisReturn {
@@ -41,6 +42,7 @@ export function useAIAnalysis(): UseAIAnalysisReturn {
     deadline_rules: null,
     legal_position_comparator: null,
     hallucination_audit: null,
+    draft_deterministic: null,
   });
 
   const analyzeCase = useCallback(async (
@@ -113,6 +115,7 @@ export function useAIAnalysis(): UseAIAnalysisReturn {
         deadline_data: data.deadline_data || null,
         comparator_data: data.comparator_data || null,
         audit_data: data.audit_data || null,
+        draft_text: data.draft_text || null,
       };
 
       setResults(prev => ({
@@ -211,6 +214,7 @@ export function useAIAnalysis(): UseAIAnalysisReturn {
       deadline_rules: null,
       legal_position_comparator: null,
       hallucination_audit: null,
+      draft_deterministic: null,
     });
     setCreditsExhausted(false);
   }, []);
