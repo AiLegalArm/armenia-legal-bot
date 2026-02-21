@@ -120,10 +120,11 @@ const ROLE_OVERRIDES: Record<string, Partial<ModelConfig>> = {
   "ai-analyze:legal_position_comparator": {
     description: "Legal position comparator engine",
   },
-  // ── Deterministic drafting (temp=0) ───────────────────────────────────────
+  // ── Deterministic drafting (temp=0, 14k tokens) ────────────────────────────
   "ai-analyze:draft_deterministic": {
     temperature: 0,
-    description: "Draft deterministic engine (temp=0)",
+    max_tokens: 14000,
+    description: "Draft deterministic engine (temp=0, 14k tokens)",
   },
   // ── Structured JSON roles (Gemini 2.5 Pro, temp=0.2) ──────────────────────
   "ai-analyze:deadline_rules": {

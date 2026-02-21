@@ -715,6 +715,19 @@ Please provide your professional legal analysis from your designated role perspe
         aiResponseText = JSON.stringify(result.json, null, 2);
         console.log(JSON.stringify({ ts: new Date().toISOString(), lvl: "info", fn: "ai-analyze", mode: "hallucination_audit", model: modelUsed, latency_ms: result.latency_ms }));
       } else if (role === "draft_deterministic") {
+        // Cost control: reject if prompt exceeds 15k tokens (~4 chars/token estimate)
+        const estimatedPromptTokens = routerMessages.reduce((sum, m) => sum + (typeof m.content === "string" ? m.content.length : JSON.stringify(m.content).length), 0) / 4;
+        if (estimatedPromptTokens > 15000) {
+          return new Response(
+            JSON.stringify({
+              error: "prompt_too_large",
+              message: "Request rejected: estimated prompt tokens exceed 15,000 limit. Reduce input size.",
+              estimated_tokens: Math.round(estimatedPromptTokens),
+              limit: 15000,
+            }),
+            { status: 413, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+          );
+        }
         const result = await callText("ai-analyze", routerMessages, { role });
         aiResponseText = result.text;
         modelUsed = result.model_used;
