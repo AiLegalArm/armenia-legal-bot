@@ -406,12 +406,23 @@ export function LegalPracticeKB() {
     setArticlesInput('');
   };
 
-  const handleEdit = (doc: LegalPracticeDocument) => {
+  const handleEdit = async (doc: LegalPracticeDocument) => {
+    // Fetch full content_text since list view doesn't load it
+    let contentText = doc.content_text || '';
+    try {
+      const { data } = await supabase
+        .from('legal_practice_kb')
+        .select('content_text')
+        .eq('id', doc.id)
+        .single();
+      if (data?.content_text) contentText = data.content_text;
+    } catch { /* use empty */ }
+
     setEditingDoc(doc);
     setFormData({
       title: doc.title,
       description: doc.description || '',
-      content_text: doc.content_text,
+      content_text: contentText,
       court_type: doc.court_type,
       practice_category: doc.practice_category,
       court_name: doc.court_name || '',
@@ -546,7 +557,7 @@ export function LegalPracticeKB() {
             className="border-green-500/50 text-green-700 hover:bg-green-500/10 font-medium"
           >
             <FileText className="h-4 w-4 mr-2" />
-            Импорт файла ЕСПЧ (JSON/TXT)
+            {t('lp_echr_import_btn')}
           </Button>
           <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
             <DialogTrigger asChild>
@@ -732,7 +743,7 @@ export function LegalPracticeKB() {
                         className="ml-2 inline-flex items-center gap-1 rounded-md border border-primary/40 bg-primary/10 px-2 py-0.5 text-xs font-medium text-primary hover:bg-primary/20 transition-colors"
                       >
                         <FileText className="h-3 w-3" />
-                        Импорт файла ЕСПЧ
+                        {t('lp_echr_import_btn')}
                       </span>
                     )}
                   </button>

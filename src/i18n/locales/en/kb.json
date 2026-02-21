@@ -144,6 +144,7 @@
   "lp_bulk_enrich_start": "AI enriching: {{count}} documents...",
   "lp_bulk_enrich_success": "Enriched: {{count}} documents",
   "lp_bulk_enrich_fail": "Failed: {{count}} documents",
+  "lp_echr_import_btn": "ECHR File Import (JSON/TXT)",
   "lp_bi_title": "Bulk Import (TXT / JSON)",
   "lp_bi_description": "Upload TXT or JSON files: JSON: [{title, content_text, ...}]",
   "lp_bi_drop_hint": "Click or drag TXT / JSON files",
