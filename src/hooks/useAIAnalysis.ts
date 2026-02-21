@@ -120,7 +120,7 @@ export function useAIAnalysis(): UseAIAnalysisReturn {
         role: data.role,
         analysis: data.analysis,
         sources: data.sources || [],
-        model: data.model,
+        model: data.model_used || data.model,
         precedent_data: data.precedent_data || null,
         deadline_data: data.deadline_data || null,
         comparator_data: data.comparator_data || null,
@@ -198,7 +198,7 @@ export function useAIAnalysis(): UseAIAnalysisReturn {
             role: data.role,
             analysis: data.analysis,
             sources: data.sources || [],
-            model: data.model,
+            model: data.model_used || data.model,
           };
           
           setResults(prev => ({
