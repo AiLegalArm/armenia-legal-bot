@@ -228,7 +228,7 @@ export function getModelConfig(functionName: string, role?: string): ModelConfig
       );
     }
     const merged = { ...base, ...override } as ModelConfig;
-    return enforceGovernance(merged, roleLabel);
+    return enforceGovernance(merged, roleLabel, functionName);
   }
 
   const cfg = MODEL_MAP[functionName];
@@ -237,7 +237,7 @@ export function getModelConfig(functionName: string, role?: string): ModelConfig
       `[openai-router] No model config for function "${functionName}".`
     );
   }
-  return enforceGovernance(cfg, roleLabel);
+  return enforceGovernance(cfg, roleLabel, functionName);
 }
 
 export function buildGovernanceMeta(cfg: ModelConfig, roleLabel: string): GovernanceMeta {
@@ -251,19 +251,21 @@ export function buildGovernanceMeta(cfg: ModelConfig, roleLabel: string): Govern
 
 /**
  * Allowlist-based governance enforcement:
- * - openai/text-embedding-*: allowed ONLY for generate-embeddings.
+ * - openai/text-embedding-*: allowed ONLY by functionName (not roleLabel).
  * - openai/* chat: allowed ONLY if roleLabel is in OPENAI_CHAT_ALLOWLIST.
- * - google/*, anthropic/*: allowed as configured.
+ * - STRICT_JSON_ROLES must resolve to google/gemini-2.5-pro.
  * - Temperature > 0.3 or max_tokens > 16384: STRICT THROW.
  */
-function enforceGovernance(cfg: ModelConfig, roleLabel: string): ModelConfig {
+function enforceGovernance(cfg: ModelConfig, roleLabel: string, functionName: string): ModelConfig {
+  // ── OpenAI allowlist checks ────────────────────────────────────────────────
   if (cfg.model.startsWith("openai/")) {
     const isEmbedding = cfg.model.startsWith("openai/text-embedding-");
     if (isEmbedding) {
-      if (!OPENAI_EMBEDDING_ALLOWLIST.has(roleLabel)) {
+      // FIX #1: validate by functionName, not roleLabel
+      if (!OPENAI_EMBEDDING_ALLOWLIST.has(functionName)) {
         throw new Error(
           `[openai-router] GOVERNANCE VIOLATION: OpenAI embedding model "${cfg.model}" ` +
-            `is not allowed for "${roleLabel}". Allowed only for: ${[...OPENAI_EMBEDDING_ALLOWLIST].join(", ")}.`
+            `is not allowed for function "${functionName}". Allowed only for: ${[...OPENAI_EMBEDDING_ALLOWLIST].join(", ")}.`
         );
       }
       return cfg;
@@ -277,6 +279,15 @@ function enforceGovernance(cfg: ModelConfig, roleLabel: string): ModelConfig {
     }
   }
 
+  // ── Strict JSON roles must resolve to Gemini Pro ───────────────────────────
+  if (STRICT_JSON_ROLES.has(roleLabel) && cfg.model !== "google/gemini-2.5-pro") {
+    throw new Error(
+      `[openai-router] GOVERNANCE VIOLATION: Strict JSON role "${roleLabel}" must use ` +
+        `"google/gemini-2.5-pro", but resolved to "${cfg.model}".`
+    );
+  }
+
+  // ── Parameter caps ─────────────────────────────────────────────────────────
   if (cfg.temperature > MAX_TEMPERATURE) {
     throw new Error(
       `[openai-router] GOVERNANCE VIOLATION: temperature ${cfg.temperature} exceeds cap ${MAX_TEMPERATURE} for "${roleLabel}".`
@@ -599,6 +610,14 @@ export async function callJSON<T = Record<string, unknown>>(
 ): Promise<JSONResult<T>> {
   const roleLabel = options.role ? `${functionName}:${options.role}` : functionName;
   const cfg = getModelConfig(functionName, options.role);
+
+  // FIX #3: callJSON is forbidden for OpenAI chat models — use Gemini Pro JSON roles only
+  if (cfg.model.startsWith("openai/") && !cfg.model.startsWith("openai/text-embedding-")) {
+    throw new Error(
+      `[openai-router] GOVERNANCE VIOLATION: callJSON is forbidden for OpenAI chat model "${cfg.model}" ` +
+        `(role: "${roleLabel}"). Use Gemini Pro JSON roles only.`
+    );
+  }
   const governance = buildGovernanceMeta(cfg, roleLabel);
   const requestId = newRequestId();
   const safeMessages = prependSafetyHeader(functionName, messages);
