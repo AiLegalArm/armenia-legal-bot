@@ -29,7 +29,7 @@ export interface ModelConfig {
  * Models map to OpenAI models via Lovable AI Gateway.
  */
 export const MODEL_MAP: Record<string, ModelConfig> = {
-  // ── Heavy legal reasoning (GPT-5 = openai/gpt-5 via gateway)
+  // ── High reasoning — anthropic/claude-3.7-sonnet ──────────────────────────
   "ai-analyze": {
     model: "anthropic/claude-3.7-sonnet",
     temperature: 0.1,
@@ -37,60 +37,58 @@ export const MODEL_MAP: Record<string, ModelConfig> = {
     description: "AI legal case analysis (Claude 3.7 Sonnet, temp=0.1)",
   },
   "multi-agent-analyze": {
-    model: "openai/gpt-5",
-    temperature: 0.3,
+    model: "anthropic/claude-3.7-sonnet",
+    temperature: 0.1,
     max_tokens: 16384,
-    description: "Multi-agent legal analysis (GPT-5, temp=0.3)",
+    description: "Multi-agent legal analysis (Claude 3.7 Sonnet, temp=0.1)",
   },
   "generate-complaint": {
-    model: "openai/gpt-5",
+    model: "anthropic/claude-3.7-sonnet",
     temperature: 0.1,
     max_tokens: 12000,
-    description: "Legal complaint generation (GPT-5, temp=0.1)",
+    description: "Legal complaint generation (Claude 3.7 Sonnet, temp=0.1)",
   },
   "legal-chat": {
-    model: "openai/gpt-5",
-    temperature: 0.2,
+    model: "anthropic/claude-3.7-sonnet",
+    temperature: 0.1,
     max_tokens: 16000,
-    description: "Legal chat assistant (GPT-5, temp=0.2)",
+    description: "Legal chat assistant (Claude 3.7 Sonnet, temp=0.1)",
   },
   "analyze-files-for-complaint": {
-    model: "openai/gpt-5",
-    temperature: 0.3,
+    model: "anthropic/claude-3.7-sonnet",
+    temperature: 0.1,
     max_tokens: 16384,
-    description: "File analysis for complaints (GPT-5, temp=0.3)",
+    description: "File analysis for complaints (Claude 3.7 Sonnet, temp=0.1)",
   },
 
-  // ── Lighter tasks (GPT-5-mini = openai/gpt-5-mini via gateway)
-  "generate-document": {
-    model: "openai/gpt-5-mini",
-    temperature: 0.2,
-    max_tokens: 10000,
-    description: "Legal document generation (GPT-5-mini, temp=0.2)",
-  },
+  // ── Structured JSON — google/gemini-2.5-pro ───────────────────────────────
   "extract-case-fields": {
-    model: "openai/gpt-5-mini",
-    temperature: 0.1,
+    model: "google/gemini-2.5-pro",
+    temperature: 0.2,
     max_tokens: 4000,
     json_mode: true,
-    description: "Case field extraction — JSON output (GPT-5-mini, temp=0.1)",
+    description: "Case field extraction — JSON (Gemini 2.5 Pro, temp=0.2)",
   },
   "kb-search-assistant": {
-    model: "openai/gpt-5-mini",
-    temperature: 0.1,
+    model: "google/gemini-2.5-pro",
+    temperature: 0.2,
     max_tokens: 200,
     json_mode: true,
-    description: "KB keyword extraction — JSON output (GPT-5-mini, temp=0.1)",
+    description: "KB keyword extraction — JSON (Gemini 2.5 Pro, temp=0.2)",
   },
 
-  // ── Audio transcription — also via gateway text completion (Gemini kept for audio format support)
-  // NOTE: OpenAI whisper is not available via Lovable Gateway; audio-transcribe keeps gateway call
-  // but uses gpt-5-mini for transcription text tasks. Raw audio bytes still sent as multimodal.
+  // ── Light tasks — google/gemini-2.5-flash ─────────────────────────────────
+  "generate-document": {
+    model: "google/gemini-2.5-flash",
+    temperature: 0.2,
+    max_tokens: 10000,
+    description: "Legal document generation (Gemini 2.5 Flash, temp=0.2)",
+  },
   "audio-transcribe": {
-    model: "openai/gpt-5-mini",
+    model: "google/gemini-2.5-flash",
     temperature: 0.1,
     max_tokens: 16000,
-    description: "Audio transcription (GPT-5-mini, temp=0.1)",
+    description: "Audio transcription (Gemini 2.5 Flash, temp=0.1)",
   },
 };
 
@@ -100,19 +98,12 @@ export const MODEL_MAP: Record<string, ModelConfig> = {
  * Falls back to MODEL_MAP[functionName] if no override exists.
  */
 const ROLE_OVERRIDES: Record<string, Partial<ModelConfig>> = {
-  // All diagnostic engines use the same model as base (claude-3.7-sonnet)
-  // Overrides kept for explicit documentation and potential future divergence
+  // ── High reasoning roles (Claude 3.7 Sonnet, temp=0.1) ────────────────────
   "ai-analyze:precedent_citation": {
     description: "Precedent citation engine",
   },
-  "ai-analyze:deadline_rules": {
-    description: "Deadline rules engine",
-  },
   "ai-analyze:cross_exam": {
     description: "Cross-examination engine",
-  },
-  "ai-analyze:draft_deterministic": {
-    description: "Draft deterministic engine",
   },
   "ai-analyze:strategy_builder": {
     description: "Strategy builder engine",
@@ -128,6 +119,17 @@ const ROLE_OVERRIDES: Record<string, Partial<ModelConfig>> = {
   },
   "ai-analyze:legal_position_comparator": {
     description: "Legal position comparator engine",
+  },
+  // ── Deterministic drafting (temp=0) ───────────────────────────────────────
+  "ai-analyze:draft_deterministic": {
+    temperature: 0,
+    description: "Draft deterministic engine (temp=0)",
+  },
+  // ── Structured JSON roles (Gemini 2.5 Pro, temp=0.2) ──────────────────────
+  "ai-analyze:deadline_rules": {
+    model: "google/gemini-2.5-pro",
+    temperature: 0.2,
+    description: "Deadline rules engine (Gemini 2.5 Pro, JSON)",
   },
 };
 
@@ -386,23 +388,24 @@ async function fetchWithRetry(
 
 /**
  * Build a clean request body for the AI gateway.
- * OpenAI gpt-5 / gpt-5-mini do NOT support custom temperature (only default=1 is accepted).
- * We omit temperature entirely for openai/ models to avoid 400 errors.
+ * Provider-aware parameter rules:
+ *   - anthropic/*: pass temperature + max_tokens (always)
+ *   - google/*:    pass temperature + max_tokens (always)
+ *   - openai/*:    FORBIDDEN by policy; kept only for legacy safety — omit temperature
  */
 function buildRequestBody(
   cfg: ModelConfig,
   messages: RouterMessage[]
 ): Record<string, unknown> {
   const isOpenAI = cfg.model.startsWith("openai/");
-  const isAnthropic = cfg.model.startsWith("anthropic/");
   const tokenKey = isOpenAI ? "max_completion_tokens" : "max_tokens";
   const body: Record<string, unknown> = {
     model: cfg.model,
     [tokenKey]: cfg.max_tokens,
     messages,
   };
-  // OpenAI: omit temperature to avoid 400 errors
-  // Anthropic + Gemini + others: pass temperature
+  // Anthropic + Google: always pass temperature
+  // OpenAI (forbidden by policy but kept for safety): omit temperature
   if (!isOpenAI) {
     body.temperature = cfg.temperature;
   }
