@@ -263,7 +263,7 @@ export function LegalPracticeBulkImport({ open, onOpenChange }: LegalPracticeBul
           throw new Error('Invalid JSON format');
         }
         const rawItems = Array.isArray(jsonData) ? jsonData : [jsonData];
-        const fallbackTitle = file.name.replace(/\.json$/i, '').replace(/_/g, ' ');
+        const fallbackTitle = file.name.replace(/\.json$/i, '').replace(/^_+/, '').replace(/_/g, ' ');
 
         for (const item of rawItems) {
           const contentText = (item as any).content_text || (item as any).content || (item as any).text || (item as any).body || '';
@@ -309,7 +309,7 @@ export function LegalPracticeBulkImport({ open, onOpenChange }: LegalPracticeBul
         }
       } else {
         // TXT file
-        const title = file.name.replace(/\.txt$/i, '').replace(/_/g, ' ');
+        const title = file.name.replace(/\.txt$/i, '').replace(/^_+/, '').replace(/_/g, ' ');
         const resolvedOutcome = autoDetectOutcome ? detectOutcome(textContent) : manualOutcome;
         const extracted = extractMetadata(textContent);
 

@@ -166,7 +166,7 @@ export function LegalPracticeAIImport({ open, onOpenChange }: LegalPracticeAIImp
       const { data, error: fnError } = await supabase.functions.invoke('legal-practice-import', {
         body: {
           textContent,
-          fileName: file.name.replace(/\.(txt|json|pdf)$/i, ''),
+          fileName: file.name.replace(/\.(txt|json|pdf)$/i, '').replace(/^_+/, ''),
         },
       });
       

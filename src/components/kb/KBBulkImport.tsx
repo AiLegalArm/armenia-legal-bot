@@ -85,7 +85,7 @@ export function KBBulkImport({ open, onOpenChange, onSuccess }: KBBulkImportProp
         continue;
       }
       
-      const fileName = file.name.replace(/\.(jsonl?|json)$/i, '');
+      const fileName = file.name.replace(/\.(jsonl?|json)$/i, '').replace(/^_+/, '');
       
       validFiles.push({
         id: crypto.randomUUID(),
