@@ -228,56 +228,51 @@ async function rerankWithAI(
   }));
 
   try {
-    const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${apiKey}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        model: "google/gemini-2.5-flash-lite",
-        messages: [
-          {
-            role: "system",
-            content: `You are a legal document relevance ranker. Given a user query and a list of candidate documents, call the rank_results function with the indices of the most relevant documents in order of decreasing relevance. Return at most ${topK} indices. Consider legal terminology, article references, and semantic meaning.`,
-          },
-          {
-            role: "user",
-            content: `Query: "${query}"\n\nCandidates:\n${items.map(it => `[${it.idx}] ${it.title}: ${it.snippet}`).join("\n\n")}`,
-          },
-        ],
-        tools: [
-          {
-            type: "function",
-            function: {
-              name: "rank_results",
-              description: "Return ranked indices of the most relevant documents",
-              parameters: {
-                type: "object",
-                properties: {
-                  ranked_indices: {
-                    type: "array",
-                    items: { type: "number" },
-                    description: `Array of candidate indices (0-based) in order of relevance, max ${topK}`,
+    const { callGatewayBypass } = await import("../_shared/gateway-bypass.ts");
+
+    const bypassResult = await callGatewayBypass(
+      [
+        {
+          role: "system",
+          content: `You are a legal document relevance ranker. Given a user query and a list of candidate documents, call the rank_results function with the indices of the most relevant documents in order of decreasing relevance. Return at most ${topK} indices. Consider legal terminology, article references, and semantic meaning.`,
+        },
+        {
+          role: "user",
+          content: `Query: "${query}"\n\nCandidates:\n${items.map(it => `[${it.idx}] ${it.title}: ${it.snippet}`).join("\n\n")}`,
+        },
+      ],
+      {
+        functionName: "vector-search-rerank",
+        bypassReason: "tool_calling",
+        timeoutMs: 30000,
+        extraBody: {
+          tools: [
+            {
+              type: "function",
+              function: {
+                name: "rank_results",
+                description: "Return ranked indices of the most relevant documents",
+                parameters: {
+                  type: "object",
+                  properties: {
+                    ranked_indices: {
+                      type: "array",
+                      items: { type: "number" },
+                      description: `Array of candidate indices (0-based) in order of relevance, max ${topK}`,
+                    },
                   },
+                  required: ["ranked_indices"],
+                  additionalProperties: false,
                 },
-                required: ["ranked_indices"],
-                additionalProperties: false,
               },
             },
-          },
-        ],
-        tool_choice: { type: "function", function: { name: "rank_results" } },
-        max_completion_tokens: 500,
-      }),
-    });
+          ],
+          tool_choice: { type: "function", function: { name: "rank_results" } },
+        },
+      }
+    );
 
-    if (!response.ok) {
-      err("vector-search", "AI rerank failed", undefined, { status: response.status });
-      return candidates.slice(0, topK); // fallback: return first N
-    }
-
-    const data = await response.json();
+    const data = bypassResult.data;
     const toolCall = data.choices?.[0]?.message?.tool_calls?.[0];
     if (toolCall?.function?.arguments) {
       const args = JSON.parse(toolCall.function.arguments);

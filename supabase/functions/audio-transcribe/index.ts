@@ -94,71 +94,54 @@ serve(async (req) => {
     };
     const mimeType = mimeMap[ext] || "audio/mpeg";
 
-    // Call Gemini 2.5 Flash via Lovable AI Gateway
-    console.log("Sending to Gemini 2.5 Flash via Lovable AI Gateway...");
+    // Call via centralized gateway-bypass (multimodal content requires bypass)
+    const { callGatewayBypass } = await import("../_shared/gateway-bypass.ts");
+    console.log("Sending to AI via centralized gateway-bypass (multimodal)...");
 
-    const geminiResponse = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
-      method: "POST",
-      headers: {
-        "Authorization": `Bearer ${lovableApiKey}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        model: "google/gemini-2.5-flash",
-        messages: [
-          {
-            role: "user",
-            content: [
-              {
-                type: "text",
-                text: `You are a professional transcription service specializing in Armenian and Russian legal proceedings.
+    const bypassResult = await callGatewayBypass(
+      [
+        {
+          role: "user",
+          content: [
+            {
+              type: "text",
+              text: `You are a professional transcription service specializing in Armenian and Russian legal proceedings.
 Transcribe the audio file as a dialogue with speaker labels and timestamps.
 
 IMPORTANT RULES:
 - Add a timestamp [MM:SS] at the beginning of EACH speaker turn (e.g. [0:00], [0:15], [1:32])
-- Identify different speakers and label them as "Спикер 1:", "Спикер 2:", "Спикер 3:" etc.
+- Identify different speakers and label them as "\u0421\u043F\u0438\u043A\u0435\u0440 1:", "\u0421\u043F\u0438\u043A\u0435\u0440 2:", "\u0421\u043F\u0438\u043A\u0435\u0440 3:" etc.
 - Each new speaker turn starts on a new line
-- Format: [MM:SS] Спикер N: text
-- If only one speaker, still use "Спикер 1:"
+- Format: [MM:SS] \u0421\u043F\u0438\u043A\u0435\u0440 N: text
+- If only one speaker, still use "\u0421\u043F\u0438\u043A\u0435\u0440 1:"
 - Preserve all spoken words exactly as said
 - Include legal terminology correctly
 - If multiple languages are spoken, transcribe each in its original language
 - Output ONLY the dialogue transcription, nothing else
 
 Example format:
-[0:00] Спикер 1: Добрый день, суд заседание начинается.
-[0:08] Спикер 2: Ваша честь, защита готова.
-[0:12] Спикер 1: Хорошо, приступаем.`,
+[0:00] \u0421\u043F\u0438\u043A\u0435\u0440 1: \u0414\u043E\u0431\u0440\u044B\u0439 \u0434\u0435\u043D\u044C, \u0441\u0443\u0434 \u0437\u0430\u0441\u0435\u0434\u0430\u043D\u0438\u0435 \u043D\u0430\u0447\u0438\u043D\u0430\u0435\u0442\u0441\u044F.
+[0:08] \u0421\u043F\u0438\u043A\u0435\u0440 2: \u0412\u0430\u0448\u0430 \u0447\u0435\u0441\u0442\u044C, \u0437\u0430\u0449\u0438\u0442\u0430 \u0433\u043E\u0442\u043E\u0432\u0430.
+[0:12] \u0421\u043F\u0438\u043A\u0435\u0440 1: \u0425\u043E\u0440\u043E\u0448\u043E, \u043F\u0440\u0438\u0441\u0442\u0443\u043F\u0430\u0435\u043C.`,
+            },
+            {
+              type: "image_url",
+              image_url: {
+                url: `data:${mimeType};base64,${base64Audio}`,
               },
-              {
-                type: "image_url",
-                image_url: {
-                  url: `data:${mimeType};base64,${base64Audio}`,
-                },
-              },
-            ],
-          },
-        ],
-        max_completion_tokens: 4096,
-      }),
-    });
-
-    if (!geminiResponse.ok) {
-      const errText = await geminiResponse.text();
-      console.error(`Gemini API error (${geminiResponse.status}):`, errText.substring(0, 300));
-
-      if (geminiResponse.status === 429) {
-        return new Response(JSON.stringify({
-          error: "AI rate limit exceeded. Please wait a moment and try again.",
-          error_code: "rate_limit"
-        }), { status: 429, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+            },
+          ],
+        },
+      ],
+      {
+        functionName: "audio-transcribe",
+        bypassReason: "multimodal",
+        timeoutMs: 120000,
       }
+    );
 
-      throw new Error(`Gemini API error ${geminiResponse.status}: ${errText.substring(0, 200)}`);
-    }
-
-    const geminiResult = await geminiResponse.json() as Record<string, unknown>;
-    console.log("Gemini response received");
+    const geminiResult = bypassResult.data;
+    console.log("AI response received");
 
     const choices = geminiResult.choices as Array<{ message?: { content?: string } }> | undefined;
     const transcription = choices?.[0]?.message?.content?.trim() || "";
@@ -185,8 +168,8 @@ Example format:
     const needsReview = confidence_score < CONFIDENCE_THRESHOLD;
 
     const confidence_reason = confidence_score >= 0.8
-      ? "High confidence transcription (Gemini 2.5 Flash)"
-      : "Medium confidence — review recommended";
+      ? "High confidence transcription"
+      : "Medium confidence \u2014 review recommended";
 
     // Only save to DB if fileId is provided (case-linked transcription)
     let transcriptionRecord = null;
@@ -216,10 +199,10 @@ Example format:
     try {
       await supabase.rpc("log_api_usage", {
         _service_type: "audio",
-        _model_name: "google/gemini-2.5-flash",
+        _model_name: bypassResult.model_used,
         _tokens_used: 0,
         _estimated_cost: 0,
-        _metadata: { fileName, fileId: fileId || null, fileSizeMB: (fileSize / 1024 / 1024).toFixed(2) }
+        _metadata: { fileName, fileId: fileId || null, fileSizeMB: (fileSize / 1024 / 1024).toFixed(2), request_id: bypassResult.request_id }
       });
     } catch (_) { /* non-critical */ }
 

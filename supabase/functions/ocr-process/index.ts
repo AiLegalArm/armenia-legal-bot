@@ -361,45 +361,17 @@ serve(async (req) => {
       throw new Error('No content to process');
     }
 
-    // Call Gemini for OCR/text analysis via Lovable AI Gateway
-    const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${LOVABLE_API_KEY}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        ...buildModelParams(OCR_EXTRACTION),
-        messages,
-      }),
+    // Call AI via centralized gateway-bypass (multimodal requires bypass)
+    const { callGatewayBypass } = await import("../_shared/gateway-bypass.ts");
+    const bypassResult = await callGatewayBypass(messages, {
+      functionName: "ocr-process",
+      bypassReason: "multimodal",
+      timeoutMs: 90000,
     });
+    const response = { ok: true, status: 200 } as const;
+    const ocrData = bypassResult.data;
 
-    if (!response.ok) {
-      const errorText = await response.text();
-      console.error("Gemini OCR error:", response.status, errorText);
-      
-      await supabase.rpc("log_error", {
-        _error_type: "ocr",
-        _error_message: `Gemini OCR failed: ${response.status}`,
-        _error_details: { status: response.status, error: errorText, fileName },
-        _case_id: caseId || null,
-        _file_id: fileId || null
-      });
-
-      if (response.status === 429) {
-        return new Response(JSON.stringify({ 
-          error: "Rate limit exceeded. Please try again later." 
-        }), {
-          status: 429,
-          headers: { ...corsHeaders, "Content-Type": "application/json" },
-        });
-      }
-      
-      throw new Error(`OCR processing failed: ${response.status}`);
-    }
-
-    const aiResponse = await response.json();
-    const rawContent = aiResponse.choices?.[0]?.message?.content || "";
+    const rawContent = (ocrData.choices as Array<{ message?: { content?: string } }>)?.[0]?.message?.content || "";
     
     console.log("Raw OCR response:", redactForLog(rawContent, 500));
 

@@ -257,79 +257,66 @@ serve(async (req) => {
 
     console.log("Calling AI for extraction with", userMessageContent.length, "content parts...");
 
-    // Route via centralized OpenAI router
-    const { callText: _callText } = await import("../_shared/openai-router.ts");
-    // Note: tool_calling is sent directly to gateway for structured extraction
-    const LOVABLE_API_KEY_EXTRACT = Deno.env.get("LOVABLE_API_KEY");
-    if (!LOVABLE_API_KEY_EXTRACT) throw new Error("LOVABLE_API_KEY is not configured");
+    // Route via centralized gateway-bypass (tool_calling requires bypass)
+    const { callGatewayBypass } = await import("../_shared/gateway-bypass.ts");
 
-    const aiResponse = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
-      method: "POST",
-      headers: {
-        "Authorization": `Bearer ${LOVABLE_API_KEY_EXTRACT}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        model: "google/gemini-2.5-pro",
-        max_tokens: 4000,
-        messages: [
-          { role: "system", content: SYSTEM_PROMPT },
-          { role: "user", content: userMessageContent }
-        ],
-        tools: [
-          {
-            type: "function",
-            function: {
-              name: "extract_case_fields",
-              description: "Extract case number, description, facts and legal question from provided materials",
-              parameters: {
-                type: "object",
-                properties: {
-                  case_number: {
-                    type: "string",
-                    description: "Case number found in documents (exact format). Return empty string if not found."
+    const bypassResult = await callGatewayBypass(
+      [
+        { role: "system", content: SYSTEM_PROMPT },
+        { role: "user", content: userMessageContent }
+      ],
+      {
+        functionName: "extract-case-fields",
+        bypassReason: "tool_calling",
+        timeoutMs: 60000,
+        extraBody: {
+          tools: [
+            {
+              type: "function",
+              function: {
+                name: "extract_case_fields",
+                description: "Extract case number, description, facts and legal question from provided materials",
+                parameters: {
+                  type: "object",
+                  properties: {
+                    case_number: {
+                      type: "string",
+                      description: "Case number found in documents (exact format). Return empty string if not found."
+                    },
+                    description: {
+                      type: "string",
+                      description: "PROFESSIONAL legal summary in Armenian (4-6 sentences): criminal charge with RA Criminal Code article, all parties (defendant/victim/investigative body), court, procedural stage. Use formal legal terminology."
+                    },
+                    facts: {
+                      type: "string",
+                      description: "EXHAUSTIVE factual reconstruction in Armenian: (1) WHAT happened - crime type, method, weapon/instrument; (2) WHEN - exact date/time; (3) WHERE - location; (4) WHO - all parties with roles; (5) HOW - sequence of events; (6) evidence available: forensic/autopsy/CCTV/DNA/ballistics; (7) witness statements; (8) investigative actions taken. For MISSING data write: [\u0532\u0531\u0551\u0531KAYUM \u0538 \u2014 \u0561\u0576hrajesht e jerk berel]. Be thorough and exhaustive."
+                    },
+                    legal_question: {
+                      type: "string",
+                      description: "DEEP criminal law analysis in Armenian: (1) exact RA Criminal Code qualification (article/part/subpart); (2) corpus delicti elements to prove; (3) aggravating/mitigating circumstances; (4) evidence admissibility issues; (5) fair trial concerns per RA CPC; (6) list of required investigative actions not yet performed; (7) key defense/prosecution questions; (8) potential procedural violations. Professional legal language required."
+                    }
                   },
-                  description: {
-                    type: "string",
-                    description: "PROFESSIONAL legal summary in Armenian (4-6 sentences): criminal charge with RA Criminal Code article, all parties (defendant/victim/investigative body), court, procedural stage. Use formal legal terminology."
-                  },
-                  facts: {
-                    type: "string",
-                    description: "EXHAUSTIVE factual reconstruction in Armenian: (1) WHAT happened - crime type, method, weapon/instrument; (2) WHEN - exact date/time; (3) WHERE - location; (4) WHO - all parties with roles; (5) HOW - sequence of events; (6) evidence available: forensic/autopsy/CCTV/DNA/ballistics; (7) witness statements; (8) investigative actions taken. For MISSING data write: [ԲԱՑAKAYUM Է — անhrajesht e jerk berel]. Be thorough and exhaustive."
-                  },
-                  legal_question: {
-                    type: "string",
-                    description: "DEEP criminal law analysis in Armenian: (1) exact RA Criminal Code qualification (article/part/subpart); (2) corpus delicti elements to prove; (3) aggravating/mitigating circumstances; (4) evidence admissibility issues; (5) fair trial concerns per RA CPC; (6) list of required investigative actions not yet performed; (7) key defense/prosecution questions; (8) potential procedural violations. Professional legal language required."
-                  }
-                },
-                required: ["case_number", "description", "facts", "legal_question"]
+                  required: ["case_number", "description", "facts", "legal_question"]
+                }
               }
             }
-          }
-        ],
-        tool_choice: { type: "function", function: { name: "extract_case_fields" } }
-      }),
-    });
-
-    if (!aiResponse.ok) {
-      const errorText = await aiResponse.text();
-      console.error("AI Gateway error:", aiResponse.status, errorText);
-      if (aiResponse.status === 429) {
-        return new Response(
-          JSON.stringify({ success: false, error: "Rate limit exceeded. Please try again later." }),
-          { status: 429, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-        );
+          ],
+          tool_choice: { type: "function", function: { name: "extract_case_fields" } }
+        },
       }
-      throw new Error(`AI Gateway error: ${aiResponse.status} - ${errorText.substring(0, 300)}`);
-    }
+    );
+    const aiData = bypassResult.data;
 
-    const aiData = await aiResponse.json();
-    const toolCall = aiData.choices?.[0]?.message?.tool_calls?.[0];
-    if (!toolCall || toolCall.function.name !== "extract_case_fields") {
+    const toolCall = (aiData.choices as Array<Record<string, unknown>>)?.[0] as Record<string, unknown> | undefined;
+    const message = toolCall?.message as Record<string, unknown> | undefined;
+    const tool_calls = message?.tool_calls as Array<Record<string, unknown>> | undefined;
+    const firstToolCall = tool_calls?.[0] as Record<string, unknown> | undefined;
+    const fnObj = firstToolCall?.function as Record<string, unknown> | undefined;
+    if (!fnObj || fnObj.name !== "extract_case_fields") {
       throw new Error("Unexpected AI response format");
     }
 
-    const extractedFields = JSON.parse(toolCall.function.arguments);
+    const extractedFields = JSON.parse(fnObj.arguments as string);
     console.log("Extracted fields:", extractedFields);
 
     const updateData: Record<string, unknown> = {
