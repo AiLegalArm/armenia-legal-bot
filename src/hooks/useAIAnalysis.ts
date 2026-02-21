@@ -3,7 +3,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { useTranslation } from "react-i18next";
 
-export type AIRole = "advocate" | "prosecutor" | "judge" | "aggregator" | "precedent_citation" | "deadline_rules";
+export type AIRole = "advocate" | "prosecutor" | "judge" | "aggregator" | "precedent_citation" | "deadline_rules" | "legal_position_comparator";
 
 interface AnalysisResult {
   role: AIRole;
@@ -12,6 +12,7 @@ interface AnalysisResult {
   model: string;
   precedent_data?: unknown;
   deadline_data?: unknown;
+  comparator_data?: unknown;
 }
 
 interface UseAIAnalysisReturn {
@@ -37,6 +38,7 @@ export function useAIAnalysis(): UseAIAnalysisReturn {
     aggregator: null,
     precedent_citation: null,
     deadline_rules: null,
+    legal_position_comparator: null,
   });
 
   const analyzeCase = useCallback(async (
@@ -107,6 +109,7 @@ export function useAIAnalysis(): UseAIAnalysisReturn {
         model: data.model,
         precedent_data: data.precedent_data || null,
         deadline_data: data.deadline_data || null,
+        comparator_data: data.comparator_data || null,
       };
 
       setResults(prev => ({
@@ -203,6 +206,7 @@ export function useAIAnalysis(): UseAIAnalysisReturn {
       aggregator: null,
       precedent_citation: null,
       deadline_rules: null,
+      legal_position_comparator: null,
     });
     setCreditsExhausted(false);
   }, []);
