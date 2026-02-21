@@ -3,7 +3,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { useTranslation } from "react-i18next";
 
-export type AIRole = "advocate" | "prosecutor" | "judge" | "aggregator" | "precedent_citation" | "deadline_rules" | "legal_position_comparator" | "hallucination_audit" | "draft_deterministic" | "strategy_builder" | "evidence_weakness";
+export type AIRole = "advocate" | "prosecutor" | "judge" | "aggregator" | "precedent_citation" | "deadline_rules" | "legal_position_comparator" | "hallucination_audit" | "draft_deterministic" | "strategy_builder" | "evidence_weakness" | "risk_factors";
 
 interface AnalysisResult {
   role: AIRole;
@@ -17,6 +17,7 @@ interface AnalysisResult {
   draft_text?: string;
   strategy_data?: unknown;
   evidence_weakness_data?: unknown;
+  risk_factors_data?: unknown;
 }
 
 interface UseAIAnalysisReturn {
@@ -47,6 +48,7 @@ export function useAIAnalysis(): UseAIAnalysisReturn {
     draft_deterministic: null,
     strategy_builder: null,
     evidence_weakness: null,
+    risk_factors: null,
   });
 
   const analyzeCase = useCallback(async (
@@ -122,6 +124,7 @@ export function useAIAnalysis(): UseAIAnalysisReturn {
         draft_text: data.draft_text || null,
         strategy_data: data.strategy_data || null,
         evidence_weakness_data: data.evidence_weakness_data || null,
+        risk_factors_data: data.risk_factors_data || null,
       };
 
       setResults(prev => ({
@@ -223,6 +226,7 @@ export function useAIAnalysis(): UseAIAnalysisReturn {
       draft_deterministic: null,
       strategy_builder: null,
       evidence_weakness: null,
+      risk_factors: null,
     });
     setCreditsExhausted(false);
   }, []);
