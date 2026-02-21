@@ -16,6 +16,7 @@ import { DRAFT_DETERMINISTIC_PROMPT } from "./prompts/draft-deterministic.ts";
 import { STRATEGY_BUILDER_PROMPT, STRATEGY_BUILDER_SCHEMA } from "./prompts/strategy-builder.ts";
 import { EVIDENCE_WEAKNESS_PROMPT, EVIDENCE_WEAKNESS_SCHEMA } from "./prompts/evidence-weakness.ts";
 import { RISK_FACTORS_PROMPT, RISK_FACTORS_SCHEMA } from "./prompts/risk-factors.ts";
+import { LAW_UPDATE_SUMMARY_PROMPT, LAW_UPDATE_SUMMARY_SCHEMA } from "./prompts/law-update-summary.ts";
 import { BASE_SYSTEM_PROMPT } from "./system.ts";
 import { sandboxUserInput, secureSandbox, logInjectionAttempt, ANTI_INJECTION_RULES } from "../_shared/prompt-armor.ts";
 import { applyBudgets, logTokenUsage, type RankedContent } from "../_shared/token-budget.ts";
@@ -112,7 +113,7 @@ const SYSTEM_PROMPTS: Record<Role, string> = {
 // UserSourceRef moved to _shared/reference-sources.ts
 
 interface AnalysisRequest {
-  role: "advocate" | "prosecutor" | "judge" | "aggregator" | "criminal_module" | "precedent_citation" | "deadline_rules" | "legal_position_comparator" | "hallucination_audit" | "draft_deterministic" | "strategy_builder" | "evidence_weakness" | "risk_factors";
+  role: "advocate" | "prosecutor" | "judge" | "aggregator" | "criminal_module" | "precedent_citation" | "deadline_rules" | "legal_position_comparator" | "hallucination_audit" | "draft_deterministic" | "strategy_builder" | "evidence_weakness" | "risk_factors" | "law_update_summary";
   moduleId?: CriminalAnalysisModule;
   caseId?: string;
   caseFacts?: string;
@@ -121,6 +122,8 @@ interface AnalysisRequest {
   prosecutorResponse?: string;
   judgeResponse?: string;
   referencesText?: string;
+  oldLawText?: string;
+  newLawText?: string;
 }
 
 // formatPracticeResults and formatPracticeContext moved to _shared/rag-search.ts
@@ -154,11 +157,11 @@ serve(async (req) => {
     }
     // === END AUTH GUARD ===
 
-    const { role, moduleId, caseId, caseFacts, legalQuestion, advocateResponse, prosecutorResponse, judgeResponse, referencesText } =
+    const { role, moduleId, caseId, caseFacts, legalQuestion, advocateResponse, prosecutorResponse, judgeResponse, referencesText, oldLawText, newLawText } =
       (await req.json()) as AnalysisRequest;
 
     // Validate role - support both legacy roles and new analysis types
-    const legacyRoles = ["advocate", "prosecutor", "judge", "aggregator", "criminal_module", "precedent_citation", "deadline_rules", "legal_position_comparator", "hallucination_audit", "draft_deterministic", "strategy_builder", "evidence_weakness", "risk_factors"];
+    const legacyRoles = ["advocate", "prosecutor", "judge", "aggregator", "criminal_module", "precedent_citation", "deadline_rules", "legal_position_comparator", "hallucination_audit", "draft_deterministic", "strategy_builder", "evidence_weakness", "risk_factors", "law_update_summary"];
     const isLegacyRole = legacyRoles.includes(role);
     const isNewAnalysisType = isValidAnalysisType(role as AnalysisType);
 
@@ -574,6 +577,16 @@ ${ragContext}
 ${userSourcesBlock}
 
 Perform focused analysis as specified in the system prompt. Base your analysis ONLY on the provided case materials. If information is missing, state this explicitly.`;
+    } else if (role === "law_update_summary") {
+      userMessage = `## Law Text Comparison (Republic of Armenia):
+
+### OLD VERSION OF THE LAW:
+${sandboxUserInput("OLD_LAW_TEXT", oldLawText || "Not provided")}
+
+### NEW VERSION OF THE LAW:
+${sandboxUserInput("NEW_LAW_TEXT", newLawText || "Not provided")}
+
+Compare these two versions and identify all changes: amended, repealed, and new articles/provisions.`;
     } else {
       userMessage = `## Legal Case for Analysis (RA Law):
 
@@ -611,6 +624,8 @@ Please provide your professional legal analysis from your designated role perspe
       systemPrompt = EVIDENCE_WEAKNESS_PROMPT;
     } else if (role === "risk_factors") {
       systemPrompt = RISK_FACTORS_PROMPT;
+    } else if (role === "law_update_summary") {
+      systemPrompt = LAW_UPDATE_SUMMARY_PROMPT;
     } else if (role === "criminal_module" && moduleId) {
       // Legacy criminal module support
       systemPrompt = CRIMINAL_MODULE_PROMPTS[moduleId];
@@ -717,6 +732,11 @@ Please provide your professional legal analysis from your designated role perspe
         precedentJson = result.json;
         aiResponseText = JSON.stringify(result.json, null, 2);
         console.log(JSON.stringify({ ts: new Date().toISOString(), lvl: "info", fn: "ai-analyze", mode: "risk_factors", model: result.model_used, latency_ms: result.latency_ms }));
+      } else if (role === "law_update_summary") {
+        const result = await callJSON("ai-analyze", routerMessages, LAW_UPDATE_SUMMARY_SCHEMA);
+        precedentJson = result.json;
+        aiResponseText = JSON.stringify(result.json, null, 2);
+        console.log(JSON.stringify({ ts: new Date().toISOString(), lvl: "info", fn: "ai-analyze", mode: "law_update_summary", model: result.model_used, latency_ms: result.latency_ms }));
       } else {
         const result = await callText("ai-analyze", routerMessages);
         aiResponseText = result.text;
@@ -736,7 +756,7 @@ Please provide your professional legal analysis from your designated role perspe
     }
 
     // For diagnostic engines returning structured JSON
-    if ((role === "precedent_citation" || role === "deadline_rules" || role === "legal_position_comparator" || role === "hallucination_audit" || role === "strategy_builder" || role === "evidence_weakness" || role === "risk_factors") && precedentJson) {
+    if ((role === "precedent_citation" || role === "deadline_rules" || role === "legal_position_comparator" || role === "hallucination_audit" || role === "strategy_builder" || role === "evidence_weakness" || role === "risk_factors" || role === "law_update_summary") && precedentJson) {
       // Save to database if caseId provided
       if (caseId) {
         await supabase.from("ai_analysis").insert({
@@ -749,7 +769,7 @@ Please provide your professional legal analysis from your designated role perspe
         });
       }
 
-      const responseKey = role === "precedent_citation" ? "precedent_data" : role === "deadline_rules" ? "deadline_data" : role === "hallucination_audit" ? "audit_data" : role === "strategy_builder" ? "strategy_data" : role === "evidence_weakness" ? "evidence_weakness_data" : role === "risk_factors" ? "risk_factors_data" : "comparator_data";
+      const responseKey = role === "precedent_citation" ? "precedent_data" : role === "deadline_rules" ? "deadline_data" : role === "hallucination_audit" ? "audit_data" : role === "strategy_builder" ? "strategy_data" : role === "evidence_weakness" ? "evidence_weakness_data" : role === "risk_factors" ? "risk_factors_data" : role === "law_update_summary" ? "law_update_data" : "comparator_data";
       return new Response(
         JSON.stringify({
           role,

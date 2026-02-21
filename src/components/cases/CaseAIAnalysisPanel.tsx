@@ -13,7 +13,7 @@ import { Switch } from '@/components/ui/switch';
 import { Label } from '@/components/ui/label';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { exportAnalysisToPDF, exportMultipleAnalysesToPDF } from '@/lib/pdfExport';
-import { Loader2, Brain, Download, FileSignature, Save, AlertTriangle, Check, Scale, Timer, GitCompare, ShieldCheck, FileText, Target, Search, BarChart3 } from 'lucide-react';
+import { Loader2, Brain, Download, FileSignature, Save, AlertTriangle, Check, Scale, Timer, GitCompare, ShieldCheck, FileText, Target, Search, BarChart3, BookOpen } from 'lucide-react';
 import { useReferencesText } from '@/lib/references-store';
 import { PrecedentCitationView, type PrecedentCitationResult } from '@/components/cases/PrecedentCitationView';
 import { DeadlineRulesView, type DeadlineRulesResult } from '@/components/cases/DeadlineRulesView';
@@ -22,6 +22,9 @@ import { HallucinationAuditView, type HallucinationAuditResult } from '@/compone
 import { StrategyBuilderView, type StrategyBuilderResult } from '@/components/cases/StrategyBuilderView';
 import { EvidenceWeaknessView, type EvidenceWeaknessResult } from '@/components/cases/EvidenceWeaknessView';
 import { RiskFactorsView, type RiskFactorsResult } from '@/components/cases/RiskFactorsView';
+import { LawUpdateSummaryView, type LawUpdateSummaryResult } from '@/components/cases/LawUpdateSummaryView';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
+import { Textarea } from '@/components/ui/textarea';
 
 interface CaseAIAnalysisPanelProps {
   caseId: string;
@@ -85,6 +88,11 @@ export function CaseAIAnalysisPanel({
   const [isEvidenceWeaknessLoading, setIsEvidenceWeaknessLoading] = useState(false);
   const [riskFactorsData, setRiskFactorsData] = useState<RiskFactorsResult | null>(null);
   const [isRiskFactorsLoading, setIsRiskFactorsLoading] = useState(false);
+  const [lawUpdateData, setLawUpdateData] = useState<LawUpdateSummaryResult | null>(null);
+  const [isLawUpdateLoading, setIsLawUpdateLoading] = useState(false);
+  const [showLawUpdateDialog, setShowLawUpdateDialog] = useState(false);
+  const [oldLawText, setOldLawText] = useState('');
+  const [newLawText, setNewLawText] = useState('');
 
   // If user clicks "Clear" while the initial saved-analyses load is still in-flight,
   // we must ignore that async result to prevent the content from "reappearing".
@@ -535,6 +543,22 @@ export function CaseAIAnalysisPanel({
                   {i18n.language === 'hy' ? 'Ռiskեdelays' : i18n.language === 'en' ? 'Risks' : 'Риски'}
                 </span>
               </Button>
+              <Button 
+                variant="outline" 
+                size="sm" 
+                onClick={() => setShowLawUpdateDialog(true)}
+                disabled={isLawUpdateLoading || isAnalyzing}
+                className="h-10 rounded-xl text-mobile-sm sm:text-sm"
+              >
+                {isLawUpdateLoading ? (
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin shrink-0" />
+                ) : (
+                  <BookOpen className="mr-2 h-4 w-4 shrink-0" />
+                )}
+                <span className="truncate">
+                  {i18n.language === 'hy' ? 'Օdelays փоdelays' : i18n.language === 'en' ? 'Law Changes' : 'Изменения закона'}
+                </span>
+              </Button>
               {Object.values(results).some(r => r !== null) && (
                 <>
                   <Button
@@ -787,6 +811,18 @@ export function CaseAIAnalysisPanel({
             </div>
           )}
 
+          {/* Law Update Summary Results */}
+          {lawUpdateData && (
+            <div className="mt-6 pt-6 border-t">
+              <h3 className="font-semibold text-lg mb-3">
+                {i18n.language === 'hy' ? 'Օdelays փоdelays ամdelays' 
+                 : i18n.language === 'en' ? 'Law Update Summary' 
+                 : 'Сводка изменений закона'}
+              </h3>
+              <LawUpdateSummaryView data={lawUpdateData} language={i18n.language} />
+            </div>
+          )}
+
           {Object.values(results).some(r => r !== null) && (
             <div className="mt-6 pt-6 border-t">
               <FeedbackStars caseId={caseId} />
@@ -794,6 +830,90 @@ export function CaseAIAnalysisPanel({
           )}
         </CardContent>
       </Card>
+
+      {/* Law Update Summary Dialog */}
+      <Dialog open={showLawUpdateDialog} onOpenChange={setShowLawUpdateDialog}>
+        <DialogContent className="max-w-2xl max-h-[80vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>
+              {i18n.language === 'hy' ? 'Оdelays տdelays vs Нdelays տdelays' 
+               : i18n.language === 'en' ? 'Compare Law Versions' 
+               : 'Сравнение версий закона'}
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div>
+              <label className="text-sm font-medium mb-1 block">
+                {i18n.language === 'hy' ? 'Հin տdelays' : i18n.language === 'en' ? 'Old Version' : 'Старая версия'}
+              </label>
+              <Textarea 
+                value={oldLawText}
+                onChange={(e) => setOldLawText(e.target.value)}
+                placeholder={i18n.language === 'hy' ? 'Տdelays հin оdelays тdelays...' : i18n.language === 'en' ? 'Paste old law text here...' : 'Вставьте старый текст закона...'}
+                className="min-h-[150px]"
+              />
+            </div>
+            <div>
+              <label className="text-sm font-medium mb-1 block">
+                {i18n.language === 'hy' ? 'Нdelays тdelays' : i18n.language === 'en' ? 'New Version' : 'Новая версия'}
+              </label>
+              <Textarea 
+                value={newLawText}
+                onChange={(e) => setNewLawText(e.target.value)}
+                placeholder={i18n.language === 'hy' ? 'Тdelays нdelays оdelays тdelays...' : i18n.language === 'en' ? 'Paste new law text here...' : 'Вставьте новый текст закона...'}
+                className="min-h-[150px]"
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowLawUpdateDialog(false)}>
+              {t('common:cancel', 'Cancel')}
+            </Button>
+            <Button 
+              onClick={async () => {
+                if (!oldLawText.trim() || !newLawText.trim()) {
+                  toast({ title: i18n.language === 'en' ? 'Both text fields are required' : 'Оба поля обязательны', variant: 'destructive' });
+                  return;
+                }
+                setShowLawUpdateDialog(false);
+                setIsLawUpdateLoading(true);
+                setLawUpdateData(null);
+                try {
+                  const { data, error } = await supabase.functions.invoke('ai-analyze', {
+                    body: {
+                      role: 'law_update_summary',
+                      oldLawText: oldLawText.trim(),
+                      newLawText: newLawText.trim(),
+                    },
+                  });
+                  if (!error && data && !data.error) {
+                    if (data.law_update_data) {
+                      setLawUpdateData(data.law_update_data as LawUpdateSummaryResult);
+                    } else {
+                      try {
+                        const parsed = JSON.parse(data.analysis);
+                        setLawUpdateData(parsed);
+                      } catch {
+                        setLawUpdateData(null);
+                      }
+                    }
+                  } else {
+                    toast({ title: t('ai:analysis_failed'), variant: 'destructive' });
+                  }
+                } catch {
+                  toast({ title: t('ai:analysis_failed'), variant: 'destructive' });
+                } finally {
+                  setIsLawUpdateLoading(false);
+                }
+              }}
+              disabled={!oldLawText.trim() || !newLawText.trim()}
+            >
+              <BookOpen className="mr-2 h-4 w-4" />
+              {i18n.language === 'hy' ? 'Вdelays' : i18n.language === 'en' ? 'Compare' : 'Сравнить'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
