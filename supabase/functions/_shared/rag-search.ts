@@ -351,7 +351,7 @@ export function formatPracticeContext(results: PracticeSearchResult[], _fullText
           return `  ${idx + 1}) ${ruleText}${quote ? ` «${quote}»` : ""}`;
         }).join("\n");
       } else {
-        excerpt = (r.legal_reasoning_summary || r.content_text || r.content_snippet || "").substring(0, 1500);
+        excerpt = (r.content_snippet || r.content_text || "").substring(0, 1500);
       }
 
       // Build lines, omitting empty values (except ID)
