@@ -815,9 +815,9 @@ export function CaseAIAnalysisPanel({
         <DialogContent className="max-w-2xl max-h-[80vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>
-              {i18n.language === 'hy' ? 'Оdelays տdelays vs Нdelays տdelays' 
+              {i18n.language === 'hy' ? '\u0540\u056B\u0576 \u057F\u0561\u0580\u0562\u0565\u0580\u0561\u056F \u0568\u0576\u0564. \u0576\u0578\u0580 \u057F\u0561\u0580\u0562\u0565\u0580\u0561\u056F' 
                : i18n.language === 'en' ? 'Compare Law Versions' 
-               : 'Сравнение версий закона'}
+               : '\u0421\u0440\u0430\u0432\u043D\u0435\u043D\u0438\u0435 \u0432\u0435\u0440\u0441\u0438\u0439 \u0437\u0430\u043A\u043E\u043D\u0430'}
             </DialogTitle>
           </DialogHeader>
           <div className="space-y-4">
@@ -868,13 +868,6 @@ export function CaseAIAnalysisPanel({
                   if (!error && data && !data.error) {
                     if (data.law_update_data) {
                       setLawUpdateData(data.law_update_data as LawUpdateSummaryResult);
-                    } else {
-                      try {
-                        const parsed = JSON.parse(data.analysis);
-                        setLawUpdateData(parsed);
-                      } catch {
-                        setLawUpdateData(null);
-                      }
                     }
                   } else {
                     toast({ title: t('ai:analysis_failed'), variant: 'destructive' });
