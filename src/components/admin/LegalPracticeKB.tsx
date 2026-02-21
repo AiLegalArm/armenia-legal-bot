@@ -260,8 +260,8 @@ export function LegalPracticeKB() {
       let lastErr: unknown;
       for (let attempt = 0; attempt < 3; attempt++) {
         try {
-          const { data, error } = await supabase.functions.invoke('legal-practice-import', {
-            body: { enrichDocId: docId },
+          const { data, error } = await supabase.functions.invoke('legal-practice-enrich', {
+            body: { docId },
           });
           if (error) throw error;
           if (data?.enriched) {
