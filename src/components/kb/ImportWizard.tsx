@@ -860,6 +860,10 @@ export function ImportWizard({ open, onOpenChange, onImport }: ImportWizardProps
                     onAbort={bulk.abort}
                     onClearCompleted={bulk.clearCompleted}
                     onDownloadErrors={bulk.downloadErrorReport}
+                    onReimportAll={() => {
+                      bulk.clearAll();
+                      setImporting(false);
+                    }}
                   />
                 ) : (
                   <div className="flex flex-col items-center gap-4 py-8">
