@@ -12,7 +12,8 @@ import {
   Users2,
   MessageSquare,
   FileCode2,
-  AlertTriangle
+  AlertTriangle,
+  BookOpenText,
 } from "lucide-react";
 import { AdminHeader } from "@/components/admin/AdminHeader";
 import { AdminKnowledgeBaseTab } from "@/components/admin/AdminKnowledgeBaseTab";
@@ -24,6 +25,7 @@ import { PromptManager } from "@/components/admin/PromptManager";
 import { UsageMonitor } from "@/components/UsageMonitor";
 import { EmbeddingManager } from "@/components/admin/EmbeddingManager";
 import { ErrorLogs } from "@/components/admin/ErrorLogs";
+import { DictionaryImport } from "@/components/admin/DictionaryImport";
 
 const AdminPanel = () => {
   const navigate = useNavigate();
@@ -94,7 +96,11 @@ const AdminPanel = () => {
             </TabsTrigger>
             <TabsTrigger value="errors" className="gap-1.5 px-2 py-1.5 text-xs sm:px-3 sm:text-sm">
               <AlertTriangle className="h-4 w-4 shrink-0" />
-              <span className="hidden sm:inline">Логи ошибок</span>
+              <span className="hidden sm:inline">{'\u053c\u0578\u0563\u0565\u0580'}</span>
+            </TabsTrigger>
+            <TabsTrigger value="dictionary" className="gap-1.5 px-2 py-1.5 text-xs sm:px-3 sm:text-sm">
+              <BookOpenText className="h-4 w-4 shrink-0" />
+              <span className="hidden sm:inline">{'\u0532\u0561\u057c\u0561\u0580\u0561\u0576'}</span>
             </TabsTrigger>
           </TabsList>
 
@@ -137,6 +143,11 @@ const AdminPanel = () => {
           {/* Error Logs Tab */}
           <TabsContent value="errors">
             <ErrorLogs />
+          </TabsContent>
+
+          {/* Dictionary Import Tab */}
+          <TabsContent value="dictionary">
+            <DictionaryImport />
           </TabsContent>
         </Tabs>
       </main>

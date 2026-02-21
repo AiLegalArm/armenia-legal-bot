@@ -709,6 +709,60 @@ export type Database = {
         }
         Relationships: []
       }
+      dictionary_import_jobs: {
+        Row: {
+          completed_at: string | null
+          created_at: string
+          created_by: string
+          error_report: Json | null
+          failed: number
+          file_type: string
+          id: string
+          inserted: number
+          mode: string
+          processed: number
+          skipped: number
+          source: string | null
+          status: string
+          total_rows: number
+          updated: number
+        }
+        Insert: {
+          completed_at?: string | null
+          created_at?: string
+          created_by: string
+          error_report?: Json | null
+          failed?: number
+          file_type: string
+          id?: string
+          inserted?: number
+          mode?: string
+          processed?: number
+          skipped?: number
+          source?: string | null
+          status?: string
+          total_rows?: number
+          updated?: number
+        }
+        Update: {
+          completed_at?: string | null
+          created_at?: string
+          created_by?: string
+          error_report?: Json | null
+          failed?: number
+          file_type?: string
+          id?: string
+          inserted?: number
+          mode?: string
+          processed?: number
+          skipped?: number
+          source?: string | null
+          status?: string
+          total_rows?: number
+          updated?: number
+        }
+        Relationships: []
+      }
       document_templates: {
         Row: {
           category: Database["public"]["Enums"]["document_category"]

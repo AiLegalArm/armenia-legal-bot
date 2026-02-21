@@ -66,3 +66,7 @@ verify_jwt = false
 [functions.echr-import]
 
 [functions.dictionary-search]
+
+[functions.dictionary-import-validate]
+
+[functions.dictionary-import-run]
