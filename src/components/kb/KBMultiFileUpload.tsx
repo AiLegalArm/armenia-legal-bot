@@ -199,7 +199,7 @@ export function KBMultiFileUpload({ open, onOpenChange, onSuccess }: KBMultiFile
       
       // Step 4: Add to knowledge base (if autoAdd is enabled)
       if (autoAdd && !needsReview) {
-        const title = file.name.replace(/\.[^/.]+$/, '');
+        const title = file.name.replace(/\.[^/.]+$/, '').replace(/^_+/, '');
         
         const { data: { user } } = await supabase.auth.getUser();
         if (!user) throw new Error('Not authenticated');
@@ -228,7 +228,7 @@ export function KBMultiFileUpload({ open, onOpenChange, onSuccess }: KBMultiFile
         updateFileStatus(id, { 
           status: 'warning', 
           progress: 100,
-          title: file.name.replace(/\.[^/.]+$/, ''),
+           title: file.name.replace(/\.[^/.]+$/, '').replace(/^_+/, ''),
           confidence,
           error: t('multi_upload_low_confidence'),
         });
@@ -236,7 +236,7 @@ export function KBMultiFileUpload({ open, onOpenChange, onSuccess }: KBMultiFile
         updateFileStatus(id, { 
           status: 'success', 
           progress: 100,
-          title: file.name.replace(/\.[^/.]+$/, ''),
+           title: file.name.replace(/\.[^/.]+$/, '').replace(/^_+/, ''),
           confidence,
         });
       }
