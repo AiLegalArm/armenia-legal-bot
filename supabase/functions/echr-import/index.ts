@@ -132,7 +132,7 @@ function chunkText(text: string, chunkSize = 3000): string[] {
 async function translateFieldHY(
   text: string,
   fieldName: string,
-  openaiKey: string,
+  _openaiKey: string,
   supabase: ReturnType<typeof createClient>
 ): Promise<string> {
   if (!text || text.trim().length === 0) return text;
@@ -155,50 +155,29 @@ async function translateFieldHY(
       continue;
     }
 
-    // Translate via OpenAI with retries
+    // Translate via gateway-bypass (uses LOVABLE_API_KEY automatically)
     let result = "";
     let lastError: string = "";
-    for (let attempt = 0; attempt < 2; attempt++) {
-      try {
-        if (attempt > 0) {
-          await new Promise((r) => setTimeout(r, 1500));
-        }
-        const resp = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
-          method: "POST",
-          headers: {
-            Authorization: `Bearer ${openaiKey}`,
-            "Content-Type": "application/json",
+    try {
+      const { callGatewayBypass } = await import("./_shared/gateway-bypass.ts");
+      const bypassResult = await callGatewayBypass(
+        [
+          {
+            role: "system",
+            content: "Translate to Armenian legal language. Preserve all names, dates, article numbers. Return ONLY the translation.",
           },
-          signal: AbortSignal.timeout(30000),
-          body: JSON.stringify({
-            model: "google/gemini-2.5-flash",
-            messages: [
-              {
-                role: "system",
-                content:
-                  "Translate to Armenian legal language. Preserve all names, dates, article numbers. Return ONLY the translation.",
-              },
-              {
-                role: "user",
-                content: chunk,
-              },
-            ],
-          }),
-        });
-
-        if (!resp.ok) {
-          const errText = await resp.text();
-          lastError = `HTTP ${resp.status}: ${errText}`;
-          if (resp.status === 429 || resp.status >= 500) continue;
-          break; // Non-retryable
+          { role: "user", content: chunk },
+        ],
+        {
+          functionName: "echr-translate",
+          bypassReason: "translation",
+          timeoutMs: 30000,
+          maxRetries: 2,
         }
-
-        const json = await resp.json();
-        result = json.choices?.[0]?.message?.content?.trim() ?? "";
-        break;
-      } catch (e) {
-        lastError = e instanceof Error ? e.message : String(e);
-      }
+      );
+      result = (bypassResult.data?.choices as Array<{ message?: { content?: string } }>)?.[0]?.message?.content?.trim() ?? "";
+    } catch (e) {
+      lastError = e instanceof Error ? e.message : String(e);
     }
 
     if (result) {
@@ -210,7 +189,7 @@ async function translateFieldHY(
           source_text: chunk.slice(0, 5000),
           translated_text: result,
           field_name: fieldName,
-          provider: "openai",
+          provider: "lovable-gateway",
         }, { onConflict: "cache_key" });
       } catch { /* ignore cache write errors */ }
     } else {
@@ -448,6 +427,24 @@ serve(async (req) => {
               : caseObj.outcome ?? "granted"
           );
 
+          // Extract HUDOC metadata fields
+          const courtName = String(caseObj.originatingbody_name || caseObj.respondent || caseObj.court_name || "").trim() || null;
+          const caseNumber = String(caseObj.appno || caseObj.application_no || caseObj.case_number || "").trim() || null;
+          const decisionDateRaw = String(caseObj.judgementdate || caseObj.kpdate || caseObj.decisiondate || caseObj.decision_date || "").trim();
+          // Parse HUDOC date format (DD/MM/YYYY or YYYY-MM-DD)
+          let decisionDate: string | null = null;
+          if (decisionDateRaw) {
+            const isoMatch = decisionDateRaw.match(/^(\d{4})-(\d{2})-(\d{2})/);
+            const euMatch = decisionDateRaw.match(/^(\d{2})\/(\d{2})\/(\d{4})/);
+            if (isoMatch) decisionDate = `${isoMatch[1]}-${isoMatch[2]}-${isoMatch[3]}`;
+            else if (euMatch) decisionDate = `${euMatch[3]}-${euMatch[2]}-${euMatch[1]}`;
+          }
+
+          // Build applied_articles from extracted articles
+          const appliedArticles = echrArticles.length > 0
+            ? { sources: [{ act: "ECHR", articles: echrArticles.map(a => ({ article: a, part: "", point: "", context: "" })) }] }
+            : null;
+
           const row: Record<string, unknown> = {
             title,
             content_text: contentText,
@@ -458,6 +455,10 @@ serve(async (req) => {
             visibility: "ai_only",
             is_active: true,
             source_name: String(caseObj.originatingbody_name || caseObj.source_name || "ECHR HUDOC"),
+            court_name: courtName,
+            case_number_anonymized: caseNumber,
+            decision_date: decisionDate,
+            applied_articles: appliedArticles,
             translation_status: status,
             translation_provider: "openai",
             translation_ts: new Date().toISOString(),
