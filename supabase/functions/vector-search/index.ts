@@ -141,74 +141,83 @@ async function keywordSearchKB(
     .slice(0, limit);
 }
 
+/** Practice result shape used internally */
+interface PracticeCandidate {
+  id: string;
+  title: string;
+  content_text: string;
+  similarity: number;
+  practice_category?: string;
+  court_type?: string;
+  decision_date?: string;
+  case_number?: string;
+  court_name?: string;
+}
+
 async function keywordSearchPractice(
   supabase: ReturnType<typeof createClient>,
   query: string,
   limit: number,
   category: string | null
-): Promise<Array<{ id: string; title: string; content_text: string; similarity?: number }>> {
-  const results = new Map<string, { id: string; title: string; content_text: string; similarity: number; decision_date?: string; case_number?: string; court_name?: string }>();
+): Promise<PracticeCandidate[]> {
+  const results = new Map<string, PracticeCandidate>();
+  const selectCols = "id, title, content_text, practice_category, court_type, decision_date, case_number_anonymized, court_name, legal_reasoning_summary";
 
-  // 1. Try RPC with full query
-  const rpcParams: Record<string, unknown> = { search_query: query, result_limit: limit };
-  if (category) rpcParams.category_filter = category;
-  const { data: rpcData } = await supabase.rpc("search_legal_practice", rpcParams);
-  for (const r of rpcData || []) {
-    results.set(r.id, {
-      id: r.id, title: r.title,
-      content_text: (r.content_text || "").substring(0, 2000),
-      similarity: r.rank || 0,
-      decision_date: r.decision_date || null,
-      case_number: r.case_number_anonymized || null,
-      court_name: r.court_name || null,
-    });
-  }
-
-  // 2. Individual word search
-  const words = query.split(/\s+/).filter(w => w.length >= 2);
-  for (const word of words.slice(0, 5)) {
-    if (results.size >= limit) break;
-    const wParams: Record<string, unknown> = { search_query: word, result_limit: Math.min(10, limit) };
-    if (category) wParams.category_filter = category;
-    const { data: wordData } = await supabase.rpc("search_legal_practice", wParams);
-    for (const r of wordData || []) {
-      if (!results.has(r.id)) {
+  // 1. Primary ILIKE search on title + legal_reasoning_summary (full query)
+  {
+    const searchTerm = sanitize(query);
+    if (searchTerm.length >= 2) {
+      let q = supabase
+        .from("legal_practice_kb")
+        .select(selectCols)
+        .eq("is_active", true)
+        .or(`title.ilike.%${searchTerm}%,legal_reasoning_summary.ilike.%${searchTerm}%`)
+        .limit(Math.min(limit, 30));
+      if (category) q = q.eq("practice_category", category);
+      const { data } = await q;
+      for (const r of data || []) {
         results.set(r.id, {
-          id: r.id, title: r.title,
+          id: r.id,
+          title: r.title,
           content_text: (r.content_text || "").substring(0, 2000),
-          similarity: (r.rank || 0) * 0.8,
-          decision_date: r.decision_date || null,
-          case_number: r.case_number_anonymized || null,
-          court_name: r.court_name || null,
+          similarity: 0.7,
+          practice_category: r.practice_category || undefined,
+          court_type: r.court_type || undefined,
+          decision_date: r.decision_date || undefined,
+          case_number: r.case_number_anonymized || undefined,
+          court_name: r.court_name || undefined,
         });
       }
     }
   }
 
-  // 3. Fallback ILIKE
-  if (results.size === 0) {
-    for (const word of words.slice(0, 3)) {
-      const searchTerm = sanitize(word);
-      if (searchTerm.length < 2) continue;
-      let q = supabase
-        .from("legal_practice_kb")
-        .select("id, title, content_text, decision_date, case_number_anonymized, court_name")
-        .eq("is_active", true)
-        .or(`title.ilike.%${searchTerm}%,legal_reasoning_summary.ilike.%${searchTerm}%`)
-        .limit(Math.min(10, limit));
-      if (category) q = q.eq("practice_category", category);
-      const { data } = await q;
-      for (const r of data || []) {
-        if (!results.has(r.id)) {
-          results.set(r.id, {
-            id: r.id, title: r.title,
-            content_text: (r.content_text || "").substring(0, 2000),
-            similarity: 0.3,
-            decision_date: r.decision_date || null,
-            case_number: r.case_number_anonymized || null,
-            court_name: r.court_name || null,
-          });
-        }
+  // 2. Individual word search for broader recall
+  const words = query.split(/\s+/).filter(w => w.length >= 2);
+  for (const word of words.slice(0, 5)) {
+    if (results.size >= limit) break;
+    const searchTerm = sanitize(word);
+    if (searchTerm.length < 2) continue;
+    let q = supabase
+      .from("legal_practice_kb")
+      .select(selectCols)
+      .eq("is_active", true)
+      .or(`title.ilike.%${searchTerm}%,legal_reasoning_summary.ilike.%${searchTerm}%`)
+      .limit(Math.min(10, limit));
+    if (category) q = q.eq("practice_category", category);
+    const { data } = await q;
+    for (const r of data || []) {
+      if (!results.has(r.id)) {
+        results.set(r.id, {
+          id: r.id,
+          title: r.title,
+          content_text: (r.content_text || "").substring(0, 2000),
+          similarity: 0.5,
+          practice_category: r.practice_category || undefined,
+          court_type: r.court_type || undefined,
+          decision_date: r.decision_date || undefined,
+          case_number: r.case_number_anonymized || undefined,
+          court_name: r.court_name || undefined,
+        });
       }
     }
   }

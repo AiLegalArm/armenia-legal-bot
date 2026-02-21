@@ -2137,8 +2137,11 @@ export type Database = {
         }
         Returns: {
           applied_articles: Json
+          case_number_anonymized: string
           content_snippet: string
+          court_name: string
           court_type: Database["public"]["Enums"]["court_type"]
+          decision_date: string
           id: string
           key_violations: string[]
           legal_reasoning_summary: string
