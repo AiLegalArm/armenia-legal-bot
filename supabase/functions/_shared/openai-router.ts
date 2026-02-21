@@ -31,10 +31,10 @@ export interface ModelConfig {
 export const MODEL_MAP: Record<string, ModelConfig> = {
   // ── Heavy legal reasoning (GPT-5 = openai/gpt-5 via gateway)
   "ai-analyze": {
-    model: "openai/gpt-5",
-    temperature: 0.2,
-    max_tokens: 16384,
-    description: "AI legal case analysis (GPT-5, temp=0.2)",
+    model: "anthropic/claude-3.7-sonnet",
+    temperature: 0.1,
+    max_tokens: 12000,
+    description: "AI legal case analysis (Claude 3.7 Sonnet, temp=0.1)",
   },
   "multi-agent-analyze": {
     model: "openai/gpt-5",
@@ -100,29 +100,34 @@ export const MODEL_MAP: Record<string, ModelConfig> = {
  * Falls back to MODEL_MAP[functionName] if no override exists.
  */
 const ROLE_OVERRIDES: Record<string, Partial<ModelConfig>> = {
+  // All diagnostic engines use the same model as base (claude-3.7-sonnet)
+  // Overrides kept for explicit documentation and potential future divergence
   "ai-analyze:precedent_citation": {
-    model: "anthropic/claude-opus-4-6",
-    temperature: 0.2,
-    max_tokens: 16384,
-    description: "Precedent citation (Claude Opus)",
+    description: "Precedent citation engine",
   },
   "ai-analyze:deadline_rules": {
-    model: "anthropic/claude-sonnet-4-6",
-    temperature: 0.2,
-    max_tokens: 12000,
-    description: "Deadline rules (Claude Sonnet)",
+    description: "Deadline rules engine",
   },
   "ai-analyze:cross_exam": {
-    model: "anthropic/claude-opus-4-6",
-    temperature: 0.2,
-    max_tokens: 16384,
-    description: "Cross-examination (Claude Opus)",
+    description: "Cross-examination engine",
   },
   "ai-analyze:draft_deterministic": {
-    model: "anthropic/claude-opus-4-6",
-    temperature: 0.1,
-    max_tokens: 16384,
-    description: "Draft deterministic (Claude Opus)",
+    description: "Draft deterministic engine",
+  },
+  "ai-analyze:strategy_builder": {
+    description: "Strategy builder engine",
+  },
+  "ai-analyze:risk_factors": {
+    description: "Risk factors engine",
+  },
+  "ai-analyze:evidence_weakness": {
+    description: "Evidence weakness engine",
+  },
+  "ai-analyze:hallucination_audit": {
+    description: "Hallucination audit engine",
+  },
+  "ai-analyze:legal_position_comparator": {
+    description: "Legal position comparator engine",
   },
 };
 
