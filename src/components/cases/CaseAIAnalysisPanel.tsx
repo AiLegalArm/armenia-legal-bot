@@ -13,13 +13,14 @@ import { Switch } from '@/components/ui/switch';
 import { Label } from '@/components/ui/label';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { exportAnalysisToPDF, exportMultipleAnalysesToPDF } from '@/lib/pdfExport';
-import { Loader2, Brain, Download, FileSignature, Save, AlertTriangle, Check, Scale, Timer, GitCompare, ShieldCheck, FileText, Target } from 'lucide-react';
+import { Loader2, Brain, Download, FileSignature, Save, AlertTriangle, Check, Scale, Timer, GitCompare, ShieldCheck, FileText, Target, Search } from 'lucide-react';
 import { useReferencesText } from '@/lib/references-store';
 import { PrecedentCitationView, type PrecedentCitationResult } from '@/components/cases/PrecedentCitationView';
 import { DeadlineRulesView, type DeadlineRulesResult } from '@/components/cases/DeadlineRulesView';
 import { LegalPositionComparatorView, type LegalPositionComparatorResult } from '@/components/cases/LegalPositionComparatorView';
 import { HallucinationAuditView, type HallucinationAuditResult } from '@/components/cases/HallucinationAuditView';
 import { StrategyBuilderView, type StrategyBuilderResult } from '@/components/cases/StrategyBuilderView';
+import { EvidenceWeaknessView, type EvidenceWeaknessResult } from '@/components/cases/EvidenceWeaknessView';
 
 interface CaseAIAnalysisPanelProps {
   caseId: string;
@@ -79,6 +80,8 @@ export function CaseAIAnalysisPanel({
   const [isDraftLoading, setIsDraftLoading] = useState(false);
   const [strategyData, setStrategyData] = useState<StrategyBuilderResult | null>(null);
   const [isStrategyLoading, setIsStrategyLoading] = useState(false);
+  const [evidenceWeaknessData, setEvidenceWeaknessData] = useState<EvidenceWeaknessResult | null>(null);
+  const [isEvidenceWeaknessLoading, setIsEvidenceWeaknessLoading] = useState(false);
 
   // If user clicks "Clear" while the initial saved-analyses load is still in-flight,
   // we must ignore that async result to prevent the content from "reappearing".
@@ -457,6 +460,42 @@ export function CaseAIAnalysisPanel({
                   {i18n.language === 'hy' ? 'Ռազdelays' : i18n.language === 'en' ? 'Strategy' : 'Стратегия'}
                 </span>
               </Button>
+              <Button 
+                variant="outline" 
+                size="sm" 
+                onClick={async () => {
+                  setIsEvidenceWeaknessLoading(true);
+                  setEvidenceWeaknessData(null);
+                  try {
+                    const result = await analyzeCase('evidence_weakness', caseId, facts, legalQuestion || '', referencesText);
+                    if (result) {
+                      if (result.evidence_weakness_data) {
+                        setEvidenceWeaknessData(result.evidence_weakness_data as EvidenceWeaknessResult);
+                      } else {
+                        try {
+                          const parsed = JSON.parse(result.analysis);
+                          setEvidenceWeaknessData(parsed);
+                        } catch {
+                          setEvidenceWeaknessData(null);
+                        }
+                      }
+                    }
+                  } finally {
+                    setIsEvidenceWeaknessLoading(false);
+                  }
+                }}
+                disabled={isEvidenceWeaknessLoading || isAnalyzing}
+                className="h-10 rounded-xl text-mobile-sm sm:text-sm"
+              >
+                {isEvidenceWeaknessLoading ? (
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin shrink-0" />
+                ) : (
+                  <Search className="mr-2 h-4 w-4 shrink-0" />
+                )}
+                <span className="truncate">
+                  {i18n.language === 'hy' ? 'Թdelays' : i18n.language === 'en' ? 'Weaknesses' : 'Уязdelays'}
+                </span>
+              </Button>
               {Object.values(results).some(r => r !== null) && (
                 <>
                   <Button
@@ -682,6 +721,18 @@ export function CaseAIAnalysisPanel({
                  : 'Стратегия судебного разбирательства'}
               </h3>
               <StrategyBuilderView data={strategyData} language={i18n.language} />
+            </div>
+          )}
+
+          {/* Evidence Weakness Detector Results */}
+          {evidenceWeaknessData && (
+            <div className="mt-6 pt-6 border-t">
+              <h3 className="font-semibold text-lg mb-3">
+                {i18n.language === 'hy' ? ' Delays delays' 
+                 : i18n.language === 'en' ? 'Evidence Weakness Analysis' 
+                 : 'Анализ уязdelays доказdelays'}
+              </h3>
+              <EvidenceWeaknessView data={evidenceWeaknessData} language={i18n.language} />
             </div>
           )}
 
