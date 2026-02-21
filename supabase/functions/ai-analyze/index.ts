@@ -12,6 +12,7 @@ import { PRECEDENT_CITATION_PROMPT, PRECEDENT_CITATION_SCHEMA } from "./prompts/
 import { DEADLINE_RULES_PROMPT, DEADLINE_RULES_SCHEMA } from "./prompts/deadline-rules.ts";
 import { LEGAL_POSITION_COMPARATOR_PROMPT, LEGAL_POSITION_COMPARATOR_SCHEMA } from "./prompts/legal-position-comparator.ts";
 import { HALLUCINATION_AUDIT_PROMPT, HALLUCINATION_AUDIT_SCHEMA } from "./prompts/hallucination-audit.ts";
+import { DRAFT_DETERMINISTIC_PROMPT } from "./prompts/draft-deterministic.ts";
 import { BASE_SYSTEM_PROMPT } from "./system.ts";
 import { sandboxUserInput, secureSandbox, logInjectionAttempt, ANTI_INJECTION_RULES } from "../_shared/prompt-armor.ts";
 import { applyBudgets, logTokenUsage, type RankedContent } from "../_shared/token-budget.ts";
@@ -108,7 +109,7 @@ const SYSTEM_PROMPTS: Record<Role, string> = {
 // UserSourceRef moved to _shared/reference-sources.ts
 
 interface AnalysisRequest {
-  role: "advocate" | "prosecutor" | "judge" | "aggregator" | "criminal_module" | "precedent_citation" | "deadline_rules" | "legal_position_comparator" | "hallucination_audit";
+  role: "advocate" | "prosecutor" | "judge" | "aggregator" | "criminal_module" | "precedent_citation" | "deadline_rules" | "legal_position_comparator" | "hallucination_audit" | "draft_deterministic";
   moduleId?: CriminalAnalysisModule;
   caseId?: string;
   caseFacts?: string;
@@ -154,7 +155,7 @@ serve(async (req) => {
       (await req.json()) as AnalysisRequest;
 
     // Validate role - support both legacy roles and new analysis types
-    const legacyRoles = ["advocate", "prosecutor", "judge", "aggregator", "criminal_module", "precedent_citation", "deadline_rules", "legal_position_comparator", "hallucination_audit"];
+    const legacyRoles = ["advocate", "prosecutor", "judge", "aggregator", "criminal_module", "precedent_citation", "deadline_rules", "legal_position_comparator", "hallucination_audit", "draft_deterministic"];
     const isLegacyRole = legacyRoles.includes(role);
     const isNewAnalysisType = isValidAnalysisType(role as AnalysisType);
 
@@ -599,6 +600,8 @@ Please provide your professional legal analysis from your designated role perspe
       systemPrompt = LEGAL_POSITION_COMPARATOR_PROMPT;
     } else if (role === "hallucination_audit") {
       systemPrompt = HALLUCINATION_AUDIT_PROMPT;
+    } else if (role === "draft_deterministic") {
+      systemPrompt = DRAFT_DETERMINISTIC_PROMPT;
     } else if (role === "criminal_module" && moduleId) {
       // Legacy criminal module support
       systemPrompt = CRIMINAL_MODULE_PROMPTS[moduleId];
@@ -683,6 +686,11 @@ Please provide your professional legal analysis from your designated role perspe
         precedentJson = result.json;
         aiResponseText = JSON.stringify(result.json, null, 2);
         console.log(JSON.stringify({ ts: new Date().toISOString(), lvl: "info", fn: "ai-analyze", mode: "hallucination_audit", model: result.model_used, latency_ms: result.latency_ms }));
+      } else if (role === "draft_deterministic") {
+        // Plain text output — court-ready document draft
+        const result = await callText("ai-analyze", routerMessages);
+        aiResponseText = result.text;
+        console.log(JSON.stringify({ ts: new Date().toISOString(), lvl: "info", fn: "ai-analyze", mode: "draft_deterministic", model: result.model_used, latency_ms: result.latency_ms }));
       } else {
         const result = await callText("ai-analyze", routerMessages);
         aiResponseText = result.text;
@@ -701,7 +709,7 @@ Please provide your professional legal analysis from your designated role perspe
       throw new Error("Legal AI router error");
     }
 
-    // For precedent_citation or deadline_rules, return structured JSON directly
+    // For diagnostic engines returning structured JSON
     if ((role === "precedent_citation" || role === "deadline_rules" || role === "legal_position_comparator" || role === "hallucination_audit") && precedentJson) {
       // Save to database if caseId provided
       if (caseId) {
@@ -721,6 +729,31 @@ Please provide your professional legal analysis from your designated role perspe
           role,
           analysis: aiResponseText,
           [responseKey]: precedentJson,
+          sources: sourcesUsed,
+          model: "Legal AI (openai/gpt-5)",
+        }),
+        { headers: { ...corsHeaders, "Content-Type": "application/json" } },
+      );
+    }
+
+    // For draft_deterministic — plain text document, no disclaimer needed
+    if (role === "draft_deterministic") {
+      if (caseId) {
+        await supabase.from("ai_analysis").insert({
+          case_id: caseId,
+          role,
+          prompt_used: redactPII(userMessage.substring(0, 2000)),
+          response_text: aiResponseText,
+          sources_used: sourcesUsed.length > 0 ? sourcesUsed : null,
+          created_by: user.id,
+        });
+      }
+
+      return new Response(
+        JSON.stringify({
+          role,
+          analysis: aiResponseText,
+          draft_text: aiResponseText,
           sources: sourcesUsed,
           model: "Legal AI (openai/gpt-5)",
         }),
