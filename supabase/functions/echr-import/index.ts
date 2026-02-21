@@ -1,10 +1,8 @@
 /**
- * echr-import — ECHR cases import with Armenian translation.
+ * echr-import — ECHR cases import (no translation).
  *
  * Accepts: JSON array or JSONL (one object per line).
- * For each case, translates text/summary/facts/judgment to Armenian.
- * Inserts 1 row per case with upsert on echr_case_id.
- * Returns JSONL download of translated cases.
+ * Extracts metadata, text content, and inserts into legal_practice_kb.
  */
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.91.1";
@@ -14,15 +12,6 @@ const corsHeaders = {
   "Access-Control-Allow-Headers":
     "authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version",
 };
-
-// ── SHA-256 hash (hex) ────────────────────────────────────────────
-async function sha256hex(text: string): Promise<string> {
-  const enc = new TextEncoder();
-  const buf = await crypto.subtle.digest("SHA-256", enc.encode(text));
-  return Array.from(new Uint8Array(buf))
-    .map((b) => b.toString(16).padStart(2, "0"))
-    .join("");
-}
 
 // ── Recursively extract text from HUDOC nested content ───────────
 function extractElementsText(
@@ -42,19 +31,12 @@ function extractElementsText(
   }
 }
 
-/**
- * Extract usable text from a HUDOC case object.
- * Supports both standard fields (text/summary/facts/judgment)
- * and HUDOC's nested `content` structure.
- */
 function extractCaseText(caseObj: Record<string, unknown>): string {
-  // 1. Standard fields first
   const standard = [caseObj.text, caseObj.content_text, caseObj.judgment, caseObj.summary, caseObj.facts]
     .filter((v) => typeof v === "string" && (v as string).trim().length > 0)
     .join("\n\n");
   if (standard.trim()) return standard;
 
-  // 2. HUDOC nested `content` field: { "filename.docx": [{content, elements:[...]}] }
   const hudocContent = caseObj.content;
   if (hudocContent && typeof hudocContent === "object" && !Array.isArray(hudocContent)) {
     const parts: string[] = [];
@@ -69,7 +51,6 @@ function extractCaseText(caseObj: Record<string, unknown>): string {
     if (parts.length > 0) return parts.join("\n\n");
   }
 
-  // 3. __conclusion or conclusion summary as last resort
   if (typeof caseObj.__conclusion === "string" && caseObj.__conclusion.trim()) {
     return caseObj.__conclusion;
   }
@@ -77,13 +58,10 @@ function extractCaseText(caseObj: Record<string, unknown>): string {
   return "";
 }
 
-/**
- * Extract violations from HUDOC `conclusion` array or `__conclusion` string.
- */
 function extractViolations(caseObj: Record<string, unknown>): string[] {
   const violations: string[] = [];
   if (Array.isArray(caseObj.conclusion)) {
-    for (const c of caseObj.conclusion as Array<{ type?: string; element?: string; details?: string[] }>) {
+    for (const c of caseObj.conclusion as Array<{ type?: string; element?: string }>) {
       if (c.type === "violation" && c.element) {
         violations.push(c.element);
       }
@@ -95,9 +73,6 @@ function extractViolations(caseObj: Record<string, unknown>): string[] {
   return violations;
 }
 
-/**
- * Extract ECHR article numbers from `article` array or `__articles` string.
- */
 function extractArticles(caseObj: Record<string, unknown>): string[] {
   if (Array.isArray(caseObj.article)) {
     return (caseObj.article as string[]).filter((a) => typeof a === "string");
@@ -108,210 +83,20 @@ function extractArticles(caseObj: Record<string, unknown>): string[] {
   return [];
 }
 
-// ── Text chunker (≈3000 chars per chunk) ─────────────────────────
-function chunkText(text: string, chunkSize = 3000): string[] {
-  if (!text || text.length <= chunkSize) return [text];
-  const chunks: string[] = [];
-  let start = 0;
-  while (start < text.length) {
-    let end = start + chunkSize;
-    if (end < text.length) {
-      // Try to break at paragraph or sentence
-      const breakPar = text.lastIndexOf("\n\n", end);
-      const breakSent = text.lastIndexOf(". ", end);
-      if (breakPar > start + chunkSize / 2) end = breakPar + 2;
-      else if (breakSent > start + chunkSize / 2) end = breakSent + 2;
-    }
-    chunks.push(text.slice(start, end));
-    start = end;
-  }
-  return chunks;
-}
-
-// ── Single field translator (with retry + cache) ──────────────────
-async function translateFieldHY(
-  text: string,
-  fieldName: string,
-  _openaiKey: string,
-  supabase: ReturnType<typeof createClient>
-): Promise<string> {
-  if (!text || text.trim().length === 0) return text;
-
-  const chunks = chunkText(text);
-  const translated: string[] = [];
-
-  for (const chunk of chunks) {
-    const cacheKey = await sha256hex(chunk + fieldName);
-
-    // Check cache
-    const { data: cached } = await supabase
-      .from("translations_cache")
-      .select("translated_text")
-      .eq("cache_key", cacheKey)
-      .maybeSingle();
-
-    if (cached?.translated_text) {
-      translated.push(cached.translated_text);
-      continue;
-    }
-
-    // Translate via gateway-bypass (MODEL_MAP: echr-translate)
-    let result = "";
-    let lastError: string = "";
-    try {
-      const { callGatewayBypass } = await import("../_shared/gateway-bypass.ts");
-      const bypassResult = await callGatewayBypass(
-        [
-          {
-            role: "system",
-            content: "Translate the following legal text to Armenian. Preserve all proper names, dates, case numbers, article references. Return ONLY the Armenian translation.",
-          },
-          { role: "user", content: chunk },
-        ],
-        {
-          functionName: "echr-translate",
-          bypassReason: "translation",
-          timeoutMs: 30000,
-          maxRetries: 2,
-        }
-      );
-      result = (bypassResult.data?.choices as Array<{ message?: { content?: string } }>)?.[0]?.message?.content?.trim() ?? "";
-    } catch (e) {
-      lastError = e instanceof Error ? e.message : String(e);
-    }
-
-    if (result) {
-      translated.push(result);
-      // Store in cache (best effort)
-      try {
-        await supabase.from("translations_cache").upsert({
-          cache_key: cacheKey,
-          source_text: chunk.slice(0, 5000),
-          translated_text: result,
-          field_name: fieldName,
-          provider: "lovable-gateway",
-        }, { onConflict: "cache_key" });
-      } catch { /* ignore cache write errors */ }
-    } else {
-      // Translation failed — keep original chunk
-      translated.push(chunk);
-      console.warn(`Translation failed for chunk [${fieldName}]: ${lastError}`);
-    }
-  }
-
-  return translated.join("\n\n");
-}
-
-// ── Translate all target fields of a case object ──────────────────
-async function translateCaseHY(
-  caseObj: Record<string, unknown>,
-  openaiKey: string,
-  supabase: ReturnType<typeof createClient>,
-  storeInHyFields: boolean
-): Promise<{
-  result: Record<string, unknown>;
-  status: "translated" | "partial" | "skipped";
-  errors: string[];
-}> {
-  const FIELDS = ["text", "summary", "facts", "judgment"] as const;
-  const errors: string[] = [];
-  let translatedCount = 0;
-
-  // Normalize HUDOC format: if standard text fields are missing, inject extracted text
-  const normalizedCase = { ...caseObj };
-  const hasStandardText = FIELDS.some(
-    (f) => typeof caseObj[f] === "string" && (caseObj[f] as string).trim().length > 0
-  );
-  if (!hasStandardText) {
-    const extracted = extractCaseText(caseObj);
-    if (extracted) normalizedCase.text = extracted;
-  }
-
-  const out: Record<string, unknown> = { ...normalizedCase };
-
-  // Translate all fields in parallel for speed
-  const fieldResults = await Promise.all(
-    FIELDS.map(async (field) => {
-      const val = normalizedCase[field];
-      if (!val || typeof val !== "string" || val.trim().length === 0) return null;
-      try {
-        // Translate full text — chunkText() handles splitting into ≤3000 char pieces
-        const translated = await translateFieldHY(val, field, openaiKey, supabase);
-        return { field, translated, ok: true };
-      } catch (e) {
-        return { field, error: e instanceof Error ? e.message : String(e), ok: false };
-      }
-    })
-  );
-
-  for (const r of fieldResults) {
-    if (!r) continue;
-    if (r.ok && r.translated) {
-      if (storeInHyFields) {
-        out[`${r.field}_hy`] = r.translated;
-      } else {
-        out[r.field] = r.translated;
-      }
-      translatedCount++;
-    } else if (!r.ok && r.error) {
-      errors.push(`${r.field}: ${r.error}`);
-    }
-  }
-
-  const status =
-    translatedCount === 0 ? "skipped"
-    : errors.length > 0 ? "partial"
-    : "translated";
-
-  return { result: out, status, errors };
-}
-
-// ── Parse input into case objects ─────────────────────────────────
-function parseInput(body: string): { cases: Record<string, unknown>[]; skipped: number } {
-  const trimmed = body.trim();
-  let cases: Record<string, unknown>[] = [];
-  let skipped = 0;
-
-  if (trimmed.startsWith("[")) {
-    // JSON array
-    try {
-      const arr = JSON.parse(trimmed);
-      if (Array.isArray(arr)) {
-        cases = arr.filter((x) => x && typeof x === "object");
-      }
-    } catch {
-      // Try line-by-line fallback
-    }
-  }
-
-  if (cases.length === 0) {
-    // JSONL (one object per line)
-    const lines = trimmed.split("\n");
-    for (const line of lines) {
-      const l = line.trim();
-      if (!l) continue;
-      try {
-        const parsed = JSON.parse(l);
-        if (parsed && typeof parsed === "object") {
-          cases.push(parsed);
-        }
-      } catch {
-        skipped++;
-      }
-    }
-  }
-
-  return { cases, skipped };
-}
-
-// ── Stable ID for upsert ──────────────────────────────────────────
 function getStableId(c: Record<string, unknown>): string | null {
-  const val =
-    c.itemid || c.application_no || c.appno || c.echr_case_id || c.case_id || c.id;
+  const val = c.itemid || c.application_no || c.appno || c.echr_case_id || c.case_id || c.id;
   return val ? String(val) : null;
 }
 
-// ── Main handler ──────────────────────────────────────────────────
+function mapOutcome(raw: string): string {
+  const lower = raw.toLowerCase();
+  if (/violation|granted|удовлет|բավ/.test(lower)) return "granted";
+  if (/no.violation|rejected|отклон|մերժ/.test(lower)) return "rejected";
+  if (/partial|частичн|մաս/.test(lower)) return "partial";
+  if (/struck|discontin|прекращ|կարճ/.test(lower)) return "discontinued";
+  return "granted";
+}
+
 serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
@@ -342,25 +127,12 @@ serve(async (req) => {
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
     );
 
-    const openaiKey = Deno.env.get("OPENAI_API_KEY")!;
-    if (!openaiKey) {
-      return new Response(JSON.stringify({ error: "OPENAI_API_KEY not configured" }), {
-        status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
-    }
-
-    // Body: { rawContent: string | object[], storeInHyFields: boolean, generateJsonl: boolean, practiceCategory: string }
     const body = await req.json();
-    const storeInHyFields: boolean = body.storeInHyFields !== false; // default true
-    const generateJsonl: boolean = body.generateJsonl !== false; // default true
     const practiceCategory: string = body.practiceCategory ?? "echr";
 
-    // rawContent can be either a pre-parsed array (from frontend batching) or a raw string
     let batchCases: Record<string, unknown>[] = [];
-    let parseSkipped = 0;
 
     if (Array.isArray(body.rawContent)) {
-      // Frontend already parsed and batched — use directly
       batchCases = body.rawContent.filter((x: unknown) => x && typeof x === "object") as Record<string, unknown>[];
     } else {
       const rawContent: string = body.rawContent ?? "";
@@ -369,69 +141,68 @@ serve(async (req) => {
           status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
         });
       }
-      const parsed = parseInput(rawContent);
-      batchCases = parsed.cases;
-      parseSkipped = parsed.skipped;
+      // Simple parse
+      const trimmed = rawContent.trim();
+      if (trimmed.startsWith("[")) {
+        try {
+          const arr = JSON.parse(trimmed);
+          if (Array.isArray(arr)) batchCases = arr.filter((x) => x && typeof x === "object");
+        } catch { /* fallthrough to JSONL */ }
+      }
+      if (batchCases.length === 0) {
+        for (const line of trimmed.split("\n")) {
+          const l = line.trim();
+          if (!l) continue;
+          try {
+            const parsed = JSON.parse(l);
+            if (parsed && typeof parsed === "object") batchCases.push(parsed);
+          } catch { /* skip */ }
+        }
+      }
     }
 
     if (batchCases.length === 0) {
-      return new Response(JSON.stringify({ error: "No valid cases found", parseSkipped }), {
+      return new Response(JSON.stringify({ error: "No valid cases found" }), {
         status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
+
     let processed = 0;
-    let translated = 0;
-    let partial = 0;
+    let inserted = 0;
     let errors = 0;
-    const jsonlLines: string[] = [];
     const insertedIds: string[] = [];
     const errorDetails: Array<{ title: string; error: string }> = [];
 
-    // Concurrency control: process up to 3 cases in parallel
-    const CONCURRENCY = 3;
+    // Process cases in parallel (up to 5 concurrently)
+    const CONCURRENCY = 5;
     for (let i = 0; i < batchCases.length; i += CONCURRENCY) {
       const chunk = batchCases.slice(i, i + CONCURRENCY);
 
       const results = await Promise.all(chunk.map(async (caseObj) => {
         try {
-          const { result, status, errors: fieldErrors } = await translateCaseHY(
-            caseObj,
-            openaiKey,
-            supabaseService,
-            storeInHyFields
-          );
-
-          // Build DB row
           const stableId = getStableId(caseObj);
           const title = String(
             caseObj.docname || caseObj.title || caseObj.case_name || `ECHR-${stableId ?? "unknown"}`
-          ).slice(0, 500);
+          ).replace(/^_+/, "").slice(0, 500);
 
-          // Extract text: supports standard fields AND HUDOC nested content structure
           const rawText = extractCaseText(caseObj);
           const contentText = rawText.replace(/\u0000/g, "").slice(0, 500000);
 
-          if (!contentText) return { status, fieldErrors, skipped: true };
+          if (!contentText) return { ok: false, title, error: "No extractable text content" };
 
-          // Extract violations and articles from HUDOC conclusion/article fields
           const violations = extractViolations(caseObj);
           const echrArticles = extractArticles(caseObj);
 
-          // Map outcome: HUDOC 'conclusion' with type='violation' → 'granted'
-          const hasViolation = violations.some((v) =>
-            /violation/i.test(v) || /no.violation/i.test(v) === false
-          );
           const outcomeRaw = String(
             caseObj.judgementdate
               ? (violations.length > 0 ? "violation" : "no violation")
               : caseObj.outcome ?? "granted"
           );
 
-          // Extract HUDOC metadata fields
           const courtName = String(caseObj.originatingbody_name || caseObj.respondent || caseObj.court_name || "").trim() || null;
           const caseNumber = String(caseObj.appno || caseObj.application_no || caseObj.case_number || "").trim() || null;
           const decisionDateRaw = String(caseObj.judgementdate || caseObj.kpdate || caseObj.decisiondate || caseObj.decision_date || "").trim();
-          // Parse HUDOC date format (DD/MM/YYYY or YYYY-MM-DD)
+          
           let decisionDate: string | null = null;
           if (decisionDateRaw) {
             const isoMatch = decisionDateRaw.match(/^(\d{4})-(\d{2})-(\d{2})/);
@@ -440,7 +211,6 @@ serve(async (req) => {
             else if (euMatch) decisionDate = `${euMatch[3]}-${euMatch[2]}-${euMatch[1]}`;
           }
 
-          // Build applied_articles from extracted articles
           const appliedArticles = echrArticles.length > 0
             ? { sources: [{ act: "ECHR", articles: echrArticles.map(a => ({ article: a, part: "", point: "", context: "" })) }] }
             : null;
@@ -459,28 +229,13 @@ serve(async (req) => {
             case_number_anonymized: caseNumber,
             decision_date: decisionDate,
             applied_articles: appliedArticles,
-            translation_status: status,
-            translation_provider: "openai",
-            translation_ts: new Date().toISOString(),
-            translation_errors: fieldErrors.length > 0 ? fieldErrors.join("; ") : null,
             key_violations: violations.length > 0 ? violations : null,
             echr_article: echrArticles.length > 0 ? echrArticles : null,
           };
 
-          // Add *_hy fields if storing separately
-          if (storeInHyFields) {
-            for (const f of ["text", "summary", "facts", "judgment"]) {
-              const hyVal = result[`${f}_hy`];
-              if (hyVal) row[`${f}_hy`] = hyVal;
-            }
-          }
-
           if (stableId) row.echr_case_id = stableId;
 
-          // Upsert
-          const upsertOptions = stableId
-            ? { onConflict: "echr_case_id" }
-            : undefined;
+          const upsertOptions = stableId ? { onConflict: "echr_case_id" } : undefined;
 
           let insertedId: string | null = null;
           if (upsertOptions) {
@@ -492,51 +247,34 @@ serve(async (req) => {
             if (upsertErr) throw upsertErr;
             insertedId = upserted?.id ?? null;
           } else {
-            const { data: inserted, error: insertErr } = await supabaseService
+            const { data: ins, error: insertErr } = await supabaseService
               .from("legal_practice_kb")
               .insert(row)
               .select("id")
               .single();
             if (insertErr) throw insertErr;
-            insertedId = inserted?.id ?? null;
+            insertedId = ins?.id ?? null;
           }
 
-          // Build JSONL line (escape newlines in values)
-          const jsonlObj = {
-            ...result,
-            _db_id: insertedId,
-            translation_status: status,
-          };
-          const jsonlLine = JSON.stringify(jsonlObj).replace(/\r?\n/g, "\\n");
-
-          return { status, fieldErrors, insertedId, jsonlLine };
+          return { ok: true, insertedId };
         } catch (e) {
           const errMsg = e instanceof Error ? e.message : String(e);
-          const caseTitle = String(caseObj.docname || caseObj.title || caseObj.case_name || "Unknown case").slice(0, 200);
-          console.error("Case processing error:", caseTitle, errMsg);
-          return { status: "error", fieldErrors: [errMsg], skipped: false, error: true, caseTitle: caseTitle, errorMessage: errMsg };
+          const caseTitle = String(caseObj.docname || caseObj.title || caseObj.case_name || "Unknown").slice(0, 200);
+          console.error("Case error:", caseTitle, errMsg);
+          return { ok: false, title: caseTitle, error: errMsg };
         }
       }));
 
       for (const r of results) {
         processed++;
-        if ((r as { skipped?: boolean }).skipped) {
+        if (r.ok && (r as { insertedId?: string }).insertedId) {
+          inserted++;
+          insertedIds.push((r as { insertedId: string }).insertedId);
+        } else if (!r.ok) {
           errors++;
-          const cTitle = (r as { caseTitle?: string }).caseTitle || "Skipped (no content)";
-          errorDetails.push({ title: cTitle, error: "No extractable text content" });
-          continue;
+          const err = r as { title?: string; error?: string };
+          errorDetails.push({ title: err.title || "Unknown", error: err.error || "Unknown error" });
         }
-        if ((r as { error?: boolean }).error) {
-          errors++;
-          const errResult = r as { caseTitle?: string; errorMessage?: string };
-          errorDetails.push({ title: errResult.caseTitle || "Unknown", error: errResult.errorMessage || "Unknown error" });
-          continue;
-        }
-        const res = r as { status: string; insertedId?: string; jsonlLine?: string };
-        if (res.status === "translated") translated++;
-        else if (res.status === "partial") partial++;
-        if (res.insertedId) insertedIds.push(res.insertedId);
-        if (res.jsonlLine) jsonlLines.push(res.jsonlLine);
       }
     }
 
@@ -544,13 +282,10 @@ serve(async (req) => {
       success: true,
       total: batchCases.length,
       batchProcessed: processed,
-      translated,
-      partial,
+      inserted,
       errors,
-      parseSkipped,
       insertedIds,
       errorDetails: errorDetails.length > 0 ? errorDetails : undefined,
-      jsonlContent: generateJsonl ? jsonlLines.join("\n") : null,
     }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
@@ -562,12 +297,3 @@ serve(async (req) => {
     });
   }
 });
-
-function mapOutcome(raw: string): string {
-  const lower = raw.toLowerCase();
-  if (/violation|granted|удовлет|բավ/.test(lower)) return "granted";
-  if (/no.violation|rejected|отклон|մերժ/.test(lower)) return "rejected";
-  if (/partial|частичн|մաս/.test(lower)) return "partial";
-  if (/struck|discontin|прекращ|կարճ/.test(lower)) return "discontinued";
-  return "granted";
-}
