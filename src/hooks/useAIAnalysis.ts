@@ -3,7 +3,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { useTranslation } from "react-i18next";
 
-export type AIRole = "advocate" | "prosecutor" | "judge" | "aggregator" | "precedent_citation" | "deadline_rules" | "legal_position_comparator" | "hallucination_audit" | "draft_deterministic" | "strategy_builder" | "evidence_weakness" | "risk_factors";
+export type AIRole = "advocate" | "prosecutor" | "judge" | "aggregator" | "precedent_citation" | "deadline_rules" | "legal_position_comparator" | "hallucination_audit" | "draft_deterministic" | "strategy_builder" | "evidence_weakness" | "risk_factors" | "law_update_summary";
 
 interface AnalysisResult {
   role: AIRole;
@@ -18,6 +18,7 @@ interface AnalysisResult {
   strategy_data?: unknown;
   evidence_weakness_data?: unknown;
   risk_factors_data?: unknown;
+  law_update_data?: unknown;
 }
 
 interface UseAIAnalysisReturn {
@@ -49,6 +50,7 @@ export function useAIAnalysis(): UseAIAnalysisReturn {
     strategy_builder: null,
     evidence_weakness: null,
     risk_factors: null,
+    law_update_summary: null,
   });
 
   const analyzeCase = useCallback(async (
@@ -123,8 +125,9 @@ export function useAIAnalysis(): UseAIAnalysisReturn {
         audit_data: data.audit_data || null,
         draft_text: data.draft_text || null,
         strategy_data: data.strategy_data || null,
-        evidence_weakness_data: data.evidence_weakness_data || null,
+      evidence_weakness_data: data.evidence_weakness_data || null,
         risk_factors_data: data.risk_factors_data || null,
+        law_update_data: data.law_update_data || null,
       };
 
       setResults(prev => ({
@@ -227,6 +230,7 @@ export function useAIAnalysis(): UseAIAnalysisReturn {
       strategy_builder: null,
       evidence_weakness: null,
       risk_factors: null,
+      law_update_summary: null,
     });
     setCreditsExhausted(false);
   }, []);
