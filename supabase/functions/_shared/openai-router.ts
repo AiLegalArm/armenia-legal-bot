@@ -35,174 +35,176 @@ export interface GovernanceMeta {
 /**
  * Strict per-function model assignment.
  * No function may override these; they must call by functionName only.
- * ALL models MUST be anthropic/* or google/* — openai/* is FORBIDDEN.
+ * OpenAI chat models are allowed ONLY for functions in OPENAI_CHAT_ALLOWLIST.
+ * OpenAI embedding models are allowed ONLY for functions in OPENAI_EMBEDDING_ALLOWLIST.
  */
 export const MODEL_MAP: Record<string, ModelConfig> = {
-  // ── High reasoning — anthropic/claude-3.7-sonnet ──────────────────────────
+  // ── High-quality drafting & complex reasoning (OpenAI GPT-5) ──────────────
+  "generate-complaint": {
+    model: "openai/gpt-5",
+    temperature: 0.1,
+    max_tokens: 14000,
+    description: "Complaint drafting (GPT-5)",
+  },
+  "multi-agent-analyze": {
+    model: "openai/gpt-5",
+    temperature: 0.2,
+    max_tokens: 16000,
+    description: "Multi-agent analysis (GPT-5)",
+  },
+  "legal-chat": {
+    model: "openai/gpt-5",
+    temperature: 0.2,
+    max_tokens: 16000,
+    description: "Legal chat (GPT-5)",
+  },
+  "analyze-files-for-complaint": {
+    model: "openai/gpt-5",
+    temperature: 0.2,
+    max_tokens: 16000,
+    description: "File analysis (GPT-5)",
+  },
+
+  // ── Core ai-analyze base (reasoning stability) ────────────────────────────
   "ai-analyze": {
     model: "anthropic/claude-3.7-sonnet",
     temperature: 0.1,
     max_tokens: 12000,
-    description: "AI legal case analysis (Claude 3.7 Sonnet, temp=0.1)",
-  },
-  "multi-agent-analyze": {
-    model: "anthropic/claude-3.7-sonnet",
-    temperature: 0.1,
-    max_tokens: 16384,
-    description: "Multi-agent legal analysis (Claude 3.7 Sonnet, temp=0.1)",
-  },
-  "generate-complaint": {
-    model: "anthropic/claude-3.7-sonnet",
-    temperature: 0.1,
-    max_tokens: 12000,
-    description: "Legal complaint generation (Claude 3.7 Sonnet, temp=0.1)",
-  },
-  "legal-chat": {
-    model: "anthropic/claude-3.7-sonnet",
-    temperature: 0.1,
-    max_tokens: 16000,
-    description: "Legal chat assistant (Claude 3.7 Sonnet, temp=0.1)",
-  },
-  "analyze-files-for-complaint": {
-    model: "anthropic/claude-3.7-sonnet",
-    temperature: 0.1,
-    max_tokens: 16384,
-    description: "File analysis for complaints (Claude 3.7 Sonnet, temp=0.1)",
+    description: "Case analysis (Claude Sonnet)",
   },
 
-  // ── Structured JSON — google/gemini-2.5-pro ───────────────────────────────
+  // ── Structured JSON ───────────────────────────────────────────────────────
   "extract-case-fields": {
     model: "google/gemini-2.5-pro",
     temperature: 0.2,
     max_tokens: 4000,
     json_mode: true,
-    description: "Case field extraction — JSON (Gemini 2.5 Pro, temp=0.2)",
+    description: "Extract fields (Gemini Pro JSON)",
   },
   "kb-search-assistant": {
     model: "google/gemini-2.5-pro",
     temperature: 0.2,
     max_tokens: 200,
     json_mode: true,
-    description: "KB keyword extraction — JSON (Gemini 2.5 Pro, temp=0.2)",
+    description: "KB keywords (Gemini Pro JSON)",
   },
 
-  // ── Light tasks — google/gemini-2.5-flash ─────────────────────────────────
+  // ── Light tasks ───────────────────────────────────────────────────────────
   "generate-document": {
     model: "google/gemini-2.5-flash",
     temperature: 0.2,
     max_tokens: 10000,
-    description: "Legal document generation (Gemini 2.5 Flash, temp=0.2)",
+    description: "Documents (Gemini Flash)",
   },
   "audio-transcribe": {
     model: "google/gemini-2.5-flash",
     temperature: 0.1,
     max_tokens: 16000,
-    description: "Audio transcription (Gemini 2.5 Flash, temp=0.1)",
+    description: "Transcription (Gemini Flash)",
   },
 
-  // ── Utility tasks — google/gemini-2.5-flash-lite ──────────────────────────
+  // ── Utilities ─────────────────────────────────────────────────────────────
   "legal-practice-enrich": {
     model: "google/gemini-2.5-flash",
     temperature: 0.2,
     max_tokens: 16000,
-    description: "Legal practice enrichment (Gemini 2.5 Flash, temp=0.2)",
+    description: "Enrich practice (Gemini Flash)",
   },
   "vector-search-rerank": {
     model: "google/gemini-2.5-flash-lite",
     temperature: 0.1,
     max_tokens: 1000,
-    description: "Vector search re-ranking (Gemini 2.5 Flash Lite, temp=0.1)",
+    description: "Rerank (Flash-lite)",
   },
   "echr-translate": {
     model: "google/gemini-2.5-flash",
     temperature: 0.1,
     max_tokens: 8000,
-    description: "ECHR translation to Armenian (Gemini 2.5 Flash, temp=0.1)",
+    description: "ECHR translate (Flash)",
+  },
+
+  // ── Embeddings (OpenAI allowed ONLY here) ─────────────────────────────────
+  "generate-embeddings": {
+    model: "openai/text-embedding-3-large",
+    temperature: 0,
+    max_tokens: 0,
+    description: "Embeddings (OpenAI)",
   },
 };
 
 /**
  * Role-specific model overrides for ai-analyze diagnostic engines.
- * Key format: "functionName:role" -> partial ModelConfig override.
- * Falls back to MODEL_MAP[functionName] if no override exists.
  */
 const ROLE_OVERRIDES: Record<string, Partial<ModelConfig>> = {
-  // ── High reasoning roles (Claude 3.7 Sonnet, temp=0.1) ────────────────────
-  "ai-analyze:strategy_builder": {
-    description: "Strategy builder engine",
-  },
-  "ai-analyze:risk_factors": {
-    description: "Risk factors engine",
-  },
-  "ai-analyze:evidence_weakness": {
-    description: "Evidence weakness engine",
-  },
-  "ai-analyze:hallucination_audit": {
-    description: "Hallucination audit engine",
-  },
-  "ai-analyze:legal_position_comparator": {
-    description: "Legal position comparator engine",
-  },
-  // ── Deterministic drafting (temp=0, 14k tokens) ────────────────────────────
+  // ── Reasoning roles (inherit Claude base) ──────────────────────────────────
+  "ai-analyze:strategy_builder": { description: "Strategy builder" },
+  "ai-analyze:risk_factors": { description: "Risk factors" },
+  "ai-analyze:evidence_weakness": { description: "Evidence weakness" },
+  "ai-analyze:hallucination_audit": { description: "Hallucination audit" },
+  "ai-analyze:legal_position_comparator": { description: "Comparator" },
+  // ── Deterministic draft (GPT-5, temp=0) ────────────────────────────────────
   "ai-analyze:draft_deterministic": {
+    model: "openai/gpt-5",
     temperature: 0,
     max_tokens: 14000,
-    description: "Draft deterministic engine (temp=0, 14k tokens)",
+    description: "Deterministic draft (GPT-5 temp=0)",
   },
-  // ── Structured JSON cost-optimized (Gemini 2.5 Pro, temp=0.2, 8k) ─────────
+  // ── Structured JSON (Gemini Pro) ───────────────────────────────────────────
   "ai-analyze:precedent_citation": {
     model: "google/gemini-2.5-pro",
     temperature: 0.2,
     max_tokens: 8000,
-    description: "Precedent citation (Gemini 2.5 Pro, JSON, 8k)",
+    description: "Precedent JSON (Gemini Pro)",
   },
   "ai-analyze:cross_exam": {
     model: "google/gemini-2.5-pro",
     temperature: 0.2,
     max_tokens: 8000,
-    description: "Cross-examination (Gemini 2.5 Pro, JSON, 8k)",
+    description: "Cross-exam JSON (Gemini Pro)",
   },
   "ai-analyze:deadline_rules": {
     model: "google/gemini-2.5-pro",
     temperature: 0.2,
     max_tokens: 8000,
-    description: "Deadline rules (Gemini 2.5 Pro, JSON, 8k)",
+    description: "Deadlines JSON (Gemini Pro)",
   },
   "ai-analyze:law_update_summary": {
     model: "google/gemini-2.5-pro",
     temperature: 0.2,
     max_tokens: 8000,
-    description: "Law update summary (Gemini 2.5 Pro, JSON, 8k)",
+    description: "Law update JSON (Gemini Pro)",
   },
 };
 
-// ── Governance constants ────────────────────────────────────────────────────
+// ── Governance constants & allowlists ────────────────────────────────────────
 
-/** Maximum allowed temperature for any legal function */
 const MAX_TEMPERATURE = 0.3;
-
-/** Maximum allowed tokens for any single call */
 const MAX_TOKENS_CAP = 16384;
+
+/** OpenAI chat models allowed ONLY for these roleLabels/functionNames */
+const OPENAI_CHAT_ALLOWLIST = new Set([
+  "generate-complaint",
+  "multi-agent-analyze",
+  "legal-chat",
+  "analyze-files-for-complaint",
+  "ai-analyze:draft_deterministic",
+]);
+
+/** OpenAI embedding models allowed ONLY for these functionNames */
+const OPENAI_EMBEDDING_ALLOWLIST = new Set([
+  "generate-embeddings",
+]);
 
 /**
  * Governance-enforced model config resolution.
- *
- * Enforces:
- * 1. Role must be registered (rejects undefined roles)
- * 2. No openai/* models allowed
- * 3. Temperature capped at MAX_TEMPERATURE
- * 4. max_tokens capped at MAX_TOKENS_CAP
- * 5. Returns GovernanceMeta alongside ModelConfig
  */
 export function getModelConfig(functionName: string, role?: string): ModelConfig {
   const roleLabel = role ? `${functionName}:${role}` : functionName;
 
-  // Check role-specific override first
   if (role) {
     const overrideKey = `${functionName}:${role}`;
     const override = ROLE_OVERRIDES[overrideKey];
     if (!override) {
-      // Role was specified but not registered — reject
       throw new Error(
         `[openai-router] Undefined role "${role}" for function "${functionName}". ` +
           `Register it in ROLE_OVERRIDES or check the role name.`
@@ -211,8 +213,7 @@ export function getModelConfig(functionName: string, role?: string): ModelConfig
     const base = MODEL_MAP[functionName];
     if (!base) {
       throw new Error(
-        `[openai-router] No model config for function "${functionName}". ` +
-          `Register it in MODEL_MAP or check the function name.`
+        `[openai-router] No model config for function "${functionName}".`
       );
     }
     const merged = { ...base, ...override } as ModelConfig;
@@ -222,16 +223,12 @@ export function getModelConfig(functionName: string, role?: string): ModelConfig
   const cfg = MODEL_MAP[functionName];
   if (!cfg) {
     throw new Error(
-      `[openai-router] No model config for function "${functionName}". ` +
-        `Register it in MODEL_MAP or check the function name.`
+      `[openai-router] No model config for function "${functionName}".`
     );
   }
   return enforceGovernance(cfg, roleLabel);
 }
 
-/**
- * Build GovernanceMeta from resolved config.
- */
 export function buildGovernanceMeta(cfg: ModelConfig, roleLabel: string): GovernanceMeta {
   return {
     role: roleLabel,
@@ -242,42 +239,43 @@ export function buildGovernanceMeta(cfg: ModelConfig, roleLabel: string): Govern
 }
 
 /**
- * Internal governance enforcement — validates and caps resolved config.
+ * Allowlist-based governance enforcement.
+ * OpenAI chat => allowed only if roleLabel in OPENAI_CHAT_ALLOWLIST.
+ * OpenAI embedding => allowed only if roleLabel in OPENAI_EMBEDDING_ALLOWLIST.
+ * Temperature and max_tokens: STRICT throw (no silent cap) for legal functions.
  */
 function enforceGovernance(cfg: ModelConfig, roleLabel: string): ModelConfig {
-  // Block openai/* models
   if (cfg.model.startsWith("openai/")) {
-    throw new Error(
-      `[openai-router] GOVERNANCE VIOLATION: openai/* models are forbidden. ` +
-        `Role "${roleLabel}" attempted to use "${cfg.model}". ` +
-        `Use anthropic/* or google/* models only.`
-    );
+    const isEmbedding = cfg.model.startsWith("openai/text-embedding-");
+    if (isEmbedding) {
+      if (!OPENAI_EMBEDDING_ALLOWLIST.has(roleLabel)) {
+        throw new Error(
+          `[openai-router] GOVERNANCE VIOLATION: OpenAI embedding model "${cfg.model}" ` +
+            `is not allowed for "${roleLabel}". Allowed only for: ${[...OPENAI_EMBEDDING_ALLOWLIST].join(", ")}.`
+        );
+      }
+      // Embedding models skip temperature/token caps
+      return cfg;
+    }
+    // OpenAI chat model
+    if (!OPENAI_CHAT_ALLOWLIST.has(roleLabel)) {
+      throw new Error(
+        `[openai-router] GOVERNANCE VIOLATION: OpenAI chat model "${cfg.model}" ` +
+          `is not allowed for "${roleLabel}". Allowed only for: ${[...OPENAI_CHAT_ALLOWLIST].join(", ")}.`
+      );
+    }
   }
 
-  // Cap temperature
+  // Strict enforcement: throw on violation, no silent caps
   if (cfg.temperature > MAX_TEMPERATURE) {
-    console.warn(
-      JSON.stringify({
-        governance: "TEMPERATURE_CAPPED",
-        role: roleLabel,
-        requested: cfg.temperature,
-        capped_to: MAX_TEMPERATURE,
-      })
+    throw new Error(
+      `[openai-router] GOVERNANCE VIOLATION: temperature ${cfg.temperature} exceeds cap ${MAX_TEMPERATURE} for "${roleLabel}".`
     );
-    cfg = { ...cfg, temperature: MAX_TEMPERATURE };
   }
-
-  // Cap max_tokens
   if (cfg.max_tokens > MAX_TOKENS_CAP) {
-    console.warn(
-      JSON.stringify({
-        governance: "MAX_TOKENS_CAPPED",
-        role: roleLabel,
-        requested: cfg.max_tokens,
-        capped_to: MAX_TOKENS_CAP,
-      })
+    throw new Error(
+      `[openai-router] GOVERNANCE VIOLATION: max_tokens ${cfg.max_tokens} exceeds cap ${MAX_TOKENS_CAP} for "${roleLabel}".`
     );
-    cfg = { ...cfg, max_tokens: MAX_TOKENS_CAP };
   }
 
   return cfg;
@@ -514,14 +512,22 @@ async function fetchWithRetry(
 /**
  * Build a clean request body for the AI gateway.
  * Provider-aware parameter rules:
- *   - anthropic/*: pass temperature + max_tokens (always)
- *   - google/*:    pass temperature + max_tokens (always)
- *   - openai/*:    FORBIDDEN — governance layer blocks before reaching here
+ *   - openai/* chat:  use max_completion_tokens (not max_tokens)
+ *   - anthropic/*:    use temperature + max_tokens
+ *   - google/*:       use temperature + max_tokens
  */
 function buildRequestBody(
   cfg: ModelConfig,
   messages: RouterMessage[]
 ): Record<string, unknown> {
+  if (cfg.model.startsWith("openai/") && !cfg.model.startsWith("openai/text-embedding-")) {
+    return {
+      model: cfg.model,
+      temperature: cfg.temperature,
+      max_completion_tokens: cfg.max_tokens,
+      messages,
+    };
+  }
   return {
     model: cfg.model,
     temperature: cfg.temperature,
