@@ -458,67 +458,53 @@ CRITICAL RULES:
 3. All string values must use actual UTF-8 characters, not unicode escapes.`;
 
   let resp: Response | null = null;
-  const MAX_RETRIES = 3;
-  for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
-    resp = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${apiKey}`,
-      },
-      body: JSON.stringify({
-        model: "google/gemini-2.5-flash-lite",
-        temperature: 0,
-        messages: [
-          { role: "system", content: prompt },
-          { role: "user", content: input },
-        ],
-      }),
-    });
-    if (resp.ok) break;
-    if (resp.status >= 500 || resp.status === 429) {
-      const delay = Math.pow(2, attempt) * 1000 + Math.random() * 500;
-      console.warn(`AI gateway ${resp.status}, retry ${attempt + 1}/${MAX_RETRIES} after ${Math.round(delay)}ms`);
-      await new Promise(r => setTimeout(r, delay));
-      continue;
-    }
-    break;
-  }
-
-  if (!resp || !resp.ok) {
-    console.error(`AI extraction failed: ${resp?.status}`);
-    return {};
-  }
-
-  const payload = await resp.json();
-  const content = payload?.choices?.[0]?.message?.content;
-  if (typeof content !== "string" || !content.trim()) return {};
-
-  let jsonStr = content.trim();
-  if (jsonStr.startsWith("```json")) jsonStr = jsonStr.slice(7);
-  if (jsonStr.startsWith("```")) jsonStr = jsonStr.slice(3);
-  if (jsonStr.endsWith("```")) jsonStr = jsonStr.slice(0, -3);
-  jsonStr = jsonStr.trim();
-
   try {
-    const parsed = JSON.parse(jsonStr);
-    if (!isObject(parsed)) return {};
-    // Validate applied_articles — accept new {sources:[...]} format
-    if (isObject(parsed.applied_articles)) {
-      const aa = parsed.applied_articles as Record<string, unknown>;
-      if (!Array.isArray(aa.sources)) {
+    const { callGatewayBypass } = await import("../_shared/gateway-bypass.ts");
+    const bypassResult = await callGatewayBypass(
+      [
+        { role: "system", content: prompt },
+        { role: "user", content: input },
+      ],
+      {
+        functionName: "legal-practice-import",
+        bypassReason: "json_extract",
+        timeoutMs: 30000,
+        maxRetries: 2,
+      }
+    );
+    // Extract content from bypass result
+    const content = (bypassResult.data?.choices as Array<{ message?: { content?: string } }>)?.[0]?.message?.content;
+    if (typeof content !== "string" || !content.trim()) return {};
+
+    let jsonStr = content.trim();
+    if (jsonStr.startsWith("```json")) jsonStr = jsonStr.slice(7);
+    if (jsonStr.startsWith("```")) jsonStr = jsonStr.slice(3);
+    if (jsonStr.endsWith("```")) jsonStr = jsonStr.slice(0, -3);
+    jsonStr = jsonStr.trim();
+
+    try {
+      const parsed = JSON.parse(jsonStr);
+      if (!isObject(parsed)) return {};
+      // Validate applied_articles — accept new {sources:[...]} format
+      if (isObject(parsed.applied_articles)) {
+        const aa = parsed.applied_articles as Record<string, unknown>;
+        if (!Array.isArray(aa.sources)) {
+          parsed.applied_articles = { sources: [] };
+        }
+      } else if (!Array.isArray(parsed.applied_articles)) {
         parsed.applied_articles = { sources: [] };
       }
-    } else if (!Array.isArray(parsed.applied_articles)) {
-      parsed.applied_articles = { sources: [] };
+      // Validate enums
+      if (parsed.practice_category && !PRACTICE.has(parsed.practice_category as string)) parsed.practice_category = null;
+      if (parsed.court_type && !COURT.has(parsed.court_type as string)) parsed.court_type = null;
+      if (parsed.outcome && !OUTCOME.has(parsed.outcome as string)) parsed.outcome = null;
+      if (parsed.decision_date && !isISODateOrNull(parsed.decision_date)) parsed.decision_date = null;
+      return parsed;
+    } catch {
+      return {};
     }
-    // Validate enums
-    if (parsed.practice_category && !PRACTICE.has(parsed.practice_category as string)) parsed.practice_category = null;
-    if (parsed.court_type && !COURT.has(parsed.court_type as string)) parsed.court_type = null;
-    if (parsed.outcome && !OUTCOME.has(parsed.outcome as string)) parsed.outcome = null;
-    if (parsed.decision_date && !isISODateOrNull(parsed.decision_date)) parsed.decision_date = null;
-    return parsed;
-  } catch {
+  } catch (e) {
+    console.error("aiExtractMissing bypass error:", e);
     return {};
   }
 }

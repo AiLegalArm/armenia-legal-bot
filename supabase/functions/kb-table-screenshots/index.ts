@@ -15,9 +15,7 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.49.4";
 import { handleCors, checkInternalAuth } from "../_shared/edge-security.ts";
-import { OCR_EXTRACTION, buildModelParams } from "../_shared/model-config.ts";
-
-const AI_GATEWAY = "https://ai.gateway.lovable.dev/v1/chat/completions";
+import { callGatewayBypass } from "../_shared/gateway-bypass.ts";
 
 serve(async (req) => {
   const cors = handleCors(req);
@@ -43,12 +41,7 @@ serve(async (req) => {
 
     const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
     const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
-    const apiKey = Deno.env.get("LOVABLE_API_KEY");
     const supabase = createClient(supabaseUrl, serviceKey);
-
-    if (!apiKey) {
-      return json({ error: "LOVABLE_API_KEY not configured" }, 500);
-    }
 
     // Fetch the document
     const { data: doc, error: docErr } = await supabase
@@ -85,7 +78,7 @@ serve(async (req) => {
     for (const chunk of tableChunks) {
       try {
         // Send chunk text to Gemini Vision for better extraction
-        const result = await reExtractTable(apiKey, chunk.chunk_text, doc.title);
+        const result = await reExtractTable(chunk.chunk_text, doc.title);
 
         if (result.success && result.markdown) {
           // Update the existing chunk with improved markdown
@@ -184,7 +177,7 @@ serve(async (req) => {
   }
 });
 
-// ─── Gemini Vision re-extraction ─────────────────────────────────────
+// ─── Gemini Vision re-extraction (via gateway-bypass, MODEL_MAP: ocr-process) ──
 
 interface ReExtractResult {
   success: boolean;
@@ -194,7 +187,6 @@ interface ReExtractResult {
 }
 
 async function reExtractTable(
-  apiKey: string,
   chunkText: string,
   docTitle: string
 ): Promise<ReExtractResult> {
@@ -223,31 +215,19 @@ async function reExtractTable(
   ].join("\n");
 
   try {
-    const modelParams = buildModelParams(OCR_EXTRACTION);
+    const bypassResult = await callGatewayBypass(
+      [
+        { role: "system", content: systemPrompt },
+        { role: "user", content: userPrompt },
+      ],
+      {
+        functionName: "ocr-process",
+        bypassReason: "table_reextraction",
+        timeoutMs: 30000,
+      }
+    );
 
-    const response = await fetch(AI_GATEWAY, {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${apiKey}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        ...modelParams,
-        messages: [
-          { role: "system", content: systemPrompt },
-          { role: "user", content: userPrompt },
-        ],
-      }),
-    });
-
-    if (!response.ok) {
-      const errText = await response.text();
-      console.error("AI gateway error:", response.status, errText);
-      return { success: false, markdown: null, quality: "low", reason: `ai_error_${response.status}` };
-    }
-
-    const data = await response.json();
-    const content = data.choices?.[0]?.message?.content?.trim() || "";
+    const content = (bypassResult.data?.choices as Array<{ message?: { content?: string } }>)?.[0]?.message?.content?.trim() || "";
 
     if (content.includes("EXTRACTION_FAILED") || content.length < 20) {
       return { success: false, markdown: null, quality: "low", reason: "extraction_failed" };

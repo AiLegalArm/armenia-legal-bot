@@ -892,7 +892,7 @@ Please provide your professional legal analysis from your designated role perspe
                 role,
                 analysis: "\u054E\u0565\u0580\u056C\u0578\u0582\u056E\u0578\u0582\u0569\u0575\u0578\u0582\u0576\u0568 \u0579\u0561\u0583\u0561\u0566\u0561\u0576\u0581 \u0574\u0565\u056E \u0567\u0580: \u053D\u0576\u0564\u0580\u0578\u0582\u0574 \u0565\u0576\u0584 \u0576\u0578\u0580\u056B\u0581 \u0583\u0578\u0580\u0571\u0565\u056C \u0561\u057E\u0565\u056C\u056B \u0584\u056B\u0579 \u0583\u0561\u057D\u057F\u0561\u0569\u0572\u0569\u0565\u0580\u0578\u057E \u056F\u0561\u0574 \u0561\u057E\u0565\u056C\u056B \u057A\u0561\u0580\u0566 \u0570\u0561\u0580\u0581\u0578\u057E:",
                 sources: [],
-              model: modelUsed,
+              model_used: modelUsed,
                 warning: "Response was truncated",
               }),
               {
@@ -907,7 +907,7 @@ Please provide your professional legal analysis from your designated role perspe
               role,
               analysis: "AI-\u056B \u057A\u0561\u057F\u0561\u057D\u056D\u0561\u0576\u0568 \u0569\u0565\u0580\u056B \u0567\u0580: \u053D\u0576\u0564\u0580\u0578\u0582\u0574 \u0565\u0576\u0584 \u0576\u0578\u0580\u056B\u0581 \u0583\u0578\u0580\u0571\u0565\u056C:",
               sources: [],
-              model: modelUsed,
+              model_used: modelUsed,
               warning: "Invalid response structure",
             }),
             {
