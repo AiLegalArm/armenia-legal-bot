@@ -258,7 +258,7 @@ export async function searchPractice(opts: RAGPracticeOptions): Promise<RAGResul
       .join(",");
     let q = supabase
       .from("legal_practice_kb")
-      .select("id, title, content_text, practice_category, court_type, outcome, legal_reasoning_summary, applied_articles, key_violations")
+      .select("id, title, content_text, practice_category, court_type, outcome, legal_reasoning_summary, applied_articles, key_violations, decision_date, case_number_anonymized, court_name, key_paragraphs")
       .eq("is_active", true)
       .or(orConditions)
       .limit(30);
@@ -276,8 +276,14 @@ export async function searchPractice(opts: RAGPracticeOptions): Promise<RAGResul
     score: (r.similarity || 0) * 10,
   }));
 
+  // Normalize DB field names to PracticeSearchResult shape
+  const normalizedKeyword = keywordResults.map((r: Record<string, unknown>) => ({
+    ...r,
+    case_number: r.case_number_anonymized as string | undefined,
+  })) as PracticeSearchResult[];
+
   const scoredKeyword = scoreByKeywords(
-    keywordResults as Array<PracticeSearchResult & { legal_reasoning_summary?: string }>,
+    normalizedKeyword as Array<PracticeSearchResult & { legal_reasoning_summary?: string }>,
     keywords
   );
 
@@ -376,7 +382,8 @@ export function formatPracticeContext(results: PracticeSearchResult[], fullText 
       }
 
       return `[\u054A\u0580\u0561\u056F\u057F\u056B\u056F\u0561 ${i + 1}] ${r.title}
-\u0534\u0561\u057F\u0561\u0580\u0561\u0576: ${court} | \u053F\u0561\u057F\u0565\u0563\u0578\u0580\u056B\u0561: ${r.practice_category || ""} | \u0535\u056C\u0584: ${outcome}
+\u0534\u0561\u057F\u0561\u0580\u0561\u0576: ${court}${r.court_name ? ` (${r.court_name})` : ""} | \u053F\u0561\u057F\u0565\u0563\u0578\u0580\u056B\u0561: ${r.practice_category || ""} | \u0535\u056C\u0584: ${outcome}
+\u0533\u0578\u0580\u056E\u056B \u0570\u0561\u0574\u0561\u0580: ${r.case_number || "\u0546/\u0531"} | \u0555\u0580\u057E\u0561 \u0561\u0574\u057D\u0561\u0569\u056B\u057E: ${r.decision_date || "\u0546/\u0531"}
 \u053F\u056B\u0580\u0561\u057C\u057E\u0561\u056E \u0570\u0578\u0564\u057E\u0561\u056E\u0576\u0565\u0580: ${articles}
 \u0540\u056B\u0574\u0576\u0561\u056F\u0561\u0576 \u056D\u0561\u056D\u057F\u0578\u0582\u0574\u0576\u0565\u0580: ${violations}
 \u053B\u0580\u0561\u057E\u0561\u056F\u0561\u0576 \u0570\u056B\u0574\u0576\u0561\u057E\u0578\u0580\u0578\u0582\u0574: ${r.legal_reasoning_summary || "\u0546/\u0531"}${contentBlock}`;
