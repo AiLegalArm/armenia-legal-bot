@@ -364,6 +364,42 @@ export type Database = {
         }
         Relationships: []
       }
+      armenian_dictionary: {
+        Row: {
+          created_at: string
+          definition: string | null
+          examples: Json | null
+          forms: Json | null
+          id: string
+          lemma: string
+          lemma_norm: string
+          part_of_speech: string | null
+          source: string | null
+        }
+        Insert: {
+          created_at?: string
+          definition?: string | null
+          examples?: Json | null
+          forms?: Json | null
+          id?: string
+          lemma: string
+          lemma_norm: string
+          part_of_speech?: string | null
+          source?: string | null
+        }
+        Update: {
+          created_at?: string
+          definition?: string | null
+          examples?: Json | null
+          forms?: Json | null
+          id?: string
+          lemma?: string
+          lemma_norm?: string
+          part_of_speech?: string | null
+          source?: string | null
+        }
+        Relationships: []
+      }
       audio_transcriptions: {
         Row: {
           confidence: number | null
@@ -1962,6 +1998,19 @@ export type Database = {
         Args: { p_encrypted_data: string; p_key?: string }
         Returns: string
       }
+      dictionary_search: {
+        Args: { q_norm: string; search_limit?: number; search_offset?: number }
+        Returns: {
+          definition: string
+          examples: Json
+          forms: Json
+          id: string
+          lemma: string
+          match_type: string
+          part_of_speech: string
+          similarity_score: number
+        }[]
+      }
       encrypt_pii: {
         Args: { _field_name: string; _user_id: string; _value: string }
         Returns: boolean
@@ -2151,6 +2200,7 @@ export type Database = {
           title: string
         }[]
       }
+      normalize_hy: { Args: { input: string }; Returns: string }
       retrieve_decrypted_pii: {
         Args: { p_field_name: string; p_user_id: string }
         Returns: string

@@ -64,3 +64,5 @@ verify_jwt = false
 verify_jwt = false
 
 [functions.echr-import]
+
+[functions.dictionary-search]
