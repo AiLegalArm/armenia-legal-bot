@@ -328,67 +328,51 @@ export function formatKBContext(results: KBSearchResult[], snippetLength = 4000)
     .join("\n\n---\n\n");
 }
 
-/** Format practice results into context string for AI prompt.
- * INDEX SEPARATION: Only RA court decisions appear here. ECHR is filtered separately.
- * Prefers precedent_units (key_paragraphs) over full document text per INDEX SEPARATION RULE.
+/** Format practice results into structured block for AI prompt.
+ * Strict format: [PRACTICE]...[/PRACTICE] with consistent field labels.
+ * Prefers precedent_units (key_paragraphs) over full text per INDEX SEPARATION RULE.
  */
-export function formatPracticeContext(results: PracticeSearchResult[], fullText = true): string {
+export function formatPracticeContext(results: PracticeSearchResult[], _fullText = true): string {
   if (results.length === 0) return "";
 
-  const outcomeLabels: Record<string, string> = {
-    granted: "\u0532\u0561\u057E\u0561\u0580\u0561\u0580\u057E\u0565\u056C",
-    rejected: "\u0544\u0565\u0580\u056A\u057E\u0565\u056C",
-    partial: "\u0544\u0561\u057D\u0576\u0561\u056F\u056B",
-    remanded: "\u054E\u0565\u0580\u0561\u0564\u0561\u0580\u0571\u057E\u0565\u056C",
-    discontinued: "\u053F\u0561\u0580\u0573\u057E\u0565\u056C",
-  };
-
-  const courtLabels: Record<string, string> = {
-    first_instance: "\u0531\u057C\u0561\u057B\u056B\u0576 \u0561\u057F\u0575\u0561\u0576",
-    appeal: "\u054E\u0565\u0580\u0561\u0584\u0576\u0576\u056B\u0579",
-    cassation: "\u054E\u0573\u057C\u0561\u0562\u0565\u056F",
-    constitutional: "\u054D\u0561\u0570\u0574\u0561\u0576\u0561\u0564\u0580\u0561\u056F\u0561\u0576",
-    echr: "\u0535\u054D\u054A\u053F",
-  };
-
   return results
-    .map((r, i) => {
-      const articles = r.applied_articles
-        ? Array.isArray(r.applied_articles)
-          ? r.applied_articles.join(", ")
-          : JSON.stringify(r.applied_articles)
-        : "\u0546/\u0531";
-      const violations = r.key_violations?.join(", ") || "\u0546/\u0531";
-      const court = courtLabels[r.court_type || ""] || r.court_type || "";
-      const outcome = outcomeLabels[r.outcome || ""] || r.outcome || "";
+    .map((r) => {
+      // Determine source: ECHR vs RA
+      const isEchr = r.practice_category === "echr" || r.court_type === "echr";
+      const source = isEchr ? "ECHR" : r.court_type ? "RA" : "UNKNOWN";
 
-      // INDEX SEPARATION: Prefer precedent_units over full document embedding
-      let contentBlock = "";
+      // Build excerpt: prefer key_paragraphs, then legal_reasoning_summary, then content
+      let excerpt = "";
       const keyParas = r.key_paragraphs;
       if (keyParas && Array.isArray(keyParas) && keyParas.length > 0) {
-        // Use precedent_units embeddings only (not entire documents)
-        const units = keyParas.slice(0, 6).map((u: Record<string, unknown>, idx: number) => {
+        excerpt = keyParas.slice(0, 6).map((u: Record<string, unknown>, idx: number) => {
           const ruleText = u.rule_text || u.holding || "";
           const quote = u.quote || u.exact_quote || "";
-          const anchor = u.anchor || u.paragraph || "";
-          const issueId = u.issue_id || "";
-          return `  ${idx + 1}) ${ruleText}${quote ? `\n     \u00AB${quote}\u00BB` : ""}${anchor ? ` [\u00A7${anchor}]` : ""}${issueId ? ` [${issueId}]` : ""}`;
+          return `  ${idx + 1}) ${ruleText}${quote ? ` «${quote}»` : ""}`;
         }).join("\n");
-        contentBlock = `\n\nPRECEDENT UNITS:\n${units}`;
-      } else if (fullText) {
-        contentBlock = `\n\n${r.legal_reasoning_summary || (r.content_text || r.content_snippet || "").substring(0, 2000)}`;
       } else {
-        contentBlock = `\n${(r.content_snippet || r.content_text || "").substring(0, 1500)}`;
+        excerpt = (r.legal_reasoning_summary || r.content_text || r.content_snippet || "").substring(0, 1500);
       }
 
-      return `[\u054A\u0580\u0561\u056F\u057F\u056B\u056F\u0561 ${i + 1}] ${r.title}
-\u0534\u0561\u057F\u0561\u0580\u0561\u0576: ${court}${r.court_name ? ` (${r.court_name})` : ""} | \u053F\u0561\u057F\u0565\u0563\u0578\u0580\u056B\u0561: ${r.practice_category || ""} | \u0535\u056C\u0584: ${outcome}
-\u0533\u0578\u0580\u056E\u056B \u0570\u0561\u0574\u0561\u0580: ${r.case_number || "\u0546/\u0531"} | \u0555\u0580\u057E\u0561 \u0561\u0574\u057D\u0561\u0569\u056B\u057E: ${r.decision_date || "\u0546/\u0531"}
-\u053F\u056B\u0580\u0561\u057C\u057E\u0561\u056E \u0570\u0578\u0564\u057E\u0561\u056E\u0576\u0565\u0580: ${articles}
-\u0540\u056B\u0574\u0576\u0561\u056F\u0561\u0576 \u056D\u0561\u056D\u057F\u0578\u0582\u0574\u0576\u0565\u0580: ${violations}
-\u053B\u0580\u0561\u057E\u0561\u056F\u0561\u0576 \u0570\u056B\u0574\u0576\u0561\u057E\u0578\u0580\u0578\u0582\u0574: ${r.legal_reasoning_summary || "\u0546/\u0531"}${contentBlock}`;
+      // Build lines, omitting empty values (except ID)
+      const lines: string[] = ["[PRACTICE]"];
+      lines.push(`Source: ${source}`);
+      if (r.practice_category) lines.push(`Category: ${r.practice_category}`);
+      if (r.court_type) lines.push(`CourtType: ${r.court_type}`);
+      if (r.court_name) lines.push(`Court: ${r.court_name}`);
+      lines.push(`Case: ${r.title}`);
+      if (r.decision_date) lines.push(`Date: ${r.decision_date}`);
+      if (r.case_number) lines.push(`CaseNo: ${r.case_number}`);
+      lines.push(`ID: ${r.id || "unknown"}`);
+      if (excerpt) {
+        lines.push("Excerpt:");
+        lines.push(excerpt);
+      }
+      lines.push("[/PRACTICE]");
+
+      return lines.join("\n");
     })
-    .join("\n\n---\n\n");
+    .join("\n\n");
 }
 
 /** Build temporal disclaimer for RAG context */
