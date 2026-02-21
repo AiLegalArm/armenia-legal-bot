@@ -13,10 +13,11 @@ import { Switch } from '@/components/ui/switch';
 import { Label } from '@/components/ui/label';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { exportAnalysisToPDF, exportMultipleAnalysesToPDF } from '@/lib/pdfExport';
-import { Loader2, Brain, Download, FileSignature, Save, AlertTriangle, Check, Scale, Timer } from 'lucide-react';
+import { Loader2, Brain, Download, FileSignature, Save, AlertTriangle, Check, Scale, Timer, GitCompare } from 'lucide-react';
 import { useReferencesText } from '@/lib/references-store';
 import { PrecedentCitationView, type PrecedentCitationResult } from '@/components/cases/PrecedentCitationView';
 import { DeadlineRulesView, type DeadlineRulesResult } from '@/components/cases/DeadlineRulesView';
+import { LegalPositionComparatorView, type LegalPositionComparatorResult } from '@/components/cases/LegalPositionComparatorView';
 
 interface CaseAIAnalysisPanelProps {
   caseId: string;
@@ -68,6 +69,8 @@ export function CaseAIAnalysisPanel({
   const [isPrecedentLoading, setIsPrecedentLoading] = useState(false);
   const [deadlineData, setDeadlineData] = useState<DeadlineRulesResult | null>(null);
   const [isDeadlineLoading, setIsDeadlineLoading] = useState(false);
+  const [comparatorData, setComparatorData] = useState<LegalPositionComparatorResult | null>(null);
+  const [isComparatorLoading, setIsComparatorLoading] = useState(false);
 
   // If user clicks "Clear" while the initial saved-analyses load is still in-flight,
   // we must ignore that async result to prevent the content from "reappearing".
@@ -311,6 +314,42 @@ export function CaseAIAnalysisPanel({
                   {i18n.language === 'hy' ? '\u053a\u0561\u0574\u056F\u0565\u057F\u0576\u0565\u0580' : i18n.language === 'en' ? 'Deadlines' : '\u0421\u0440\u043E\u043A\u0438'}
                 </span>
               </Button>
+              <Button 
+                variant="outline" 
+                size="sm" 
+                onClick={async () => {
+                  setIsComparatorLoading(true);
+                  setComparatorData(null);
+                  try {
+                    const result = await analyzeCase('legal_position_comparator', caseId, facts, legalQuestion || '', referencesText);
+                    if (result) {
+                      if (result.comparator_data) {
+                        setComparatorData(result.comparator_data as LegalPositionComparatorResult);
+                      } else {
+                        try {
+                          const parsed = JSON.parse(result.analysis);
+                          setComparatorData(parsed);
+                        } catch {
+                          setComparatorData(null);
+                        }
+                      }
+                    }
+                  } finally {
+                    setIsComparatorLoading(false);
+                  }
+                }}
+                disabled={isComparatorLoading || isAnalyzing}
+                className="h-10 rounded-xl text-mobile-sm sm:text-sm"
+              >
+                {isComparatorLoading ? (
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin shrink-0" />
+                ) : (
+                  <GitCompare className="mr-2 h-4 w-4 shrink-0" />
+                )}
+                <span className="truncate">
+                  {i18n.language === 'hy' ? '\u0540\u0561\u0574\u0561\u0564\u0580\u0578\u0582\u0574' : i18n.language === 'en' ? 'Compare' : '\u0421\u0440\u0430\u0432\u043D\u0435\u043D\u0438\u0435'}
+                </span>
+              </Button>
               {Object.values(results).some(r => r !== null) && (
                 <>
                   <Button
@@ -486,6 +525,18 @@ export function CaseAIAnalysisPanel({
                  : '\u041F\u0440\u043E\u0446\u0435\u0441\u0441\u0443\u0430\u043B\u044C\u043D\u044B\u0435 \u0441\u0440\u043E\u043A\u0438'}
               </h3>
               <DeadlineRulesView data={deadlineData} />
+            </div>
+          )}
+
+          {/* Legal Position Comparator Results */}
+          {comparatorData && (
+            <div className="mt-6 pt-6 border-t">
+              <h3 className="font-semibold text-lg mb-3">
+                {i18n.language === 'hy' ? '\u053b\u0580\u0561\u057E\u0561\u056F\u0561\u0576 \u0564\u056B\u0580\u0584\u0565\u0580\u056B \u0570\u0561\u0574\u0561\u0564\u0580\u0578\u0582\u0574' 
+                 : i18n.language === 'en' ? 'Legal Position Comparison' 
+                 : '\u0421\u0440\u0430\u0432\u043D\u0435\u043D\u0438\u0435 \u043F\u0440\u0430\u0432\u043E\u0432\u044B\u0445 \u043F\u043E\u0437\u0438\u0446\u0438\u0439'}
+              </h3>
+              <LegalPositionComparatorView data={comparatorData} />
             </div>
           )}
 
