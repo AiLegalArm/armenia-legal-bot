@@ -99,12 +99,6 @@ export const MODEL_MAP: Record<string, ModelConfig> = {
  */
 const ROLE_OVERRIDES: Record<string, Partial<ModelConfig>> = {
   // ── High reasoning roles (Claude 3.7 Sonnet, temp=0.1) ────────────────────
-  "ai-analyze:precedent_citation": {
-    description: "Precedent citation engine",
-  },
-  "ai-analyze:cross_exam": {
-    description: "Cross-examination engine",
-  },
   "ai-analyze:strategy_builder": {
     description: "Strategy builder engine",
   },
@@ -126,11 +120,30 @@ const ROLE_OVERRIDES: Record<string, Partial<ModelConfig>> = {
     max_tokens: 14000,
     description: "Draft deterministic engine (temp=0, 14k tokens)",
   },
-  // ── Structured JSON roles (Gemini 2.5 Pro, temp=0.2) ──────────────────────
+  // ── Structured JSON cost-optimized (Gemini 2.5 Pro, temp=0.2, 8k) ─────────
+  "ai-analyze:precedent_citation": {
+    model: "google/gemini-2.5-pro",
+    temperature: 0.2,
+    max_tokens: 8000,
+    description: "Precedent citation (Gemini 2.5 Pro, JSON, 8k)",
+  },
+  "ai-analyze:cross_exam": {
+    model: "google/gemini-2.5-pro",
+    temperature: 0.2,
+    max_tokens: 8000,
+    description: "Cross-examination (Gemini 2.5 Pro, JSON, 8k)",
+  },
   "ai-analyze:deadline_rules": {
     model: "google/gemini-2.5-pro",
     temperature: 0.2,
-    description: "Deadline rules engine (Gemini 2.5 Pro, JSON)",
+    max_tokens: 8000,
+    description: "Deadline rules (Gemini 2.5 Pro, JSON, 8k)",
+  },
+  "ai-analyze:law_update_summary": {
+    model: "google/gemini-2.5-pro",
+    temperature: 0.2,
+    max_tokens: 8000,
+    description: "Law update summary (Gemini 2.5 Pro, JSON, 8k)",
   },
 };
 
@@ -475,55 +488,23 @@ export async function callJSON<T = Record<string, unknown>>(
   const fenceMatch = raw.match(/```(?:json)?\s*([\s\S]*?)```/);
   if (fenceMatch) raw = fenceMatch[1].trim();
 
-  // Attempt 1: parse
-  let parsed: T | null = tryParse<T>(raw);
-
-  // Attempt 2: one auto-repair retry
-  if (parsed === null) {
-    console.warn(
-      JSON.stringify({
-        request_id: requestId,
-        function_name: functionName,
-        error_class: "JSON_PARSE_FAIL_RETRY",
-      })
-    );
-
-    const repairMessages: RouterMessage[] = [
-      ...safeMessages,
-      { role: "assistant", content: raw },
-      {
-        role: "user",
-        content:
-          "Fix the JSON. Output JSON only. No commentary. No markdown. No extra keys.",
-      },
-    ];
-
-    const repairBody = { ...body, messages: repairMessages };
-    const { data: repairData } = await fetchWithRetry(
-      functionName,
-      requestId + "_repair",
-      repairBody,
-      timeoutMs
-    );
-
-    const repairChoices = repairData.choices as Array<{ message: { content: string } }>;
-    let repairRaw = repairChoices?.[0]?.message?.content ?? "";
-    const repairFence = repairRaw.match(/```(?:json)?\s*([\s\S]*?)```/);
-    if (repairFence) repairRaw = repairFence[1].trim();
-
-    parsed = tryParse<T>(repairRaw);
-  }
+  // Attempt parse — no second AI call on failure
+  const parsed: T | null = tryParse<T>(raw);
 
   if (parsed === null) {
     console.error(
       JSON.stringify({
         request_id: requestId,
         function_name: functionName,
-        error_class: "JSON_PARSE_FAIL_FINAL",
+        error_class: "JSON_PARSE_FAIL",
+        raw_length: raw.length,
       })
     );
-    throw new Error(
-      `[openai-router] ${functionName}: AI returned invalid JSON after repair attempt.`
+    throw Object.assign(
+      new Error(
+        `[openai-router] ${functionName}: AI returned invalid JSON. No retry.`
+      ),
+      { code: "INVALID_JSON", raw_preview: raw.substring(0, 200) }
     );
   }
 
