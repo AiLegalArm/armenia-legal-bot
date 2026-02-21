@@ -94,7 +94,55 @@ export const MODEL_MAP: Record<string, ModelConfig> = {
   },
 };
 
-export function getModelConfig(functionName: string): ModelConfig {
+/**
+ * Role-specific model overrides for ai-analyze diagnostic engines.
+ * Key format: "functionName:role" -> partial ModelConfig override.
+ * Falls back to MODEL_MAP[functionName] if no override exists.
+ */
+const ROLE_OVERRIDES: Record<string, Partial<ModelConfig>> = {
+  "ai-analyze:precedent_citation": {
+    model: "anthropic/claude-opus-4-6",
+    temperature: 0.2,
+    max_tokens: 16384,
+    description: "Precedent citation (Claude Opus)",
+  },
+  "ai-analyze:deadline_rules": {
+    model: "anthropic/claude-sonnet-4-6",
+    temperature: 0.2,
+    max_tokens: 12000,
+    description: "Deadline rules (Claude Sonnet)",
+  },
+  "ai-analyze:cross_exam": {
+    model: "anthropic/claude-opus-4-6",
+    temperature: 0.2,
+    max_tokens: 16384,
+    description: "Cross-examination (Claude Opus)",
+  },
+  "ai-analyze:draft_deterministic": {
+    model: "anthropic/claude-opus-4-6",
+    temperature: 0.1,
+    max_tokens: 16384,
+    description: "Draft deterministic (Claude Opus)",
+  },
+};
+
+export function getModelConfig(functionName: string, role?: string): ModelConfig {
+  // Check role-specific override first
+  if (role) {
+    const overrideKey = `${functionName}:${role}`;
+    const override = ROLE_OVERRIDES[overrideKey];
+    if (override) {
+      const base = MODEL_MAP[functionName];
+      if (!base) {
+        throw new Error(
+          `[openai-router] No model config for function "${functionName}". ` +
+            `Register it in MODEL_MAP or check the function name.`
+        );
+      }
+      return { ...base, ...override } as ModelConfig;
+    }
+  }
+
   const cfg = MODEL_MAP[functionName];
   if (!cfg) {
     throw new Error(
@@ -340,14 +388,17 @@ function buildRequestBody(
   cfg: ModelConfig,
   messages: RouterMessage[]
 ): Record<string, unknown> {
-  const tokenKey = cfg.model.startsWith("openai/") ? "max_completion_tokens" : "max_tokens";
+  const isOpenAI = cfg.model.startsWith("openai/");
+  const isAnthropic = cfg.model.startsWith("anthropic/");
+  const tokenKey = isOpenAI ? "max_completion_tokens" : "max_tokens";
   const body: Record<string, unknown> = {
     model: cfg.model,
     [tokenKey]: cfg.max_tokens,
     messages,
   };
-  // Only pass temperature for non-OpenAI models (Gemini etc.)
-  if (!cfg.model.startsWith("openai/")) {
+  // OpenAI: omit temperature to avoid 400 errors
+  // Anthropic + Gemini + others: pass temperature
+  if (!isOpenAI) {
     body.temperature = cfg.temperature;
   }
   return body;
@@ -359,9 +410,9 @@ function buildRequestBody(
 export async function callText(
   functionName: string,
   messages: RouterMessage[],
-  options: RouterCallOptions = {}
+  options: RouterCallOptions & { role?: string } = {}
 ): Promise<TextResult> {
-  const cfg = getModelConfig(functionName);
+  const cfg = getModelConfig(functionName, options.role);
   const requestId = newRequestId();
   const safeMessages = prependSafetyHeader(functionName, messages);
   const timeoutMs = options.timeoutMs ?? defaultTimeout(false);
@@ -391,9 +442,9 @@ export async function callJSON<T = Record<string, unknown>>(
   functionName: string,
   messages: RouterMessage[],
   schema: Record<string, unknown>,
-  options: RouterCallOptions = {}
+  options: RouterCallOptions & { role?: string } = {}
 ): Promise<JSONResult<T>> {
-  const cfg = getModelConfig(functionName);
+  const cfg = getModelConfig(functionName, options.role);
   const requestId = newRequestId();
   const safeMessages = prependSafetyHeader(functionName, messages);
   const timeoutMs = options.timeoutMs ?? defaultTimeout(false);
