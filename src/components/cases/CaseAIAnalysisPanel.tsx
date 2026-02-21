@@ -13,7 +13,7 @@ import { Switch } from '@/components/ui/switch';
 import { Label } from '@/components/ui/label';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { exportAnalysisToPDF, exportMultipleAnalysesToPDF } from '@/lib/pdfExport';
-import { Loader2, Brain, Download, FileSignature, Save, AlertTriangle, Check, Scale, Timer, GitCompare, ShieldCheck, FileText, Target, Search } from 'lucide-react';
+import { Loader2, Brain, Download, FileSignature, Save, AlertTriangle, Check, Scale, Timer, GitCompare, ShieldCheck, FileText, Target, Search, BarChart3 } from 'lucide-react';
 import { useReferencesText } from '@/lib/references-store';
 import { PrecedentCitationView, type PrecedentCitationResult } from '@/components/cases/PrecedentCitationView';
 import { DeadlineRulesView, type DeadlineRulesResult } from '@/components/cases/DeadlineRulesView';
@@ -21,6 +21,7 @@ import { LegalPositionComparatorView, type LegalPositionComparatorResult } from 
 import { HallucinationAuditView, type HallucinationAuditResult } from '@/components/cases/HallucinationAuditView';
 import { StrategyBuilderView, type StrategyBuilderResult } from '@/components/cases/StrategyBuilderView';
 import { EvidenceWeaknessView, type EvidenceWeaknessResult } from '@/components/cases/EvidenceWeaknessView';
+import { RiskFactorsView, type RiskFactorsResult } from '@/components/cases/RiskFactorsView';
 
 interface CaseAIAnalysisPanelProps {
   caseId: string;
@@ -82,6 +83,8 @@ export function CaseAIAnalysisPanel({
   const [isStrategyLoading, setIsStrategyLoading] = useState(false);
   const [evidenceWeaknessData, setEvidenceWeaknessData] = useState<EvidenceWeaknessResult | null>(null);
   const [isEvidenceWeaknessLoading, setIsEvidenceWeaknessLoading] = useState(false);
+  const [riskFactorsData, setRiskFactorsData] = useState<RiskFactorsResult | null>(null);
+  const [isRiskFactorsLoading, setIsRiskFactorsLoading] = useState(false);
 
   // If user clicks "Clear" while the initial saved-analyses load is still in-flight,
   // we must ignore that async result to prevent the content from "reappearing".
@@ -496,6 +499,42 @@ export function CaseAIAnalysisPanel({
                   {i18n.language === 'hy' ? 'Թdelays' : i18n.language === 'en' ? 'Weaknesses' : 'Уязdelays'}
                 </span>
               </Button>
+              <Button 
+                variant="outline" 
+                size="sm" 
+                onClick={async () => {
+                  setIsRiskFactorsLoading(true);
+                  setRiskFactorsData(null);
+                  try {
+                    const result = await analyzeCase('risk_factors', caseId, facts, legalQuestion || '', referencesText);
+                    if (result) {
+                      if (result.risk_factors_data) {
+                        setRiskFactorsData(result.risk_factors_data as RiskFactorsResult);
+                      } else {
+                        try {
+                          const parsed = JSON.parse(result.analysis);
+                          setRiskFactorsData(parsed);
+                        } catch {
+                          setRiskFactorsData(null);
+                        }
+                      }
+                    }
+                  } finally {
+                    setIsRiskFactorsLoading(false);
+                  }
+                }}
+                disabled={isRiskFactorsLoading || isAnalyzing}
+                className="h-10 rounded-xl text-mobile-sm sm:text-sm"
+              >
+                {isRiskFactorsLoading ? (
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin shrink-0" />
+                ) : (
+                  <BarChart3 className="mr-2 h-4 w-4 shrink-0" />
+                )}
+                <span className="truncate">
+                  {i18n.language === 'hy' ? 'Ռiskեdelays' : i18n.language === 'en' ? 'Risks' : 'Риски'}
+                </span>
+              </Button>
               {Object.values(results).some(r => r !== null) && (
                 <>
                   <Button
@@ -733,6 +772,18 @@ export function CaseAIAnalysisPanel({
                  : 'Анализ уязdelays доказdelays'}
               </h3>
               <EvidenceWeaknessView data={evidenceWeaknessData} language={i18n.language} />
+            </div>
+          )}
+
+          {/* Risk Factors Results */}
+          {riskFactorsData && (
+            <div className="mt-6 pt-6 border-t">
+              <h3 className="font-semibold text-lg mb-3">
+                {i18n.language === 'hy' ? 'Ռիdelays գdelays' 
+                 : i18n.language === 'en' ? 'Risk Factor Analysis' 
+                 : 'Анализ факторов риска'}
+              </h3>
+              <RiskFactorsView data={riskFactorsData} language={i18n.language} />
             </div>
           )}
 
