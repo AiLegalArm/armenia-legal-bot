@@ -1,6 +1,7 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.91.1";
 import { handleCors } from "../_shared/edge-security.ts";
+import { callGatewayBypass } from "../_shared/gateway-bypass.ts";
 
 const OCR_PROMPT = `You are an expert OCR specialist for Armenian legal documents (Republic of Armenia). Your task is to extract ALL visible text from the provided PDF/images with maximum fidelity, preserving evidentiary integrity.
 
@@ -178,37 +179,24 @@ serve(async (req) => {
 
     // ── Mode A: Direct base64 PDF extraction (used by bulk import) ──
     if (body.base64Content && typeof body.base64Content === "string") {
-      const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
-      if (!LOVABLE_API_KEY) throw new Error("LOVABLE_API_KEY is not configured");
-
       const dataUrl = `data:application/pdf;base64,${body.base64Content}`;
-      const aiResponse = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${LOVABLE_API_KEY}`,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          model: body.model || "google/gemini-2.5-flash",
-          messages: [
-            { role: "system", content: OCR_PROMPT },
-            { role: "user", content: [
-              { type: "text", text: `Extract ALL text from this Armenian legal PDF document titled: "${body.fileName || "document"}"` },
-              { type: "image_url", image_url: { url: dataUrl } }
-            ]}
-          ],
-          temperature: 0.1,
-          max_tokens: 16000,
-        }),
-      });
+      const bypassResult = await callGatewayBypass(
+        [
+          { role: "system", content: OCR_PROMPT },
+          { role: "user", content: [
+            { type: "text", text: `Extract ALL text from this Armenian legal PDF document titled: "${body.fileName || "document"}"` },
+            { type: "image_url", image_url: { url: dataUrl } }
+          ]}
+        ],
+        {
+          functionName: "kb-fetch-pdf-content",
+          bypassReason: "multimodal_pdf",
+          timeoutMs: 120000,
+          maxRetries: 1,
+        }
+      );
 
-      if (!aiResponse.ok) {
-        const errorText = await aiResponse.text();
-        throw new Error(`AI OCR failed: ${aiResponse.status} - ${errorText.substring(0, 200)}`);
-      }
-
-      const aiResult = await aiResponse.json();
-      const content = aiResult.choices?.[0]?.message?.content || "";
+      const content = (bypassResult.data?.choices as Array<{ message?: { content?: string } }>)?.[0]?.message?.content || "";
       if (!content || content.length < 50) {
         throw new Error("Insufficient text extracted from PDF");
       }
@@ -219,7 +207,7 @@ serve(async (req) => {
     }
 
     // ── Mode B: Batch KB ID processing (original flow) ──
-    const { kbIds, batchSize = 5, delayMs = 2000, model, forceRescrape = false } = body as FetchRequest;
+    const { kbIds, batchSize = 5, delayMs = 2000, forceRescrape = false } = body as FetchRequest;
 
     if (!kbIds || !Array.isArray(kbIds) || kbIds.length === 0) {
       return new Response(JSON.stringify({ 
@@ -228,11 +216,6 @@ serve(async (req) => {
         status: 400,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
-    }
-
-    const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
-    if (!LOVABLE_API_KEY) {
-      throw new Error("LOVABLE_API_KEY is not configured");
     }
 
     const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
@@ -315,37 +298,28 @@ serve(async (req) => {
 
             console.log(`PDF ${record.id} converted, size: ${Math.round(base64.length / 1024)}KB`);
 
-            const aiResponse = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
-              method: "POST",
-              headers: {
-                Authorization: `Bearer ${LOVABLE_API_KEY}`,
-                "Content-Type": "application/json",
-              },
-              body: JSON.stringify({
-                model: model || "google/gemini-2.5-flash",
-                messages: [
-                  { role: "system", content: OCR_PROMPT },
-                  { 
-                    role: "user", 
-                    content: [
-                      { type: "text", text: `Extract ALL text from this Armenian legal PDF document titled: "${record.title}"` },
-                      { type: "image_url", image_url: { url: dataUrl } }
-                    ]
-                  }
-                ],
-                temperature: 0.1,
-                max_tokens: 16000,
-              }),
-            });
+            const aiBypass = await callGatewayBypass(
+              [
+                { role: "system", content: OCR_PROMPT },
+                { 
+                  role: "user", 
+                  content: [
+                    { type: "text", text: `Extract ALL text from this Armenian legal PDF document titled: "${record.title}"` },
+                    { type: "image_url", image_url: { url: dataUrl } }
+                  ]
+                }
+              ],
+              {
+                functionName: "kb-fetch-pdf-content",
+                bypassReason: "multimodal_pdf_batch",
+                timeoutMs: 120000,
+                maxRetries: 1,
+              }
+            );
 
-            if (!aiResponse.ok) {
-              const errorText = await aiResponse.text();
-              throw new Error(`AI processing failed: ${aiResponse.status} - ${errorText.substring(0, 200)}`);
-            }
-
-            const aiResult = await aiResponse.json();
-            extractedText = aiResult.choices?.[0]?.message?.content || "";
-            tokensUsed = aiResult.usage?.total_tokens || 0;
+            extractedText = (aiBypass.data?.choices as Array<{ message?: { content?: string } }>)?.[0]?.message?.content || "";
+            const usage = aiBypass.data?.usage as { total_tokens?: number } | undefined;
+            tokensUsed = usage?.total_tokens || 0;
           }
           
           if (!extractedText || extractedText.length < 50) {

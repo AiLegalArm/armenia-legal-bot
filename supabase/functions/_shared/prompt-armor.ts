@@ -336,39 +336,29 @@ No markdown, no code fences, no explanation — just the JSON object.`;
 export async function attemptJsonRepair(
   rawOutput: string,
   errors: string[],
-  apiKey: string,
-  model = "google/gemini-2.5-flash-lite"
+  _apiKey: string,
+  _model = "google/gemini-2.5-flash-lite"
 ): Promise<LegalAnswerSchema | null> {
   try {
+    const { callGatewayBypass } = await import("./gateway-bypass.ts");
     const repairPrompt = buildRepairPrompt(rawOutput, errors);
 
-    const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${apiKey}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        model,
-        messages: [
-          {
-            role: "system",
-            content: "You are a JSON repair tool. Output ONLY valid JSON matching the requested schema. No explanations.",
-          },
-          { role: "user", content: repairPrompt },
-        ],
-        temperature: 0,
-        max_tokens: 8000,
-      }),
-    });
+    const bypassResult = await callGatewayBypass(
+      [
+        {
+          role: "system",
+          content: "You are a JSON repair tool. Output ONLY valid JSON matching the requested schema. No explanations.",
+        },
+        { role: "user", content: repairPrompt },
+      ],
+      {
+        functionName: "prompt-armor-repair",
+        bypassReason: "json_repair",
+        timeoutMs: 15000,
+      }
+    );
 
-    if (!response.ok) {
-      console.error("JSON repair call failed:", response.status);
-      return null;
-    }
-
-    const data = await response.json();
-    const repairedText = data.choices?.[0]?.message?.content || "";
+    const repairedText = (bypassResult.data?.choices as Array<{ message?: { content?: string } }>)?.[0]?.message?.content || "";
     const result = validateJsonOutput(repairedText);
 
     if (result.valid && result.data) {

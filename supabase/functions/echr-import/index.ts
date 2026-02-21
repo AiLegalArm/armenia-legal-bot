@@ -155,53 +155,29 @@ async function translateFieldHY(
       continue;
     }
 
-    // Translate via Lovable AI Gateway directly
+    // Translate via gateway-bypass (MODEL_MAP: echr-translate)
     let result = "";
     let lastError: string = "";
-    const AI_GATEWAY = "https://ai.gateway.lovable.dev/v1/chat/completions";
-    const lovableKey = Deno.env.get("LOVABLE_API_KEY") ?? "";
-
-    for (let attempt = 0; attempt <= 2; attempt++) {
-      try {
-        const controller = new AbortController();
-        const timer = setTimeout(() => controller.abort(), 30000);
-        const resp = await fetch(AI_GATEWAY, {
-          method: "POST",
-          headers: {
-            Authorization: `Bearer ${lovableKey}`,
-            "Content-Type": "application/json",
+    try {
+      const { callGatewayBypass } = await import("../_shared/gateway-bypass.ts");
+      const bypassResult = await callGatewayBypass(
+        [
+          {
+            role: "system",
+            content: "Translate the following legal text to Armenian. Preserve all proper names, dates, case numbers, article references. Return ONLY the Armenian translation.",
           },
-          body: JSON.stringify({
-            model: "google/gemini-2.5-flash",
-            temperature: 0.2,
-            max_tokens: 4000,
-            messages: [
-              {
-                role: "system",
-                content: "Translate the following legal text to Armenian. Preserve all proper names, dates, case numbers, article references. Return ONLY the Armenian translation.",
-              },
-              { role: "user", content: chunk },
-            ],
-          }),
-          signal: controller.signal,
-        });
-        clearTimeout(timer);
-
-        if (resp.ok) {
-          const json = await resp.json();
-          result = json?.choices?.[0]?.message?.content?.trim() ?? "";
-          if (result) break;
-        } else if (resp.status === 429 || resp.status >= 500) {
-          await new Promise(r => setTimeout(r, Math.pow(2, attempt) * 1000));
-          continue;
-        } else {
-          lastError = `HTTP ${resp.status}`;
-          break;
+          { role: "user", content: chunk },
+        ],
+        {
+          functionName: "echr-translate",
+          bypassReason: "translation",
+          timeoutMs: 30000,
+          maxRetries: 2,
         }
-      } catch (e) {
-        lastError = e instanceof Error ? e.message : String(e);
-        if (attempt < 2) await new Promise(r => setTimeout(r, Math.pow(2, attempt) * 1000));
-      }
+      );
+      result = (bypassResult.data?.choices as Array<{ message?: { content?: string } }>)?.[0]?.message?.content?.trim() ?? "";
+    } catch (e) {
+      lastError = e instanceof Error ? e.message : String(e);
     }
 
     if (result) {
