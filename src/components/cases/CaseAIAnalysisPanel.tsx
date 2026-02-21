@@ -275,17 +275,8 @@ export function CaseAIAnalysisPanel({
                   setPrecedentData(null);
                   try {
                     const result = await analyzeCase('precedent_citation', caseId, facts, legalQuestion || '', referencesText);
-                    if (result) {
-                      if (result.precedent_data) {
-                        setPrecedentData(result.precedent_data as PrecedentCitationResult);
-                      } else {
-                        try {
-                          const parsed = JSON.parse(result.analysis);
-                          setPrecedentData(parsed);
-                        } catch {
-                          setPrecedentData(null);
-                        }
-                      }
+                    if (result?.precedent_data) {
+                      setPrecedentData(result.precedent_data as PrecedentCitationResult);
                     }
                   } finally {
                     setIsPrecedentLoading(false);
@@ -311,17 +302,8 @@ export function CaseAIAnalysisPanel({
                   setDeadlineData(null);
                   try {
                     const result = await analyzeCase('deadline_rules', caseId, facts, legalQuestion || '', referencesText);
-                    if (result) {
-                      if (result.deadline_data) {
-                        setDeadlineData(result.deadline_data as DeadlineRulesResult);
-                      } else {
-                        try {
-                          const parsed = JSON.parse(result.analysis);
-                          setDeadlineData(parsed);
-                        } catch {
-                          setDeadlineData(null);
-                        }
-                      }
+                    if (result?.deadline_data) {
+                      setDeadlineData(result.deadline_data as DeadlineRulesResult);
                     }
                   } finally {
                     setIsDeadlineLoading(false);
@@ -347,17 +329,8 @@ export function CaseAIAnalysisPanel({
                   setComparatorData(null);
                   try {
                     const result = await analyzeCase('legal_position_comparator', caseId, facts, legalQuestion || '', referencesText);
-                    if (result) {
-                      if (result.comparator_data) {
-                        setComparatorData(result.comparator_data as LegalPositionComparatorResult);
-                      } else {
-                        try {
-                          const parsed = JSON.parse(result.analysis);
-                          setComparatorData(parsed);
-                        } catch {
-                          setComparatorData(null);
-                        }
-                      }
+                    if (result?.comparator_data) {
+                      setComparatorData(result.comparator_data as LegalPositionComparatorResult);
                     }
                   } finally {
                     setIsComparatorLoading(false);
@@ -383,17 +356,8 @@ export function CaseAIAnalysisPanel({
                   setAuditData(null);
                   try {
                     const result = await analyzeCase('hallucination_audit', caseId, facts, legalQuestion || '', referencesText);
-                    if (result) {
-                      if (result.audit_data) {
-                        setAuditData(result.audit_data as HallucinationAuditResult);
-                      } else {
-                        try {
-                          const parsed = JSON.parse(result.analysis);
-                          setAuditData(parsed);
-                        } catch {
-                          setAuditData(null);
-                        }
-                      }
+                    if (result?.audit_data) {
+                      setAuditData(result.audit_data as HallucinationAuditResult);
                     }
                   } finally {
                     setIsAuditLoading(false);
@@ -446,17 +410,8 @@ export function CaseAIAnalysisPanel({
                   setStrategyData(null);
                   try {
                     const result = await analyzeCase('strategy_builder', caseId, facts, legalQuestion || '', referencesText);
-                    if (result) {
-                      if (result.strategy_data) {
-                        setStrategyData(result.strategy_data as StrategyBuilderResult);
-                      } else {
-                        try {
-                          const parsed = JSON.parse(result.analysis);
-                          setStrategyData(parsed);
-                        } catch {
-                          setStrategyData(null);
-                        }
-                      }
+                    if (result?.strategy_data) {
+                      setStrategyData(result.strategy_data as StrategyBuilderResult);
                     }
                   } finally {
                     setIsStrategyLoading(false);
@@ -471,7 +426,7 @@ export function CaseAIAnalysisPanel({
                   <Target className="mr-2 h-4 w-4 shrink-0" />
                 )}
                 <span className="truncate">
-                  {i18n.language === 'hy' ? 'Ռազdelays' : i18n.language === 'en' ? 'Strategy' : 'Стратегия'}
+                  {i18n.language === 'hy' ? '\u054C\u0561\u0566\u0574\u0561\u057E\u0561\u0580\u0578\u0582\u0569\u0575\u0578\u0582\u0576' : i18n.language === 'en' ? 'Strategy' : '\u0421\u0442\u0440\u0430\u0442\u0435\u0433\u0438\u044F'}
                 </span>
               </Button>
               <Button 
@@ -482,17 +437,8 @@ export function CaseAIAnalysisPanel({
                   setEvidenceWeaknessData(null);
                   try {
                     const result = await analyzeCase('evidence_weakness', caseId, facts, legalQuestion || '', referencesText);
-                    if (result) {
-                      if (result.evidence_weakness_data) {
-                        setEvidenceWeaknessData(result.evidence_weakness_data as EvidenceWeaknessResult);
-                      } else {
-                        try {
-                          const parsed = JSON.parse(result.analysis);
-                          setEvidenceWeaknessData(parsed);
-                        } catch {
-                          setEvidenceWeaknessData(null);
-                        }
-                      }
+                    if (result?.evidence_weakness_data) {
+                      setEvidenceWeaknessData(result.evidence_weakness_data as EvidenceWeaknessResult);
                     }
                   } finally {
                     setIsEvidenceWeaknessLoading(false);
@@ -507,7 +453,7 @@ export function CaseAIAnalysisPanel({
                   <Search className="mr-2 h-4 w-4 shrink-0" />
                 )}
                 <span className="truncate">
-                  {i18n.language === 'hy' ? 'Թdelays' : i18n.language === 'en' ? 'Weaknesses' : 'Уязdelays'}
+                  {i18n.language === 'hy' ? '\u0539\u0578\u0582\u056C\u0578\u0582\u0569\u0575\u0578\u0582\u0576\u0576\u0565\u0580' : i18n.language === 'en' ? 'Weaknesses' : '\u0423\u044F\u0437\u0432\u0438\u043C\u043E\u0441\u0442\u0438'}
                 </span>
               </Button>
               <Button 
@@ -518,17 +464,8 @@ export function CaseAIAnalysisPanel({
                   setRiskFactorsData(null);
                   try {
                     const result = await analyzeCase('risk_factors', caseId, facts, legalQuestion || '', referencesText);
-                    if (result) {
-                      if (result.risk_factors_data) {
-                        setRiskFactorsData(result.risk_factors_data as RiskFactorsResult);
-                      } else {
-                        try {
-                          const parsed = JSON.parse(result.analysis);
-                          setRiskFactorsData(parsed);
-                        } catch {
-                          setRiskFactorsData(null);
-                        }
-                      }
+                    if (result?.risk_factors_data) {
+                      setRiskFactorsData(result.risk_factors_data as RiskFactorsResult);
                     }
                   } finally {
                     setIsRiskFactorsLoading(false);
@@ -543,7 +480,7 @@ export function CaseAIAnalysisPanel({
                   <BarChart3 className="mr-2 h-4 w-4 shrink-0" />
                 )}
                 <span className="truncate">
-                  {i18n.language === 'hy' ? 'Ռiskեdelays' : i18n.language === 'en' ? 'Risks' : 'Риски'}
+                  {i18n.language === 'hy' ? '\u054C\u056B\u057D\u056F\u0565\u0580' : i18n.language === 'en' ? 'Risks' : '\u0420\u0438\u0441\u043A\u0438'}
                 </span>
               </Button>
               <Button 
@@ -559,7 +496,7 @@ export function CaseAIAnalysisPanel({
                   <BookOpen className="mr-2 h-4 w-4 shrink-0" />
                 )}
                 <span className="truncate">
-                  {i18n.language === 'hy' ? 'Օdelays փоdelays' : i18n.language === 'en' ? 'Law Changes' : 'Изменения закона'}
+                  {i18n.language === 'hy' ? '\u0555\u0580\u0565\u0576\u0584\u056B \u0583\u0578\u0583\u0578\u056D.' : i18n.language === 'en' ? 'Law Changes' : '\u0418\u0437\u043C\u0435\u043D\u0435\u043D\u0438\u044F \u0437\u0430\u043A\u043E\u043D\u0430'}
                 </span>
               </Button>
               <Button 
@@ -570,17 +507,8 @@ export function CaseAIAnalysisPanel({
                   setCrossExamData(null);
                   try {
                     const result = await analyzeCase('cross_exam', caseId, facts, legalQuestion || '', referencesText);
-                    if (result) {
-                      if (result.cross_exam_data) {
-                        setCrossExamData(result.cross_exam_data as CrossExamResult);
-                      } else {
-                        try {
-                          const parsed = JSON.parse(result.analysis);
-                          setCrossExamData(parsed);
-                        } catch {
-                          setCrossExamData(null);
-                        }
-                      }
+                    if (result?.cross_exam_data) {
+                      setCrossExamData(result.cross_exam_data as CrossExamResult);
                     }
                   } finally {
                     setIsCrossExamLoading(false);
@@ -595,7 +523,7 @@ export function CaseAIAnalysisPanel({
                   <MessageSquareQuote className="mr-2 h-4 w-4 shrink-0" />
                 )}
                 <span className="truncate">
-                  {i18n.language === 'hy' ? 'Հարdelays' : i18n.language === 'en' ? 'Cross-Exam' : 'Перекрёстный'}
+                  {i18n.language === 'hy' ? '\u053D\u0561\u0579\u0561\u0571\u0587' : i18n.language === 'en' ? 'Cross-Exam' : '\u041F\u0435\u0440\u0435\u043A\u0440\u0451\u0441\u0442\u043D\u044B\u0439'}
                 </span>
               </Button>
               {Object.values(results).some(r => r !== null) && (
@@ -818,9 +746,9 @@ export function CaseAIAnalysisPanel({
           {strategyData && (
             <div className="mt-6 pt-6 border-t">
               <h3 className="font-semibold text-lg mb-3">
-                {i18n.language === 'hy' ? 'Դdelays ռազdelays' 
+                {i18n.language === 'hy' ? '\u0534\u0561\u057F\u0561\u057E\u0561\u0580\u0561\u056F\u0561\u0576 \u057C\u0561\u0566\u0574\u0561\u057E\u0561\u0580\u0578\u0582\u0569\u0575\u0578\u0582\u0576' 
                  : i18n.language === 'en' ? 'Litigation Strategy' 
-                 : 'Стратегия судебного разбирательства'}
+                 : '\u0421\u0442\u0440\u0430\u0442\u0435\u0433\u0438\u044F \u0441\u0443\u0434\u0435\u0431\u043D\u043E\u0433\u043E \u0440\u0430\u0437\u0431\u0438\u0440\u0430\u0442\u0435\u043B\u044C\u0441\u0442\u0432\u0430'}
               </h3>
               <StrategyBuilderView data={strategyData} language={i18n.language} />
             </div>
@@ -830,9 +758,9 @@ export function CaseAIAnalysisPanel({
           {evidenceWeaknessData && (
             <div className="mt-6 pt-6 border-t">
               <h3 className="font-semibold text-lg mb-3">
-                {i18n.language === 'hy' ? ' Delays delays' 
+                {i18n.language === 'hy' ? '\u0531\u057A\u0561\u0581\u0578\u0582\u0575\u0581\u0576\u0565\u0580\u056B \u0569\u0578\u0582\u056C\u0578\u0582\u0569\u0575\u0578\u0582\u0576\u0576\u0565\u0580' 
                  : i18n.language === 'en' ? 'Evidence Weakness Analysis' 
-                 : 'Анализ уязdelays доказdelays'}
+                 : '\u0410\u043D\u0430\u043B\u0438\u0437 \u0443\u044F\u0437\u0432\u0438\u043C\u043E\u0441\u0442\u0435\u0439 \u0434\u043E\u043A\u0430\u0437\u0430\u0442\u0435\u043B\u044C\u0441\u0442\u0432'}
               </h3>
               <EvidenceWeaknessView data={evidenceWeaknessData} language={i18n.language} />
             </div>
@@ -842,9 +770,9 @@ export function CaseAIAnalysisPanel({
           {riskFactorsData && (
             <div className="mt-6 pt-6 border-t">
               <h3 className="font-semibold text-lg mb-3">
-                {i18n.language === 'hy' ? 'Ռիdelays գdelays' 
+                {i18n.language === 'hy' ? '\u054C\u056B\u057D\u056F\u056B \u0563\u0578\u0580\u056E\u0578\u0576\u0576\u0565\u0580' 
                  : i18n.language === 'en' ? 'Risk Factor Analysis' 
-                 : 'Анализ факторов риска'}
+                 : '\u0410\u043D\u0430\u043B\u0438\u0437 \u0444\u0430\u043A\u0442\u043E\u0440\u043E\u0432 \u0440\u0438\u0441\u043A\u0430'}
               </h3>
               <RiskFactorsView data={riskFactorsData} language={i18n.language} />
             </div>
@@ -854,9 +782,9 @@ export function CaseAIAnalysisPanel({
           {lawUpdateData && (
             <div className="mt-6 pt-6 border-t">
               <h3 className="font-semibold text-lg mb-3">
-                {i18n.language === 'hy' ? 'Օdelays փоdelays ամdelays' 
+                {i18n.language === 'hy' ? '\u0555\u0580\u0565\u0576\u0584\u056B \u0583\u0578\u0583\u0578\u056D\u0578\u0582\u0569\u0575\u0578\u0582\u0576\u0576\u0565\u0580' 
                  : i18n.language === 'en' ? 'Law Update Summary' 
-                 : 'Сводка изменений закона'}
+                 : '\u0421\u0432\u043E\u0434\u043A\u0430 \u0438\u0437\u043C\u0435\u043D\u0435\u043D\u0438\u0439 \u0437\u0430\u043A\u043E\u043D\u0430'}
               </h3>
               <LawUpdateSummaryView data={lawUpdateData} language={i18n.language} />
             </div>
@@ -866,9 +794,9 @@ export function CaseAIAnalysisPanel({
           {crossExamData && (
             <div className="mt-6 pt-6 border-t">
               <h3 className="font-semibold text-lg mb-3">
-                {i18n.language === 'hy' ? 'Перекрёстный допрос' 
+                {i18n.language === 'hy' ? '\u053D\u0561\u0579\u0561\u0571\u0587 \u0570\u0561\u0580\u0581\u0561\u0584\u0576\u0576\u0578\u0582\u0569\u0575\u0578\u0582\u0576' 
                  : i18n.language === 'en' ? 'Cross-Examination Questions' 
-                 : 'Вопросы перекрёстного допроса'}
+                 : '\u0412\u043E\u043F\u0440\u043E\u0441\u044B \u043F\u0435\u0440\u0435\u043A\u0440\u0451\u0441\u0442\u043D\u043E\u0433\u043E \u0434\u043E\u043F\u0440\u043E\u0441\u0430'}
               </h3>
               <CrossExamView data={crossExamData} language={i18n.language} />
             </div>
@@ -895,23 +823,23 @@ export function CaseAIAnalysisPanel({
           <div className="space-y-4">
             <div>
               <label className="text-sm font-medium mb-1 block">
-                {i18n.language === 'hy' ? 'Հin տdelays' : i18n.language === 'en' ? 'Old Version' : 'Старая версия'}
+                {i18n.language === 'hy' ? '\u0540\u056B\u0576 \u057F\u0561\u0580\u0562\u0565\u0580\u0561\u056F' : i18n.language === 'en' ? 'Old Version' : '\u0421\u0442\u0430\u0440\u0430\u044F \u0432\u0435\u0440\u0441\u0438\u044F'}
               </label>
               <Textarea 
                 value={oldLawText}
                 onChange={(e) => setOldLawText(e.target.value)}
-                placeholder={i18n.language === 'hy' ? 'Տdelays հin оdelays тdelays...' : i18n.language === 'en' ? 'Paste old law text here...' : 'Вставьте старый текст закона...'}
+                placeholder={i18n.language === 'hy' ? '\u054F\u0565\u0572\u0561\u0564\u0580\u0565\u0584 \u0570\u056B\u0576 \u057F\u0565\u0584\u057D\u057F\u0568...' : i18n.language === 'en' ? 'Paste old law text here...' : '\u0412\u0441\u0442\u0430\u0432\u044C\u0442\u0435 \u0441\u0442\u0430\u0440\u044B\u0439 \u0442\u0435\u043A\u0441\u0442 \u0437\u0430\u043A\u043E\u043D\u0430...'}
                 className="min-h-[150px]"
               />
             </div>
             <div>
               <label className="text-sm font-medium mb-1 block">
-                {i18n.language === 'hy' ? 'Нdelays тdelays' : i18n.language === 'en' ? 'New Version' : 'Новая версия'}
+                {i18n.language === 'hy' ? '\u0546\u0578\u0580 \u057F\u0561\u0580\u0562\u0565\u0580\u0561\u056F' : i18n.language === 'en' ? 'New Version' : '\u041D\u043E\u0432\u0430\u044F \u0432\u0435\u0440\u0441\u0438\u044F'}
               </label>
               <Textarea 
                 value={newLawText}
                 onChange={(e) => setNewLawText(e.target.value)}
-                placeholder={i18n.language === 'hy' ? 'Тdelays нdelays оdelays тdelays...' : i18n.language === 'en' ? 'Paste new law text here...' : 'Вставьте новый текст закона...'}
+                placeholder={i18n.language === 'hy' ? '\u054F\u0565\u0572\u0561\u0564\u0580\u0565\u0584 \u0576\u0578\u0580 \u057F\u0565\u0584\u057D\u057F\u0568...' : i18n.language === 'en' ? 'Paste new law text here...' : '\u0412\u0441\u0442\u0430\u0432\u044C\u0442\u0435 \u043D\u043E\u0432\u044B\u0439 \u0442\u0435\u043A\u0441\u0442 \u0437\u0430\u043A\u043E\u043D\u0430...'}
                 className="min-h-[150px]"
               />
             </div>
@@ -960,7 +888,7 @@ export function CaseAIAnalysisPanel({
               disabled={!oldLawText.trim() || !newLawText.trim()}
             >
               <BookOpen className="mr-2 h-4 w-4" />
-              {i18n.language === 'hy' ? 'Вdelays' : i18n.language === 'en' ? 'Compare' : 'Сравнить'}
+              {i18n.language === 'hy' ? '\u0540\u0561\u0574\u0565\u0574\u0561\u057F\u0565\u056C' : i18n.language === 'en' ? 'Compare' : '\u0421\u0440\u0430\u0432\u043D\u0438\u0442\u044C'}
             </Button>
           </DialogFooter>
         </DialogContent>

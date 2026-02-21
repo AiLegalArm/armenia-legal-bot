@@ -42,15 +42,8 @@ const changeTypeBadge = (type: string) => {
 };
 
 export function LawUpdateSummaryView({ data, language = 'en' }: Props) {
-  const labels = {
-    amended: language === 'hy' ? 'Փոփոխված հոdelays' : language === 'ru' ? 'Измdelays статьи' : 'Amended Articles',
-    repealed: language === 'hy' ? 'Ուdelay հоdelay' : language === 'ru' ? 'Отdelays статьи' : 'Repealed Articles',
-    newArticles: language === 'hy' ? 'Նdelays հоdelay' : language === 'ru' ? 'Нdelays статьи' : 'New Articles',
-    summary: language === 'hy' ? 'Ամdelay' : language === 'ru' ? 'Резdelay' : 'Summary',
-    impact: language === 'hy' ? 'Ազdelay прdelays' : language === 'ru' ? 'Влdelays на прdelays' : 'Practice Impact',
-    oldText: language === 'hy' ? 'Հin текdelays' : language === 'ru' ? 'Стdelays текst' : 'Old Text',
-    newText: language === 'hy' ? 'Нdelays текdelays' : language === 'ru' ? 'Нdelays текst' : 'New Text',
-  };
+  const t = (hy: string, en: string, ru: string) =>
+    language === 'hy' ? hy : language === 'ru' ? ru : en;
 
   return (
     <div className="space-y-4">
@@ -60,7 +53,7 @@ export function LawUpdateSummaryView({ data, language = 'en' }: Props) {
           <CardHeader className="pb-2">
             <CardTitle className="text-sm flex items-center gap-2">
               <Info className="h-4 w-4 text-primary" />
-              {labels.summary}
+              {t('\u0531\u0574\u0583\u0578\u0583\u0578\u0582\u0574', 'Summary', '\u0420\u0435\u0437\u044E\u043C\u0435')}
             </CardTitle>
           </CardHeader>
           <CardContent>
@@ -75,7 +68,7 @@ export function LawUpdateSummaryView({ data, language = 'en' }: Props) {
           <CardHeader className="pb-2">
             <CardTitle className="text-sm flex items-center gap-2">
               <FileEdit className="h-4 w-4 text-amber-500" />
-              {labels.amended} ({data.amended_articles.length})
+              {t('\u0553\u0578\u0583\u0578\u056D\u057E\u0561\u056E \u0570\u0578\u0564\u057E\u0561\u056E\u0576\u0565\u0580', 'Amended Articles', '\u0418\u0437\u043C\u0435\u043D\u0451\u043D\u043D\u044B\u0435 \u0441\u0442\u0430\u0442\u044C\u0438')} ({data.amended_articles.length})
             </CardTitle>
           </CardHeader>
           <CardContent className="space-y-3">
@@ -88,13 +81,13 @@ export function LawUpdateSummaryView({ data, language = 'en' }: Props) {
                 <p className="text-sm text-muted-foreground">{item.description}</p>
                 {item.old_text_excerpt && (
                   <div className="bg-destructive/10 rounded p-2">
-                    <p className="text-xs font-medium text-destructive mb-1">{labels.oldText}:</p>
+                    <p className="text-xs font-medium text-destructive mb-1">{t('\u0540\u056B\u0576 \u057F\u0565\u0584\u057D\u057F', 'Old Text', '\u0421\u0442\u0430\u0440\u044B\u0439 \u0442\u0435\u043A\u0441\u0442')}:</p>
                     <p className="text-xs text-muted-foreground">{item.old_text_excerpt}</p>
                   </div>
                 )}
                 {item.new_text_excerpt && (
                   <div className="bg-green-500/10 rounded p-2">
-                    <p className="text-xs font-medium text-green-700 dark:text-green-400 mb-1">{labels.newText}:</p>
+                    <p className="text-xs font-medium text-green-700 dark:text-green-400 mb-1">{t('\u0546\u0578\u0580 \u057F\u0565\u0584\u057D\u057F', 'New Text', '\u041D\u043E\u0432\u044B\u0439 \u0442\u0435\u043A\u0441\u0442')}:</p>
                     <p className="text-xs text-muted-foreground">{item.new_text_excerpt}</p>
                   </div>
                 )}
@@ -110,7 +103,7 @@ export function LawUpdateSummaryView({ data, language = 'en' }: Props) {
           <CardHeader className="pb-2">
             <CardTitle className="text-sm flex items-center gap-2">
               <Trash2 className="h-4 w-4 text-destructive" />
-              {labels.repealed} ({data.repealed_articles.length})
+              {t('\u0548\u0582\u056A\u0568 \u056F\u0578\u0580\u0581\u0580\u0561\u056E \u0570\u0578\u0564\u057E\u0561\u056E\u0576\u0565\u0580', 'Repealed Articles', '\u041E\u0442\u043C\u0435\u043D\u0451\u043D\u043D\u044B\u0435 \u0441\u0442\u0430\u0442\u044C\u0438')} ({data.repealed_articles.length})
             </CardTitle>
           </CardHeader>
           <CardContent className="space-y-2">
@@ -130,7 +123,7 @@ export function LawUpdateSummaryView({ data, language = 'en' }: Props) {
           <CardHeader className="pb-2">
             <CardTitle className="text-sm flex items-center gap-2">
               <PlusCircle className="h-4 w-4 text-green-600" />
-              {labels.newArticles} ({data.new_articles.length})
+              {t('\u0546\u0578\u0580 \u0570\u0578\u0564\u057E\u0561\u056E\u0576\u0565\u0580', 'New Articles', '\u041D\u043E\u0432\u044B\u0435 \u0441\u0442\u0430\u0442\u044C\u0438')} ({data.new_articles.length})
             </CardTitle>
           </CardHeader>
           <CardContent className="space-y-2">
@@ -148,7 +141,7 @@ export function LawUpdateSummaryView({ data, language = 'en' }: Props) {
       {data.practice_impact_notes && (
         <Card className="border-primary/20">
           <CardHeader className="pb-2">
-            <CardTitle className="text-sm">{labels.impact}</CardTitle>
+            <CardTitle className="text-sm">{t('\u0531\u0566\u0564\u0565\u0581\u0578\u0582\u0569\u0575\u0578\u0582\u0576 \u057A\u0580\u0561\u056F\u057F\u056B\u056F\u0561\u0575\u056B \u057E\u0580\u0561', 'Practice Impact', '\u0412\u043B\u0438\u044F\u043D\u0438\u0435 \u043D\u0430 \u043F\u0440\u0430\u043A\u0442\u0438\u043A\u0443')}</CardTitle>
           </CardHeader>
           <CardContent>
             <p className="text-sm text-muted-foreground whitespace-pre-wrap">{data.practice_impact_notes}</p>
