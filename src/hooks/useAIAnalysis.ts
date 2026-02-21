@@ -3,7 +3,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { useTranslation } from "react-i18next";
 
-export type AIRole = "advocate" | "prosecutor" | "judge" | "aggregator" | "precedent_citation" | "deadline_rules" | "legal_position_comparator";
+export type AIRole = "advocate" | "prosecutor" | "judge" | "aggregator" | "precedent_citation" | "deadline_rules" | "legal_position_comparator" | "hallucination_audit";
 
 interface AnalysisResult {
   role: AIRole;
@@ -13,6 +13,7 @@ interface AnalysisResult {
   precedent_data?: unknown;
   deadline_data?: unknown;
   comparator_data?: unknown;
+  audit_data?: unknown;
 }
 
 interface UseAIAnalysisReturn {
@@ -39,6 +40,7 @@ export function useAIAnalysis(): UseAIAnalysisReturn {
     precedent_citation: null,
     deadline_rules: null,
     legal_position_comparator: null,
+    hallucination_audit: null,
   });
 
   const analyzeCase = useCallback(async (
@@ -110,6 +112,7 @@ export function useAIAnalysis(): UseAIAnalysisReturn {
         precedent_data: data.precedent_data || null,
         deadline_data: data.deadline_data || null,
         comparator_data: data.comparator_data || null,
+        audit_data: data.audit_data || null,
       };
 
       setResults(prev => ({
@@ -207,6 +210,7 @@ export function useAIAnalysis(): UseAIAnalysisReturn {
       precedent_citation: null,
       deadline_rules: null,
       legal_position_comparator: null,
+      hallucination_audit: null,
     });
     setCreditsExhausted(false);
   }, []);
