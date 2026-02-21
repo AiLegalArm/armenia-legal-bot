@@ -498,6 +498,7 @@ serve(async (req) => {
     const limit = Math.min(body.limit || 5, 20);
     const countOnly = body.countOnly === true;
     const category = body.category || null;
+    const singleDocId = body.docId || null;
 
     const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
     const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
@@ -506,6 +507,45 @@ serve(async (req) => {
     const lovableApiKey = Deno.env.get("LOVABLE_API_KEY");
     if (!lovableApiKey) {
       throw new Error("LOVABLE_API_KEY not configured");
+    }
+
+    // === Single document enrichment mode ===
+    if (singleDocId) {
+      const { data: doc, error: fetchErr } = await adminDb
+        .from("legal_practice_kb")
+        .select("id, content_text, title")
+        .eq("id", singleDocId)
+        .single();
+      if (fetchErr || !doc) {
+        return new Response(JSON.stringify({ error: "Document not found" }), {
+          status: 404,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+
+      const enrichment = await callAI(doc.content_text, lovableApiKey);
+      const updatePayload = mapEnrichmentToColumns(enrichment);
+      const cleanPayload: Record<string, unknown> = {};
+      for (const [k, v] of Object.entries(updatePayload)) {
+        if (v !== null && v !== undefined && v !== "") cleanPayload[k] = v;
+      }
+
+      const updatedFields = Object.keys(cleanPayload);
+      if (updatedFields.length > 0) {
+        const { error: updateErr } = await adminDb
+          .from("legal_practice_kb")
+          .update(cleanPayload)
+          .eq("id", singleDocId);
+        if (updateErr) throw updateErr;
+      }
+
+      return new Response(JSON.stringify({
+        success: true,
+        enriched: updatedFields.length > 0,
+        updated_fields: updatedFields,
+      }), {
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
     }
 
     // Count total needing enrichment (no decision_map with v2 enrichment)
