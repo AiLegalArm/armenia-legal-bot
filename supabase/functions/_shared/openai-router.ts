@@ -630,6 +630,13 @@ export async function callJSON<T = Record<string, unknown>>(
         `Only strict JSON roles (Gemini Pro) may use callJSON. Use callText for GPT-5 text roles.`
     );
   }
+  // Explicit block: OpenAI chat models must NEVER use callJSON
+  if (cfg.model.startsWith("openai/") && !cfg.model.startsWith("openai/text-embedding-")) {
+    throw new Error(
+      `[openai-router] GOVERNANCE VIOLATION: callJSON is forbidden for OpenAI chat model "${cfg.model}". ` +
+        `Use Gemini Pro JSON roles only.`
+    );
+  }
   const governance = buildGovernanceMeta(cfg, roleLabel);
   const requestId = newRequestId();
   const safeMessages = prependSafetyHeader(functionName, messages);
@@ -724,9 +731,10 @@ export async function callEmbeddings(
   texts: string[]
 ): Promise<{ vectors: number[][]; model_used: string }> {
   // Re-use the existing embeddings-generate edge function
+  const cfg = MODEL_MAP["generate-embeddings"];
   const { generateEmbeddings } = await import("./embeddings.ts");
   const vectors = await generateEmbeddings(texts);
-  return { vectors, model_used: "text-embedding-3-large" };
+  return { vectors, model_used: cfg.model };
 }
 
 // ── Helpers ──────────────────────────────────────────────────────────────────

@@ -817,7 +817,7 @@ Please provide your professional legal analysis from your designated role perspe
           analysis: aiResponseText,
           [responseKey]: structuredJson,
           sources: sourcesUsed,
-          model: modelUsed,
+          model_used: modelUsed,
         }),
         { headers: { ...corsHeaders, "Content-Type": "application/json" } },
       );
@@ -842,7 +842,7 @@ Please provide your professional legal analysis from your designated role perspe
           analysis: aiResponseText,
           draft_text: aiResponseText,
           sources: sourcesUsed,
-          model: modelUsed,
+          model_used: modelUsed,
         }),
         { headers: { ...corsHeaders, "Content-Type": "application/json" } },
       );
@@ -977,7 +977,7 @@ Please provide your professional legal analysis from your designated role perspe
         moduleId: moduleId || null,
         analysis: analysisText,
         sources: sourcesUsed,
-        model: modelUsed,
+        model_used: modelUsed,
       }),
       {
         headers: { ...corsHeaders, "Content-Type": "application/json" },

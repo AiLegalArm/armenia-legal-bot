@@ -839,6 +839,7 @@ serve(async (req) => {
 
     let content: string;
     let tokensUsed = 0;
+    let modelUsed = "unknown";
     try {
       const result = await callText("multi-agent-analyze", [
         { role: "system", content: systemPrompt },
@@ -846,7 +847,8 @@ serve(async (req) => {
       ]);
       content = result.text;
       tokensUsed = result.usage?.total_tokens ?? 0;
-      console.log(JSON.stringify({ ts: new Date().toISOString(), lvl: "info", fn: "multi-agent", model: result.model_used, latency_ms: result.latency_ms }));
+      modelUsed = result.model_used;
+      console.log(JSON.stringify({ ts: new Date().toISOString(), lvl: "info", fn: "multi-agent", model: modelUsed, latency_ms: result.latency_ms }));
     } catch (routerErr) {
       const status = (routerErr as { status?: number })?.status;
       if (status === 429) {
@@ -879,7 +881,7 @@ serve(async (req) => {
     // Log usage
     await supabase.rpc("log_api_usage", {
       _service_type: "multi_agent",
-      _model_name: "anthropic/claude-3.7-sonnet",
+      _model_name: modelUsed,
       _tokens_used: tokensUsed,
       _estimated_cost: tokensUsed * 0.000001,
       _metadata: { agentType, caseId, runId }
