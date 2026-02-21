@@ -99,7 +99,7 @@ serve(async (req) => {
         query: searchTerms.join(' '),
         category: practiceCategory,
         kbLimit: 8,
-        practiceLimit: 6,
+        practiceLimit: 5,
         fullPracticeText: false,
       });
       
@@ -108,7 +108,7 @@ serve(async (req) => {
 
       // Build structured precedent list from practice results (max 6)
       // SAFETY: only include precedents that have at least one usable quote
-      retrievedPrecedents = (rag.practiceResults || []).slice(0, 6).map((r) => {
+      retrievedPrecedents = (rag.practiceResults || []).slice(0, 5).map((r) => {
         const fullText = r.content_text || r.content_snippet || r.legal_reasoning_summary || "";
         const sentences = fullText
           .split(/(?<=[.!?\u0589\u0964])\s+/)
@@ -120,11 +120,11 @@ serve(async (req) => {
           id: r.id,
           court_type: r.court_type || "unknown",
           title: r.title,
-          decision_date: null,
-          source_name: null,
+          decision_date: r.decision_date || null,
+          source_name: r.court_name || null,
           quotes,
         };
-      }).filter((p) => p.quotes.length > 0); // exclude precedents with no extractable quotes
+      }).filter((p) => p.quotes.length > 0);
       
       log("generate-complaint", "RAG context", {
         kbLen: kbContext.length,
