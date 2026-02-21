@@ -27,6 +27,14 @@ export interface PracticeSearchResult {
   applied_articles?: string[] | Record<string, unknown>[];
   key_violations?: string[];
   legal_reasoning_summary?: string;
+  /** ISO date string (YYYY-MM-DD) of the court decision */
+  decision_date?: string;
+  /** Anonymized case number */
+  case_number?: string;
+  /** Court name (Armenian) */
+  court_name?: string;
+  /** Precedent unit paragraphs */
+  key_paragraphs?: Record<string, unknown>[];
   similarity?: number;
   rank?: number;
   relevance_rank?: number;

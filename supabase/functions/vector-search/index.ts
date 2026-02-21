@@ -147,7 +147,7 @@ async function keywordSearchPractice(
   limit: number,
   category: string | null
 ): Promise<Array<{ id: string; title: string; content_text: string; similarity?: number }>> {
-  const results = new Map<string, { id: string; title: string; content_text: string; similarity: number }>();
+  const results = new Map<string, { id: string; title: string; content_text: string; similarity: number; decision_date?: string; case_number?: string; court_name?: string }>();
 
   // 1. Try RPC with full query
   const rpcParams: Record<string, unknown> = { search_query: query, result_limit: limit };
@@ -158,6 +158,9 @@ async function keywordSearchPractice(
       id: r.id, title: r.title,
       content_text: (r.content_text || "").substring(0, 2000),
       similarity: r.rank || 0,
+      decision_date: r.decision_date || null,
+      case_number: r.case_number_anonymized || null,
+      court_name: r.court_name || null,
     });
   }
 
@@ -174,6 +177,9 @@ async function keywordSearchPractice(
           id: r.id, title: r.title,
           content_text: (r.content_text || "").substring(0, 2000),
           similarity: (r.rank || 0) * 0.8,
+          decision_date: r.decision_date || null,
+          case_number: r.case_number_anonymized || null,
+          court_name: r.court_name || null,
         });
       }
     }
@@ -186,7 +192,7 @@ async function keywordSearchPractice(
       if (searchTerm.length < 2) continue;
       let q = supabase
         .from("legal_practice_kb")
-        .select("id, title, content_text")
+        .select("id, title, content_text, decision_date, case_number_anonymized, court_name")
         .eq("is_active", true)
         .or(`title.ilike.%${searchTerm}%,legal_reasoning_summary.ilike.%${searchTerm}%`)
         .limit(Math.min(10, limit));
@@ -198,6 +204,9 @@ async function keywordSearchPractice(
             id: r.id, title: r.title,
             content_text: (r.content_text || "").substring(0, 2000),
             similarity: 0.3,
+            decision_date: r.decision_date || null,
+            case_number: r.case_number_anonymized || null,
+            court_name: r.court_name || null,
           });
         }
       }
