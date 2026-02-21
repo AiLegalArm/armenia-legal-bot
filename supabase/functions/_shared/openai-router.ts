@@ -1,10 +1,11 @@
 /**
- * _shared/openai-router.ts — Centralized OpenAI router for all non-OCR edge functions.
+ * _shared/openai-router.ts — Centralized AI router for all non-OCR edge functions.
  *
  * CRITICAL RULES:
- * - This is the ONLY file that calls the AI gateway with OpenAI models.
+ * - This is the ONLY file that calls the AI gateway.
  * - OCR functions (ocr-process, kb-table-screenshots) MUST NOT import this module.
  * - All functions must call by functionName; model is resolved here via MODEL_MAP.
+ * - openai/* models are FORBIDDEN. The governance layer rejects them at runtime.
  *
  * Required env vars:
  *   LOVABLE_API_KEY     — AI Gateway key (auto-provisioned)
@@ -23,10 +24,18 @@ export interface ModelConfig {
   description: string;
 }
 
+/** Governance metadata returned with every AI call */
+export interface GovernanceMeta {
+  role: string;
+  model_used: string;
+  temperature_used: number;
+  max_tokens_used: number;
+}
+
 /**
  * Strict per-function model assignment.
  * No function may override these; they must call by functionName only.
- * Models map to OpenAI models via Lovable AI Gateway.
+ * ALL models MUST be anthropic/* or google/* — openai/* is FORBIDDEN.
  */
 export const MODEL_MAP: Record<string, ModelConfig> = {
   // ── High reasoning — anthropic/claude-3.7-sonnet ──────────────────────────
@@ -90,6 +99,26 @@ export const MODEL_MAP: Record<string, ModelConfig> = {
     max_tokens: 16000,
     description: "Audio transcription (Gemini 2.5 Flash, temp=0.1)",
   },
+
+  // ── Utility tasks — google/gemini-2.5-flash-lite ──────────────────────────
+  "legal-practice-enrich": {
+    model: "google/gemini-2.5-flash",
+    temperature: 0.2,
+    max_tokens: 16000,
+    description: "Legal practice enrichment (Gemini 2.5 Flash, temp=0.2)",
+  },
+  "vector-search-rerank": {
+    model: "google/gemini-2.5-flash-lite",
+    temperature: 0.1,
+    max_tokens: 1000,
+    description: "Vector search re-ranking (Gemini 2.5 Flash Lite, temp=0.1)",
+  },
+  "echr-translate": {
+    model: "google/gemini-2.5-flash",
+    temperature: 0.1,
+    max_tokens: 8000,
+    description: "ECHR translation to Armenian (Gemini 2.5 Flash, temp=0.1)",
+  },
 };
 
 /**
@@ -147,21 +176,47 @@ const ROLE_OVERRIDES: Record<string, Partial<ModelConfig>> = {
   },
 };
 
+// ── Governance constants ────────────────────────────────────────────────────
+
+/** Maximum allowed temperature for any legal function */
+const MAX_TEMPERATURE = 0.3;
+
+/** Maximum allowed tokens for any single call */
+const MAX_TOKENS_CAP = 16384;
+
+/**
+ * Governance-enforced model config resolution.
+ *
+ * Enforces:
+ * 1. Role must be registered (rejects undefined roles)
+ * 2. No openai/* models allowed
+ * 3. Temperature capped at MAX_TEMPERATURE
+ * 4. max_tokens capped at MAX_TOKENS_CAP
+ * 5. Returns GovernanceMeta alongside ModelConfig
+ */
 export function getModelConfig(functionName: string, role?: string): ModelConfig {
+  const roleLabel = role ? `${functionName}:${role}` : functionName;
+
   // Check role-specific override first
   if (role) {
     const overrideKey = `${functionName}:${role}`;
     const override = ROLE_OVERRIDES[overrideKey];
-    if (override) {
-      const base = MODEL_MAP[functionName];
-      if (!base) {
-        throw new Error(
-          `[openai-router] No model config for function "${functionName}". ` +
-            `Register it in MODEL_MAP or check the function name.`
-        );
-      }
-      return { ...base, ...override } as ModelConfig;
+    if (!override) {
+      // Role was specified but not registered — reject
+      throw new Error(
+        `[openai-router] Undefined role "${role}" for function "${functionName}". ` +
+          `Register it in ROLE_OVERRIDES or check the role name.`
+      );
     }
+    const base = MODEL_MAP[functionName];
+    if (!base) {
+      throw new Error(
+        `[openai-router] No model config for function "${functionName}". ` +
+          `Register it in MODEL_MAP or check the function name.`
+      );
+    }
+    const merged = { ...base, ...override } as ModelConfig;
+    return enforceGovernance(merged, roleLabel);
   }
 
   const cfg = MODEL_MAP[functionName];
@@ -171,6 +226,60 @@ export function getModelConfig(functionName: string, role?: string): ModelConfig
         `Register it in MODEL_MAP or check the function name.`
     );
   }
+  return enforceGovernance(cfg, roleLabel);
+}
+
+/**
+ * Build GovernanceMeta from resolved config.
+ */
+export function buildGovernanceMeta(cfg: ModelConfig, roleLabel: string): GovernanceMeta {
+  return {
+    role: roleLabel,
+    model_used: cfg.model,
+    temperature_used: cfg.temperature,
+    max_tokens_used: cfg.max_tokens,
+  };
+}
+
+/**
+ * Internal governance enforcement — validates and caps resolved config.
+ */
+function enforceGovernance(cfg: ModelConfig, roleLabel: string): ModelConfig {
+  // Block openai/* models
+  if (cfg.model.startsWith("openai/")) {
+    throw new Error(
+      `[openai-router] GOVERNANCE VIOLATION: openai/* models are forbidden. ` +
+        `Role "${roleLabel}" attempted to use "${cfg.model}". ` +
+        `Use anthropic/* or google/* models only.`
+    );
+  }
+
+  // Cap temperature
+  if (cfg.temperature > MAX_TEMPERATURE) {
+    console.warn(
+      JSON.stringify({
+        governance: "TEMPERATURE_CAPPED",
+        role: roleLabel,
+        requested: cfg.temperature,
+        capped_to: MAX_TEMPERATURE,
+      })
+    );
+    cfg = { ...cfg, temperature: MAX_TEMPERATURE };
+  }
+
+  // Cap max_tokens
+  if (cfg.max_tokens > MAX_TOKENS_CAP) {
+    console.warn(
+      JSON.stringify({
+        governance: "MAX_TOKENS_CAPPED",
+        role: roleLabel,
+        requested: cfg.max_tokens,
+        capped_to: MAX_TOKENS_CAP,
+      })
+    );
+    cfg = { ...cfg, max_tokens: MAX_TOKENS_CAP };
+  }
+
   return cfg;
 }
 
@@ -232,6 +341,7 @@ export interface TextResult {
   latency_ms: number;
   request_id: string;
   usage?: { prompt_tokens: number; completion_tokens: number; total_tokens: number };
+  governance: GovernanceMeta;
 }
 
 export interface JSONResult<T = unknown> {
@@ -240,6 +350,7 @@ export interface JSONResult<T = unknown> {
   latency_ms: number;
   request_id: string;
   usage?: { prompt_tokens: number; completion_tokens: number; total_tokens: number };
+  governance: GovernanceMeta;
 }
 
 // ── Internal helpers ─────────────────────────────────────────────────────────
@@ -405,25 +516,18 @@ async function fetchWithRetry(
  * Provider-aware parameter rules:
  *   - anthropic/*: pass temperature + max_tokens (always)
  *   - google/*:    pass temperature + max_tokens (always)
- *   - openai/*:    FORBIDDEN by policy; kept only for legacy safety — omit temperature
+ *   - openai/*:    FORBIDDEN — governance layer blocks before reaching here
  */
 function buildRequestBody(
   cfg: ModelConfig,
   messages: RouterMessage[]
 ): Record<string, unknown> {
-  const isOpenAI = cfg.model.startsWith("openai/");
-  const tokenKey = isOpenAI ? "max_completion_tokens" : "max_tokens";
-  const body: Record<string, unknown> = {
+  return {
     model: cfg.model,
-    [tokenKey]: cfg.max_tokens,
+    temperature: cfg.temperature,
+    max_tokens: cfg.max_tokens,
     messages,
   };
-  // Anthropic + Google: always pass temperature
-  // OpenAI (forbidden by policy but kept for safety): omit temperature
-  if (!isOpenAI) {
-    body.temperature = cfg.temperature;
-  }
-  return body;
 }
 
 /**
@@ -434,7 +538,9 @@ export async function callText(
   messages: RouterMessage[],
   options: RouterCallOptions & { role?: string } = {}
 ): Promise<TextResult> {
+  const roleLabel = options.role ? `${functionName}:${options.role}` : functionName;
   const cfg = getModelConfig(functionName, options.role);
+  const governance = buildGovernanceMeta(cfg, roleLabel);
   const requestId = newRequestId();
   const safeMessages = prependSafetyHeader(functionName, messages);
   const timeoutMs = options.timeoutMs ?? defaultTimeout(false);
@@ -452,7 +558,7 @@ export async function callText(
   const text = choices?.[0]?.message?.content ?? "";
   const usage = data.usage as TextResult["usage"];
 
-  return { text, model_used: cfg.model, latency_ms, request_id: requestId, usage };
+  return { text, model_used: cfg.model, latency_ms, request_id: requestId, usage, governance };
 }
 
 /**
@@ -466,7 +572,9 @@ export async function callJSON<T = Record<string, unknown>>(
   schema: Record<string, unknown>,
   options: RouterCallOptions & { role?: string } = {}
 ): Promise<JSONResult<T>> {
+  const roleLabel = options.role ? `${functionName}:${options.role}` : functionName;
   const cfg = getModelConfig(functionName, options.role);
+  const governance = buildGovernanceMeta(cfg, roleLabel);
   const requestId = newRequestId();
   const safeMessages = prependSafetyHeader(functionName, messages);
   const timeoutMs = options.timeoutMs ?? defaultTimeout(false);
@@ -517,6 +625,7 @@ export async function callJSON<T = Record<string, unknown>>(
     latency_ms,
     request_id: requestId,
     usage,
+    governance,
   };
 }
 
@@ -530,16 +639,12 @@ export async function callTranscription(
   options: RouterCallOptions = {}
 ): Promise<TextResult> {
   const cfg = getModelConfig(functionName);
+  const governance = buildGovernanceMeta(cfg, functionName);
   const requestId = newRequestId();
   const timeoutMs = options.timeoutMs ?? defaultTimeout(true);
 
-  const tokenKey = cfg.model.startsWith("openai/") ? "max_completion_tokens" : "max_tokens";
-  const body: Record<string, unknown> = {
-    model: cfg.model,
-    temperature: cfg.temperature,
-    [tokenKey]: cfg.max_tokens,
-    messages,
-  };
+  // Use shared buildRequestBody — governance already blocks openai/*
+  const body = buildRequestBody(cfg, messages);
 
   const { data, latency_ms } = await fetchWithRetry(
     functionName,
@@ -552,7 +657,7 @@ export async function callTranscription(
   const text = choices?.[0]?.message?.content ?? "";
   const usage = data.usage as TextResult["usage"];
 
-  return { text, model_used: cfg.model, latency_ms, request_id: requestId, usage };
+  return { text, model_used: cfg.model, latency_ms, request_id: requestId, usage, governance };
 }
 
 /**

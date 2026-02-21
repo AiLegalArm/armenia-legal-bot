@@ -151,7 +151,7 @@ serve(async (req) => {
     try {
       await supabase.rpc("log_api_usage", {
         _service_type: "kb_search_assistant",
-        _model_name: "openai/gpt-5-mini",
+        _model_name: "google/gemini-2.5-pro",
         _tokens_used: null,
         _estimated_cost: 0.0005,
         _metadata: { query_length: query.length, keywords_count: keywords.length, results_count: output.results.length }

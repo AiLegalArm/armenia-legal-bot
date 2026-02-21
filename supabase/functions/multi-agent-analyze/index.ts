@@ -879,7 +879,7 @@ serve(async (req) => {
     // Log usage
     await supabase.rpc("log_api_usage", {
       _service_type: "multi_agent",
-      _model_name: "openai/gpt-5",
+      _model_name: "anthropic/claude-3.7-sonnet",
       _tokens_used: tokensUsed,
       _estimated_cost: tokensUsed * 0.000001,
       _metadata: { agentType, caseId, runId }

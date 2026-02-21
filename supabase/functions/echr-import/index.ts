@@ -171,7 +171,7 @@ async function translateFieldHY(
           },
           signal: AbortSignal.timeout(30000),
           body: JSON.stringify({
-            model: "openai/gpt-5-mini",
+            model: "google/gemini-2.5-flash",
             messages: [
               {
                 role: "system",

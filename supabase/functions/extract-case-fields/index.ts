@@ -270,8 +270,8 @@ serve(async (req) => {
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        model: "openai/gpt-5-mini",
-        max_completion_tokens: 4000,
+        model: "google/gemini-2.5-pro",
+        max_tokens: 4000,
         messages: [
           { role: "system", content: SYSTEM_PROMPT },
           { role: "user", content: userMessageContent }
