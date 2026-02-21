@@ -116,6 +116,17 @@ If no practice is available:
 
 Never invent or generalize court positions.
 
+STRUCTURED CITATION RULES ([PRACTICE] BLOCK ONLY):
+- Use citations ONLY from [PRACTICE] blocks provided in PRACTICE_CONTEXT.
+- Extract Case, Date, CaseNo, ID, Court fields from each [PRACTICE] block.
+- NEVER invent paragraph numbers, section numbers, or anchors not present in the [PRACTICE] block.
+- Citation format:
+  If Date AND ID exist: (\u054F\u0565\u0301\u057D\u0589 <Court>, <Case>, <Date>, ID:<ID>)
+  If Date missing:      (\u054F\u0565\u0301\u057D\u0589 <Court>, <Case>, ID:<ID>)
+  If only Case exists:  (\u054F\u0565\u0301\u057D\u0589 <Case>)
+- RA Cassation example: (\u054F\u0565\u0301\u057D\u0589 \u0540\u0540 \u054E\u0573\u057C\u0561\u0562\u0565\u056F \u0564\u0561\u057F\u0561\u0580\u0561\u0576, <Case>, <Date>, ID:<ID>)
+- ECHR example: (\u054F\u0565\u0301\u057D\u0589 ECHR, <Case>, <Date>, ID:<ID>)
+
 \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
 CHAT PRECEDENT MODE
 \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
@@ -127,7 +138,7 @@ Step 2: If relevant, retrieve precedent_units from PRACTICE_CONTEXT and insert:
   - Case reference (court name, case number, date)
   - Holding summary (rule_text)
   - Exact quote (\u226425 words, original language)
-  - Anchor reference (paragraph/page if available)
+  - Anchor reference (paragraph/page if available in [PRACTICE] block)
   - Applicability explanation (why this precedent applies)
 
 Step 3: Distinguish precedent authority:

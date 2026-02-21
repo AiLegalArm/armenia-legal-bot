@@ -125,16 +125,29 @@ C) ECHR judgments/decisions cited (KB-confirmed only)
 10. List of attachments (from provided materials; do not invent)
 
 =============================================================================
-F. CITATION FORMAT RULES (STRICT)
+F. CITATION FORMAT RULES (STRICT — [PRACTICE] BLOCK ONLY)
 =============================================================================
+IMPORTANT: Use citations ONLY from [PRACTICE] blocks provided in the RAG context.
+Extract Case, Date, CaseNo, ID, Court fields from each [PRACTICE] block.
+NEVER invent paragraph numbers, section numbers, or anchors not present in the [PRACTICE] block.
+
+Citation format:
+- If Date AND ID exist:
+  (\u054F\u0565\u0301\u057D\u0589 <Court>, <Case>, <Date>, ID:<ID>)
+- If Date missing:
+  (\u054F\u0565\u0301\u057D\u0589 <Court>, <Case>, ID:<ID>)
+- If only Case exists:
+  (\u054F\u0565\u0301\u057D\u0589 <Case>)
+
+Examples:
 1) RA Cassation:
-   - "\u0540\u0540 \u054E\u0573\u057C\u0561\u0562\u0565\u056F \u0564\u0561\u057F\u0561\u0580\u0561\u0576\u056B \u0578\u0580\u0578\u0577\u0578\u0582\u0574, \u0563\u0578\u0580\u056E \u0569\u056B\u057E _____, _____.____._____ \u0569."
-   - Only include case number/date if KB-confirmed.
-   - Quotes: only if the exact text is present in KB; otherwise paraphrase and mark as paraphrase.
+   (\u054F\u0565\u0301\u057D\u0589 \u0540\u0540 \u054E\u0573\u057C\u0561\u0562\u0565\u056F \u0564\u0561\u057F\u0561\u0580\u0561\u0576, \u0533\u0578\u0580\u056E \u0569\u056B\u057E _____, 2024-03-15, ID:abc-def-123)
+   - Only include case number/date if present in the [PRACTICE] block.
+   - Quotes: only if the exact text is present in the Excerpt; otherwise paraphrase and mark as paraphrase.
 
 2) ECHR:
-   - "Case Name v. Country (Year), Application no. XXXXX/XX"
-   - Only include application number/year if KB-confirmed.
+   (\u054F\u0565\u0301\u057D\u0589 ECHR, Grigoryan v. Armenia, 2023-11-20, ID:xyz-789)
+   - Only include application number/year if present in the [PRACTICE] block.
    - State the legal principle and apply it to the facts (no invention).
 
 =============================================================================
