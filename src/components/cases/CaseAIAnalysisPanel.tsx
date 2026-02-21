@@ -13,12 +13,13 @@ import { Switch } from '@/components/ui/switch';
 import { Label } from '@/components/ui/label';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { exportAnalysisToPDF, exportMultipleAnalysesToPDF } from '@/lib/pdfExport';
-import { Loader2, Brain, Download, FileSignature, Save, AlertTriangle, Check, Scale, Timer, GitCompare, ShieldCheck, FileText } from 'lucide-react';
+import { Loader2, Brain, Download, FileSignature, Save, AlertTriangle, Check, Scale, Timer, GitCompare, ShieldCheck, FileText, Target } from 'lucide-react';
 import { useReferencesText } from '@/lib/references-store';
 import { PrecedentCitationView, type PrecedentCitationResult } from '@/components/cases/PrecedentCitationView';
 import { DeadlineRulesView, type DeadlineRulesResult } from '@/components/cases/DeadlineRulesView';
 import { LegalPositionComparatorView, type LegalPositionComparatorResult } from '@/components/cases/LegalPositionComparatorView';
 import { HallucinationAuditView, type HallucinationAuditResult } from '@/components/cases/HallucinationAuditView';
+import { StrategyBuilderView, type StrategyBuilderResult } from '@/components/cases/StrategyBuilderView';
 
 interface CaseAIAnalysisPanelProps {
   caseId: string;
@@ -76,6 +77,8 @@ export function CaseAIAnalysisPanel({
   const [isAuditLoading, setIsAuditLoading] = useState(false);
   const [draftText, setDraftText] = useState<string | null>(null);
   const [isDraftLoading, setIsDraftLoading] = useState(false);
+  const [strategyData, setStrategyData] = useState<StrategyBuilderResult | null>(null);
+  const [isStrategyLoading, setIsStrategyLoading] = useState(false);
 
   // If user clicks "Clear" while the initial saved-analyses load is still in-flight,
   // we must ignore that async result to prevent the content from "reappearing".
@@ -418,6 +421,42 @@ export function CaseAIAnalysisPanel({
                   {i18n.language === 'hy' ? '\u0546\u0561\u056D\u0561\u0563\u056B\u056E' : i18n.language === 'en' ? 'Draft' : '\u0427\u0435\u0440\u043D\u043E\u0432\u0438\u043A'}
                 </span>
               </Button>
+              <Button 
+                variant="outline" 
+                size="sm" 
+                onClick={async () => {
+                  setIsStrategyLoading(true);
+                  setStrategyData(null);
+                  try {
+                    const result = await analyzeCase('strategy_builder', caseId, facts, legalQuestion || '', referencesText);
+                    if (result) {
+                      if (result.strategy_data) {
+                        setStrategyData(result.strategy_data as StrategyBuilderResult);
+                      } else {
+                        try {
+                          const parsed = JSON.parse(result.analysis);
+                          setStrategyData(parsed);
+                        } catch {
+                          setStrategyData(null);
+                        }
+                      }
+                    }
+                  } finally {
+                    setIsStrategyLoading(false);
+                  }
+                }}
+                disabled={isStrategyLoading || isAnalyzing}
+                className="h-10 rounded-xl text-mobile-sm sm:text-sm"
+              >
+                {isStrategyLoading ? (
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin shrink-0" />
+                ) : (
+                  <Target className="mr-2 h-4 w-4 shrink-0" />
+                )}
+                <span className="truncate">
+                  {i18n.language === 'hy' ? 'Ռազdelays' : i18n.language === 'en' ? 'Strategy' : 'Стратегия'}
+                </span>
+              </Button>
               {Object.values(results).some(r => r !== null) && (
                 <>
                   <Button
@@ -631,6 +670,18 @@ export function CaseAIAnalysisPanel({
               <div className="bg-muted/30 rounded-lg p-4 text-sm whitespace-pre-wrap font-mono leading-relaxed">
                 {draftText}
               </div>
+            </div>
+          )}
+
+          {/* Strategy Builder Results */}
+          {strategyData && (
+            <div className="mt-6 pt-6 border-t">
+              <h3 className="font-semibold text-lg mb-3">
+                {i18n.language === 'hy' ? 'Դdelays ռազdelays' 
+                 : i18n.language === 'en' ? 'Litigation Strategy' 
+                 : 'Стратегия судебного разбирательства'}
+              </h3>
+              <StrategyBuilderView data={strategyData} language={i18n.language} />
             </div>
           )}
 

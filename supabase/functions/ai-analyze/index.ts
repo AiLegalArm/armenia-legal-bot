@@ -13,6 +13,7 @@ import { DEADLINE_RULES_PROMPT, DEADLINE_RULES_SCHEMA } from "./prompts/deadline
 import { LEGAL_POSITION_COMPARATOR_PROMPT, LEGAL_POSITION_COMPARATOR_SCHEMA } from "./prompts/legal-position-comparator.ts";
 import { HALLUCINATION_AUDIT_PROMPT, HALLUCINATION_AUDIT_SCHEMA } from "./prompts/hallucination-audit.ts";
 import { DRAFT_DETERMINISTIC_PROMPT } from "./prompts/draft-deterministic.ts";
+import { STRATEGY_BUILDER_PROMPT, STRATEGY_BUILDER_SCHEMA } from "./prompts/strategy-builder.ts";
 import { BASE_SYSTEM_PROMPT } from "./system.ts";
 import { sandboxUserInput, secureSandbox, logInjectionAttempt, ANTI_INJECTION_RULES } from "../_shared/prompt-armor.ts";
 import { applyBudgets, logTokenUsage, type RankedContent } from "../_shared/token-budget.ts";
@@ -109,7 +110,7 @@ const SYSTEM_PROMPTS: Record<Role, string> = {
 // UserSourceRef moved to _shared/reference-sources.ts
 
 interface AnalysisRequest {
-  role: "advocate" | "prosecutor" | "judge" | "aggregator" | "criminal_module" | "precedent_citation" | "deadline_rules" | "legal_position_comparator" | "hallucination_audit" | "draft_deterministic";
+  role: "advocate" | "prosecutor" | "judge" | "aggregator" | "criminal_module" | "precedent_citation" | "deadline_rules" | "legal_position_comparator" | "hallucination_audit" | "draft_deterministic" | "strategy_builder";
   moduleId?: CriminalAnalysisModule;
   caseId?: string;
   caseFacts?: string;
@@ -155,7 +156,7 @@ serve(async (req) => {
       (await req.json()) as AnalysisRequest;
 
     // Validate role - support both legacy roles and new analysis types
-    const legacyRoles = ["advocate", "prosecutor", "judge", "aggregator", "criminal_module", "precedent_citation", "deadline_rules", "legal_position_comparator", "hallucination_audit", "draft_deterministic"];
+    const legacyRoles = ["advocate", "prosecutor", "judge", "aggregator", "criminal_module", "precedent_citation", "deadline_rules", "legal_position_comparator", "hallucination_audit", "draft_deterministic", "strategy_builder"];
     const isLegacyRole = legacyRoles.includes(role);
     const isNewAnalysisType = isValidAnalysisType(role as AnalysisType);
 
@@ -602,6 +603,8 @@ Please provide your professional legal analysis from your designated role perspe
       systemPrompt = HALLUCINATION_AUDIT_PROMPT;
     } else if (role === "draft_deterministic") {
       systemPrompt = DRAFT_DETERMINISTIC_PROMPT;
+    } else if (role === "strategy_builder") {
+      systemPrompt = STRATEGY_BUILDER_PROMPT;
     } else if (role === "criminal_module" && moduleId) {
       // Legacy criminal module support
       systemPrompt = CRIMINAL_MODULE_PROMPTS[moduleId];
@@ -691,6 +694,12 @@ Please provide your professional legal analysis from your designated role perspe
         const result = await callText("ai-analyze", routerMessages);
         aiResponseText = result.text;
         console.log(JSON.stringify({ ts: new Date().toISOString(), lvl: "info", fn: "ai-analyze", mode: "draft_deterministic", model: result.model_used, latency_ms: result.latency_ms }));
+      } else if (role === "strategy_builder") {
+        // Use JSON extraction for structured strategy output
+        const result = await callJSON("ai-analyze", routerMessages, STRATEGY_BUILDER_SCHEMA);
+        precedentJson = result.json;
+        aiResponseText = JSON.stringify(result.json, null, 2);
+        console.log(JSON.stringify({ ts: new Date().toISOString(), lvl: "info", fn: "ai-analyze", mode: "strategy_builder", model: result.model_used, latency_ms: result.latency_ms }));
       } else {
         const result = await callText("ai-analyze", routerMessages);
         aiResponseText = result.text;
@@ -710,7 +719,7 @@ Please provide your professional legal analysis from your designated role perspe
     }
 
     // For diagnostic engines returning structured JSON
-    if ((role === "precedent_citation" || role === "deadline_rules" || role === "legal_position_comparator" || role === "hallucination_audit") && precedentJson) {
+    if ((role === "precedent_citation" || role === "deadline_rules" || role === "legal_position_comparator" || role === "hallucination_audit" || role === "strategy_builder") && precedentJson) {
       // Save to database if caseId provided
       if (caseId) {
         await supabase.from("ai_analysis").insert({
@@ -723,7 +732,7 @@ Please provide your professional legal analysis from your designated role perspe
         });
       }
 
-      const responseKey = role === "precedent_citation" ? "precedent_data" : role === "deadline_rules" ? "deadline_data" : role === "hallucination_audit" ? "audit_data" : "comparator_data";
+      const responseKey = role === "precedent_citation" ? "precedent_data" : role === "deadline_rules" ? "deadline_data" : role === "hallucination_audit" ? "audit_data" : role === "strategy_builder" ? "strategy_data" : "comparator_data";
       return new Response(
         JSON.stringify({
           role,
