@@ -39,10 +39,12 @@ import {
   Send,
   Gavel,
   StickyNote,
+  BookOpenText,
 } from 'lucide-react';
 import { DocumentGeneratorDialog } from '@/components/documents/DocumentGeneratorDialog';
 import { ComplaintWizard } from '@/components/complaints/ComplaintWizard';
 import { NotesPanel } from '@/components/notes/NotesPanel';
+import { DictionarySearch } from '@/components/dictionary/DictionarySearch';
 import { KBSearchFilters } from '@/components/kb/KBSearchFilters';
 import { KBSearchPanel } from '@/components/kb/KBSearchPanel';
 import { KBDocumentCard } from '@/components/kb/KBDocumentCard';
@@ -68,7 +70,7 @@ import {
 type Case = Database['public']['Tables']['cases']['Row'];
 
 const Dashboard = () => {
-  const { t } = useTranslation(['common', 'cases', 'dashboard', 'disclaimer', 'usage', 'kb', 'admin']);
+  const { t } = useTranslation(['common', 'cases', 'dashboard', 'disclaimer', 'usage', 'kb', 'admin', 'dictionary']);
   const navigate = useNavigate();
   const { toast } = useToast();
   const { user, signOut, isClient, isAdmin, isAuditor } = useAuth();
@@ -81,6 +83,7 @@ const Dashboard = () => {
   const [complaintWizardOpen, setComplaintWizardOpen] = useState(false);
   const [kbSearchOpen, setKbSearchOpen] = useState(false);
   const [notesOpen, setNotesOpen] = useState(false);
+  const [dictOpen, setDictOpen] = useState(false);
   
   const [kbFilters, setKbFilters] = useState<KBFiltersType>({ page: 1, pageSize: 10 });
 
@@ -275,6 +278,26 @@ const Dashboard = () => {
               <SheetContent className="w-full sm:max-w-2xl p-0 flex flex-col" side="right">
                 <div className="h-full flex flex-col">
                   <NotesPanel />
+                </div>
+              </SheetContent>
+            </Sheet>
+            {/* Dictionary */}
+            <Sheet open={dictOpen} onOpenChange={setDictOpen}>
+              <SheetTrigger asChild>
+                <Button variant="outline" size="sm" className="flex-col sm:flex-row h-auto py-2 sm:py-2 sm:h-9">
+                  <BookOpenText className="h-4 w-4 sm:mr-2" />
+                  <span className="text-xs sm:text-sm mt-1 sm:mt-0">{t('dictionary:dictionary', '\u0532\u0561\u057c\u0561\u0580\u0561\u0576')}</span>
+                </Button>
+              </SheetTrigger>
+              <SheetContent className="w-full sm:max-w-2xl overflow-y-auto">
+                <SheetHeader>
+                  <SheetTitle>{t('dictionary:dictionary', '\u0532\u0561\u057c\u0561\u0580\u0561\u0576')}</SheetTitle>
+                  <SheetDescription>
+                    {t('dictionary:search_placeholder', '\u0548\u0580\u0578\u0576\u0565\u056c \u0562\u0561\u057c...')}
+                  </SheetDescription>
+                </SheetHeader>
+                <div className="mt-6">
+                  <DictionarySearch />
                 </div>
               </SheetContent>
             </Sheet>

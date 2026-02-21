@@ -16,6 +16,7 @@ import hyErrors from './locales/hy/errors.json';
 import hyCalendar from './locales/hy/calendar.json';
 import hyReminders from './locales/hy/reminders.json';
 import hyAdmin from './locales/hy/admin.json';
+import hyDictionary from './locales/hy/dictionary.json';
 
 // Import English translations
 import enCommon from './locales/en/common.json';
@@ -32,6 +33,7 @@ import enErrors from './locales/en/errors.json';
 import enCalendar from './locales/en/calendar.json';
 import enReminders from './locales/en/reminders.json';
 import enAdmin from './locales/en/admin.json';
+import enDictionary from './locales/en/dictionary.json';
 
 // Import Russian translations
 import ruCommon from './locales/ru/common.json';
@@ -48,6 +50,7 @@ import ruErrors from './locales/ru/errors.json';
 import ruCalendar from './locales/ru/calendar.json';
 import ruReminders from './locales/ru/reminders.json';
 import ruAdmin from './locales/ru/admin.json';
+import ruDictionary from './locales/ru/dictionary.json';
 
 const resources = {
   hy: {
@@ -65,6 +68,7 @@ const resources = {
     calendar: hyCalendar,
     reminders: hyReminders,
     admin: hyAdmin,
+    dictionary: hyDictionary,
   },
   en: {
     common: enCommon,
@@ -81,6 +85,7 @@ const resources = {
     calendar: enCalendar,
     reminders: enReminders,
     admin: enAdmin,
+    dictionary: enDictionary,
   },
   ru: {
     common: ruCommon,
@@ -97,6 +102,7 @@ const resources = {
     calendar: ruCalendar,
     reminders: ruReminders,
     admin: ruAdmin,
+    dictionary: ruDictionary,
   },
 };
 
@@ -126,7 +132,7 @@ i18n
     lng: getSavedLanguage(),
     fallbackLng: 'en',
     defaultNS: 'common',
-    ns: ['common', 'auth', 'cases', 'ai', 'kb', 'ocr', 'audio', 'usage', 'dashboard', 'disclaimer', 'errors', 'calendar', 'reminders', 'admin'],
+    ns: ['common', 'auth', 'cases', 'ai', 'kb', 'ocr', 'audio', 'usage', 'dashboard', 'disclaimer', 'errors', 'calendar', 'reminders', 'admin', 'dictionary'],
     interpolation: {
       escapeValue: false, // React already escapes
     },
