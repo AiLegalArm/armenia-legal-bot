@@ -358,27 +358,17 @@ serve(async (req) => {
     // Add current message
     messages.push({ role: "user", content: message });
 
-    // NOTE: legal-chat uses streaming — we call gateway directly (router doesn't support streaming).
-    // Model is resolved from openai-router MODEL_MAP to keep consistency.
+    // NOTE: legal-chat uses streaming — bypass via centralized helper.
+    const { callStreamBypass } = await import("../_shared/gateway-bypass.ts");
     const { getModelConfig: _getModelConfig } = await import("../_shared/openai-router.ts");
     const chatModelCfg = _getModelConfig("legal-chat");
-    const LOVABLE_API_KEY_STREAM = Deno.env.get("LOVABLE_API_KEY");
-    if (!LOVABLE_API_KEY_STREAM) throw new Error("LOVABLE_API_KEY is not configured");
 
-    const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${LOVABLE_API_KEY_STREAM}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        model: chatModelCfg.model,
-        temperature: chatModelCfg.temperature,
-        max_tokens: chatModelCfg.max_tokens,
-        messages,
-        stream: true,
-      }),
+    const streamResult = await callStreamBypass(messages, {
+      functionName: "legal-chat",
+      bypassReason: "streaming",
+      timeoutMs: 90000,
     });
+    const response = streamResult.response;
 
     if (!response.ok) {
       err(FN, "AI Gateway error", undefined, { status: response.status });
@@ -406,10 +396,10 @@ serve(async (req) => {
     try {
       await supabase.rpc("log_api_usage", {
         _service_type: "legal_chat",
-        _model_name: chatModelCfg.model,
+        _model_name: streamResult.model_used,
         _tokens_used: null,
         _estimated_cost: 0.003,
-        _metadata: { message_length: message.length, has_context: !!kbContext, has_practice: !!practiceContext }
+        _metadata: { message_length: message.length, has_context: !!kbContext, has_practice: !!practiceContext, request_id: streamResult.request_id }
       });
     } catch (logErr) {
       err(FN, "Failed to log API usage", logErr);

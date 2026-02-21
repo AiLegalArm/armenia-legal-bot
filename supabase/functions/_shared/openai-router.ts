@@ -118,6 +118,38 @@ export const MODEL_MAP: Record<string, ModelConfig> = {
     description: "Rerank (Flash-lite)",
   },
 
+  // ── Bypass-only utilities (still in MODEL_MAP to prevent model drift) ─────
+  "ocr-process": {
+    model: "google/gemini-2.5-flash",
+    temperature: 0.1,
+    max_tokens: 8000,
+    description: "OCR vision (Gemini Flash, bypass:multimodal)",
+  },
+  "kb-scrape-batch": {
+    model: "google/gemini-2.5-flash",
+    temperature: 0.1,
+    max_tokens: 16000,
+    description: "KB PDF scrape (Gemini Flash, bypass:multimodal)",
+  },
+  "kb-fetch-pdf-content": {
+    model: "google/gemini-2.5-flash",
+    temperature: 0.1,
+    max_tokens: 16000,
+    description: "KB fetch PDF (Gemini Flash, bypass:multimodal)",
+  },
+  "legal-practice-import": {
+    model: "google/gemini-2.5-flash-lite",
+    temperature: 0,
+    max_tokens: 8000,
+    description: "Practice import extract (Flash-lite, bypass:json_extract)",
+  },
+  "prompt-armor-repair": {
+    model: "google/gemini-2.5-flash-lite",
+    temperature: 0,
+    max_tokens: 8000,
+    description: "JSON repair (Flash-lite, bypass:repair)",
+  },
+
   // ── Embeddings (OpenAI only) ──────────────────────────────────────────────
   "generate-embeddings": {
     model: "openai/text-embedding-3-large",

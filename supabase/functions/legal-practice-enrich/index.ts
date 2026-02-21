@@ -255,43 +255,22 @@ async function callAI(text: string, apiKey: string): Promise<Record<string, unkn
   const input = text.trim().substring(0, 80000); // Allow more text for deep analysis
   if (!input) throw new Error("Empty content");
 
-  const requestBody = JSON.stringify({
-    model: "google/gemini-2.5-flash",
-    max_tokens: 16000,
-    messages: [
+  const { callGatewayBypass } = await import("../_shared/gateway-bypass.ts");
+  const bypassResult = await callGatewayBypass(
+    [
       { role: "system", content: ENRICHMENT_SYSTEM_PROMPT },
       { role: "user", content: input },
     ],
-  });
-
-  let resp: Response | null = null;
-  const MAX_RETRIES = 3;
-  for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
-    resp = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${apiKey}`,
-      },
-      body: requestBody,
-    });
-    if (resp.ok) break;
-    if (resp.status >= 500 || resp.status === 429) {
-      const delay = Math.pow(2, attempt) * 2000 + Math.random() * 1000;
-      console.warn(`AI gateway ${resp.status}, retry ${attempt + 1}/${MAX_RETRIES} after ${Math.round(delay)}ms`);
-      await new Promise(r => setTimeout(r, delay));
-      continue;
+    {
+      functionName: "legal-practice-enrich",
+      bypassReason: "json_extract",
+      timeoutMs: 60000,
+      maxRetries: 2,
     }
-    break;
-  }
+  );
 
-  if (!resp || !resp.ok) {
-    const errText = resp ? await resp.text().catch(() => "") : "no response";
-    throw new Error(`AI enrichment failed: ${resp?.status} ${errText.substring(0, 200)}`);
-  }
-
-  const payload = await resp.json();
-  const content = payload?.choices?.[0]?.message?.content;
+  const payload = bypassResult.data;
+  const content = (payload?.choices as Array<{ message?: { content?: string } }>)?.[0]?.message?.content;
   if (typeof content !== "string" || !content.trim()) {
     throw new Error("AI enrichment: empty response");
   }

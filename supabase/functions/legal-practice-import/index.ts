@@ -375,44 +375,22 @@ async function extractWithAI(textContent: string, apiKey: string): Promise<Extra
     };
   }
 
-  const requestBody = JSON.stringify({
-    model: "google/gemini-2.5-flash-lite",
-    temperature: 0,
-    messages: [
+  const { callGatewayBypass } = await import("../_shared/gateway-bypass.ts");
+  const bypassResult = await callGatewayBypass(
+    [
       { role: "system", content: DECISION_EXTRACTOR_SYSTEM_PROMPT },
       { role: "user", content: input.substring(0, 50000) },
     ],
-  });
-
-  let resp: Response | null = null;
-  const MAX_RETRIES = 3;
-  for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
-    resp = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${apiKey}`,
-      },
-      body: requestBody,
-    });
-    if (resp.ok) break;
-    // Retry on 5xx / 429
-    if (resp.status >= 500 || resp.status === 429) {
-      const delay = Math.pow(2, attempt) * 1000 + Math.random() * 500;
-      console.warn(`AI gateway ${resp.status}, retry ${attempt + 1}/${MAX_RETRIES} after ${Math.round(delay)}ms`);
-      await new Promise(r => setTimeout(r, delay));
-      continue;
+    {
+      functionName: "legal-practice-import",
+      bypassReason: "json_extract",
+      timeoutMs: 60000,
+      maxRetries: 2,
     }
-    break; // non-retryable error
-  }
+  );
 
-  if (!resp || !resp.ok) {
-    const errText = resp ? await resp.text().catch(() => "") : "no response";
-    throw new Error(`AI extraction failed: ${resp?.status} ${resp?.statusText} ${errText}`);
-  }
-
-  const payload = await resp.json();
-  const content = payload?.choices?.[0]?.message?.content;
+  const payload = bypassResult.data;
+  const content = (payload?.choices as Array<{ message?: { content?: string } }>)?.[0]?.message?.content;
   if (typeof content !== "string" || !content.trim()) {
     throw new Error("AI extraction failed: empty model content");
   }
