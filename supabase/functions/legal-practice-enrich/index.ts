@@ -256,8 +256,8 @@ async function callAI(text: string, apiKey: string): Promise<Record<string, unkn
   if (!input) throw new Error("Empty content");
 
   const requestBody = JSON.stringify({
-    model: "openai/gpt-5-mini",
-    max_completion_tokens: 16000,
+    model: "google/gemini-2.5-flash",
+    max_tokens: 16000,
     messages: [
       { role: "system", content: ENRICHMENT_SYSTEM_PROMPT },
       { role: "user", content: input },

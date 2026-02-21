@@ -1,9 +1,10 @@
 // =============================================================================
 // MODEL CONFIG PROFILES — Centralized AI model configuration
 // =============================================================================
-// Problem: Model, temperature, max_tokens scattered across 10+ edge functions.
-//   Risk: Inconsistent configs cause non-deterministic legal outputs, cost overruns.
-//   Solution: Centralized profiles with type-safe access and validation.
+// DEPRECATED: This file is a LEGACY fallback only.
+// The authoritative model registry is MODEL_MAP in openai-router.ts.
+// These profiles are kept for seed/fallback purposes only.
+// ALL openai/* models have been replaced per governance policy.
 // =============================================================================
 
 export interface ModelConfig {
@@ -24,52 +25,52 @@ export interface ModelConfig {
 /**
  * LEGAL_DETERMINISTIC — For all legal analysis, document generation, complaint generation.
  * Low temperature ensures consistent, reproducible legal reasoning.
- * NOW USES: openai/gpt-5 via Lovable AI Gateway
+ * USES: anthropic/claude-3.7-sonnet via Lovable AI Gateway
  */
 export const LEGAL_DETERMINISTIC: ModelConfig = {
-  model: "openai/gpt-5",
-  temperature: 0.2,
+  model: "anthropic/claude-3.7-sonnet",
+  temperature: 0.1,
   max_tokens: 16384,
   top_p: 0.92,
-  description: "Legal analysis with deterministic output (temp=0.2, GPT-5)",
+  description: "Legal analysis with deterministic output (temp=0.1, Claude 3.7 Sonnet)",
 };
 
 /**
  * LEGAL_CHAT — For interactive legal chat.
- * NOW USES: openai/gpt-5 via Lovable AI Gateway
+ * USES: anthropic/claude-3.7-sonnet via Lovable AI Gateway
  */
 export const LEGAL_CHAT: ModelConfig = {
-  model: "openai/gpt-5",
-  temperature: 0.2,
+  model: "anthropic/claude-3.7-sonnet",
+  temperature: 0.1,
   max_tokens: 16000,
-  description: "Legal chat (temp=0.2, GPT-5)",
+  description: "Legal chat (temp=0.1, Claude 3.7 Sonnet)",
 };
 
 /**
  * DOCUMENT_GENERATION — For generating legal documents.
- * NOW USES: openai/gpt-5-mini via Lovable AI Gateway
+ * USES: google/gemini-2.5-flash via Lovable AI Gateway
  */
 export const DOCUMENT_GENERATION: ModelConfig = {
-  model: "openai/gpt-5-mini",
+  model: "google/gemini-2.5-flash",
   temperature: 0.2,
   max_tokens: 10000,
-  description: "Document generation (temp=0.2, GPT-5-mini)",
+  description: "Document generation (temp=0.2, Gemini 2.5 Flash)",
 };
 
 /**
  * COMPLAINT_GENERATION — For generating judicial complaints.
- * NOW USES: openai/gpt-5 via Lovable AI Gateway
+ * USES: anthropic/claude-3.7-sonnet via Lovable AI Gateway
  */
 export const COMPLAINT_GENERATION: ModelConfig = {
-  model: "openai/gpt-5",
+  model: "anthropic/claude-3.7-sonnet",
   temperature: 0.1,
   max_tokens: 12000,
-  description: "Complaint generation (temp=0.1, GPT-5)",
+  description: "Complaint generation (temp=0.1, Claude 3.7 Sonnet)",
 };
 
 /**
  * OCR_EXTRACTION — For OCR/vision-based text extraction.
- * UNCHANGED: OCR functions are excluded from OpenAI migration.
+ * UNCHANGED: OCR functions are excluded from migration.
  * Still uses Google Gemini Flash for vision tasks.
  */
 export const OCR_EXTRACTION: ModelConfig = {
@@ -81,57 +82,57 @@ export const OCR_EXTRACTION: ModelConfig = {
 
 /**
  * AUDIO_TRANSCRIPTION — For audio/video transcription.
- * NOW USES: openai/gpt-5-mini via Lovable AI Gateway
+ * USES: google/gemini-2.5-flash via Lovable AI Gateway
  */
 export const AUDIO_TRANSCRIPTION: ModelConfig = {
-  model: "openai/gpt-5-mini",
+  model: "google/gemini-2.5-flash",
   temperature: 0.1,
   max_tokens: 16000,
-  description: "Audio transcription (temp=0.1, GPT-5-mini)",
+  description: "Audio transcription (temp=0.1, Gemini 2.5 Flash)",
 };
 
 /**
  * MULTI_AGENT_ANALYSIS — For 9-agent multi-agent system.
- * NOW USES: openai/gpt-5 via Lovable AI Gateway
+ * USES: anthropic/claude-3.7-sonnet via Lovable AI Gateway
  */
 export const MULTI_AGENT_ANALYSIS: ModelConfig = {
-  model: "openai/gpt-5",
-  temperature: 0.3,
+  model: "anthropic/claude-3.7-sonnet",
+  temperature: 0.1,
   max_tokens: 16384,
-  description: "Multi-agent legal analysis (temp=0.3, GPT-5)",
+  description: "Multi-agent legal analysis (temp=0.1, Claude 3.7 Sonnet)",
 };
 
 /**
  * FILE_ANALYSIS — For analyzing uploaded files for complaints.
- * NOW USES: openai/gpt-5 via Lovable AI Gateway (supports vision)
+ * USES: anthropic/claude-3.7-sonnet via Lovable AI Gateway
  */
 export const FILE_ANALYSIS: ModelConfig = {
-  model: "openai/gpt-5",
-  temperature: 0.3,
+  model: "anthropic/claude-3.7-sonnet",
+  temperature: 0.1,
   max_tokens: 16384,
-  description: "File analysis for complaints (temp=0.3, GPT-5)",
+  description: "File analysis for complaints (temp=0.1, Claude 3.7 Sonnet)",
 };
 
 /**
  * FIELD_EXTRACTION — For extracting structured fields from case materials.
- * NOW USES: openai/gpt-5-mini via Lovable AI Gateway
+ * USES: google/gemini-2.5-pro via Lovable AI Gateway
  */
 export const FIELD_EXTRACTION: ModelConfig = {
-  model: "openai/gpt-5-mini",
-  temperature: 0.1,
+  model: "google/gemini-2.5-pro",
+  temperature: 0.2,
   max_tokens: 4000,
-  description: "Case field extraction — JSON output (temp=0.1, GPT-5-mini)",
+  description: "Case field extraction — JSON output (temp=0.2, Gemini 2.5 Pro)",
 };
 
 /**
  * KEYWORD_EXTRACTION — For KB search keyword extraction.
- * NOW USES: openai/gpt-5-mini via Lovable AI Gateway
+ * USES: google/gemini-2.5-pro via Lovable AI Gateway
  */
 export const KEYWORD_EXTRACTION: ModelConfig = {
-  model: "openai/gpt-5-mini",
-  temperature: 0.1,
+  model: "google/gemini-2.5-pro",
+  temperature: 0.2,
   max_tokens: 200,
-  description: "Keyword extraction — JSON output (temp=0.1, GPT-5-mini)",
+  description: "Keyword extraction — JSON output (temp=0.2, Gemini 2.5 Pro)",
 };
 
 /**
@@ -212,6 +213,12 @@ export function validateProfiles(): string[] {
     if (p.temperature > LEGAL_MAX_TEMP) {
       violations.push(
         `${name}: temperature ${p.temperature} exceeds legal max ${LEGAL_MAX_TEMP}`
+      );
+    }
+    // Block openai/* models
+    if (p.model.startsWith("openai/")) {
+      violations.push(
+        `${name}: openai/* models are forbidden, found ${p.model}`
       );
     }
   }

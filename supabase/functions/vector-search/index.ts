@@ -235,7 +235,7 @@ async function rerankWithAI(
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        model: "openai/gpt-5-nano",
+        model: "google/gemini-2.5-flash-lite",
         messages: [
           {
             role: "system",
