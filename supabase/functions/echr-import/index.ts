@@ -406,6 +406,7 @@ serve(async (req) => {
     let errors = 0;
     const jsonlLines: string[] = [];
     const insertedIds: string[] = [];
+    const errorDetails: Array<{ title: string; error: string }> = [];
 
     // Concurrency control: process up to 3 cases in parallel
     const CONCURRENCY = 3;
@@ -509,15 +510,27 @@ serve(async (req) => {
 
           return { status, fieldErrors, insertedId, jsonlLine };
         } catch (e) {
-          console.error("Case processing error:", e);
-          return { status: "error", fieldErrors: [String(e)], skipped: false, error: true };
+          const errMsg = e instanceof Error ? e.message : String(e);
+          const caseTitle = String(caseObj.docname || caseObj.title || caseObj.case_name || "Unknown case").slice(0, 200);
+          console.error("Case processing error:", caseTitle, errMsg);
+          return { status: "error", fieldErrors: [errMsg], skipped: false, error: true, caseTitle: caseTitle, errorMessage: errMsg };
         }
       }));
 
       for (const r of results) {
         processed++;
-        if ((r as { skipped?: boolean }).skipped) { errors++; continue; }
-        if ((r as { error?: boolean }).error) { errors++; continue; }
+        if ((r as { skipped?: boolean }).skipped) {
+          errors++;
+          const cTitle = (r as { caseTitle?: string }).caseTitle || "Skipped (no content)";
+          errorDetails.push({ title: cTitle, error: "No extractable text content" });
+          continue;
+        }
+        if ((r as { error?: boolean }).error) {
+          errors++;
+          const errResult = r as { caseTitle?: string; errorMessage?: string };
+          errorDetails.push({ title: errResult.caseTitle || "Unknown", error: errResult.errorMessage || "Unknown error" });
+          continue;
+        }
         const res = r as { status: string; insertedId?: string; jsonlLine?: string };
         if (res.status === "translated") translated++;
         else if (res.status === "partial") partial++;
@@ -535,6 +548,7 @@ serve(async (req) => {
       errors,
       parseSkipped,
       insertedIds,
+      errorDetails: errorDetails.length > 0 ? errorDetails : undefined,
       jsonlContent: generateJsonl ? jsonlLines.join("\n") : null,
     }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },

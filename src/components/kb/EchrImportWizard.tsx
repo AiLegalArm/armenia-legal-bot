@@ -344,6 +344,8 @@ export function EchrImportWizard({ open, onOpenChange, onSuccess }: EchrImportWi
 
   // Collected JSONL content for download
   const jsonlLinesRef = useRef<string[]>([]);
+  // Collected error details from edge function
+  const [errorDetails, setErrorDetails] = useState<Array<{ title: string; error: string }>>([]);
 
   // Streaming parse progress (bytes)
   const [parseProgress, setParseProgress] = useState<{ file: string; pct: number } | null>(null);
@@ -439,6 +441,7 @@ export function EchrImportWizard({ open, onOpenChange, onSuccess }: EchrImportWi
     setStatus("translating");
     abortRef.current = false;
     jsonlLinesRef.current = [];
+    setErrorDetails([]);
 
     const total = parsedCases.length;
     let processed = 0;
@@ -486,6 +489,11 @@ export function EchrImportWizard({ open, onOpenChange, onSuccess }: EchrImportWi
           translated += data.translated ?? 0;
           partial += data.partial ?? 0;
           importErrors += data.errors ?? 0;
+
+          // Collect error details from edge function
+          if (Array.isArray(data.errorDetails)) {
+            setErrorDetails(prev => [...prev, ...data.errorDetails]);
+          }
 
           if (data.jsonlContent) {
             jsonlLinesRef.current.push(data.jsonlContent);
@@ -741,6 +749,26 @@ export function EchrImportWizard({ open, onOpenChange, onSuccess }: EchrImportWi
                   <p className="text-muted-foreground">Пропущено</p>
                 </div>
               </div>
+
+              {/* Error details list */}
+              {errorDetails.length > 0 && (
+                <div className="mt-3 space-y-1">
+                  <p className="text-xs font-semibold text-destructive flex items-center gap-1">
+                    <AlertTriangle className="h-3.5 w-3.5" />
+                    Детали ошибок ({errorDetails.length}):
+                  </p>
+                  <ScrollArea className="max-h-40 rounded border bg-destructive/5 p-2">
+                    <div className="space-y-1.5">
+                      {errorDetails.map((ed, idx) => (
+                        <div key={idx} className="text-xs border-b border-destructive/10 pb-1 last:border-0">
+                          <p className="font-medium truncate" title={ed.title}>{ed.title}</p>
+                          <p className="text-destructive font-mono text-[11px] break-all">{ed.error}</p>
+                        </div>
+                      ))}
+                    </div>
+                  </ScrollArea>
+                </div>
+              )}
             </div>
           )}
 
