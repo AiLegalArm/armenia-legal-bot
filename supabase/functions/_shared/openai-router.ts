@@ -70,10 +70,10 @@ export const MODEL_MAP: Record<string, ModelConfig> = {
     description: "File analysis (GPT-5)",
   },
   "generate-document": {
-    model: "openai/gpt-5",
-    temperature: 0.15,
-    max_tokens: 12000,
-    description: "Document generation (GPT-5)",
+    model: "openai/gpt-5-mini",
+    temperature: 0.2,
+    max_tokens: 10000,
+    description: "Documents (GPT-5-mini)",
   },
 
   // ── Strict JSON (Gemini Pro) ──────────────────────────────────────────────
@@ -177,6 +177,22 @@ const ROLE_OVERRIDES: Record<string, Partial<ModelConfig>> = {
 const MAX_TEMPERATURE = 0.3;
 const MAX_TOKENS_CAP = 16384;
 
+/** OpenAI chat models allowed ONLY for these roleLabels/functionNames */
+const OPENAI_CHAT_ALLOWLIST = new Set([
+  "generate-complaint",
+  "multi-agent-analyze",
+  "legal-chat",
+  "analyze-files-for-complaint",
+  "generate-document",
+  "ai-analyze",
+  "ai-analyze:strategy_builder",
+  "ai-analyze:risk_factors",
+  "ai-analyze:evidence_weakness",
+  "ai-analyze:hallucination_audit",
+  "ai-analyze:legal_position_comparator",
+  "ai-analyze:draft_deterministic",
+]);
+
 /** OpenAI embedding models allowed ONLY for these functionNames */
 const OPENAI_EMBEDDING_ALLOWLIST = new Set([
   "generate-embeddings",
@@ -234,11 +250,11 @@ export function buildGovernanceMeta(cfg: ModelConfig, roleLabel: string): Govern
 }
 
 /**
- * Governance enforcement:
- * - openai/gpt-5 chat: allowed for any registered function/role (OpenAI-first policy).
+ * Allowlist-based governance enforcement:
  * - openai/text-embedding-*: allowed ONLY for generate-embeddings.
+ * - openai/* chat: allowed ONLY if roleLabel is in OPENAI_CHAT_ALLOWLIST.
  * - google/*, anthropic/*: allowed as configured.
- * - Temperature > 0.3 or max_tokens > 16384: STRICT THROW (no silent cap).
+ * - Temperature > 0.3 or max_tokens > 16384: STRICT THROW.
  */
 function enforceGovernance(cfg: ModelConfig, roleLabel: string): ModelConfig {
   if (cfg.model.startsWith("openai/")) {
@@ -250,12 +266,17 @@ function enforceGovernance(cfg: ModelConfig, roleLabel: string): ModelConfig {
             `is not allowed for "${roleLabel}". Allowed only for: ${[...OPENAI_EMBEDDING_ALLOWLIST].join(", ")}.`
         );
       }
-      return cfg; // embeddings skip temperature/token caps
+      return cfg;
     }
-    // openai/gpt-5 chat: allowed for any registered function (OpenAI-first policy)
+    // OpenAI chat: must be in allowlist
+    if (!OPENAI_CHAT_ALLOWLIST.has(roleLabel)) {
+      throw new Error(
+        `[openai-router] GOVERNANCE VIOLATION: OpenAI chat model "${cfg.model}" ` +
+          `is not allowed for "${roleLabel}". Add to OPENAI_CHAT_ALLOWLIST if intended.`
+      );
+    }
   }
 
-  // Strict enforcement: throw on violation, no silent caps
   if (cfg.temperature > MAX_TEMPERATURE) {
     throw new Error(
       `[openai-router] GOVERNANCE VIOLATION: temperature ${cfg.temperature} exceeds cap ${MAX_TEMPERATURE} for "${roleLabel}".`
