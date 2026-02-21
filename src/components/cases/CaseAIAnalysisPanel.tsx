@@ -13,7 +13,7 @@ import { Switch } from '@/components/ui/switch';
 import { Label } from '@/components/ui/label';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { exportAnalysisToPDF, exportMultipleAnalysesToPDF } from '@/lib/pdfExport';
-import { Loader2, Brain, Download, FileSignature, Save, AlertTriangle, Check, Scale, Timer, GitCompare, ShieldCheck, FileText, Target, Search, BarChart3, BookOpen } from 'lucide-react';
+import { Loader2, Brain, Download, FileSignature, Save, AlertTriangle, Check, Scale, Timer, GitCompare, ShieldCheck, FileText, Target, Search, BarChart3, BookOpen, MessageSquareQuote } from 'lucide-react';
 import { useReferencesText } from '@/lib/references-store';
 import { PrecedentCitationView, type PrecedentCitationResult } from '@/components/cases/PrecedentCitationView';
 import { DeadlineRulesView, type DeadlineRulesResult } from '@/components/cases/DeadlineRulesView';
@@ -23,6 +23,7 @@ import { StrategyBuilderView, type StrategyBuilderResult } from '@/components/ca
 import { EvidenceWeaknessView, type EvidenceWeaknessResult } from '@/components/cases/EvidenceWeaknessView';
 import { RiskFactorsView, type RiskFactorsResult } from '@/components/cases/RiskFactorsView';
 import { LawUpdateSummaryView, type LawUpdateSummaryResult } from '@/components/cases/LawUpdateSummaryView';
+import { CrossExamView, type CrossExamResult } from '@/components/cases/CrossExamView';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { Textarea } from '@/components/ui/textarea';
 
@@ -93,6 +94,8 @@ export function CaseAIAnalysisPanel({
   const [showLawUpdateDialog, setShowLawUpdateDialog] = useState(false);
   const [oldLawText, setOldLawText] = useState('');
   const [newLawText, setNewLawText] = useState('');
+  const [crossExamData, setCrossExamData] = useState<CrossExamResult | null>(null);
+  const [isCrossExamLoading, setIsCrossExamLoading] = useState(false);
 
   // If user clicks "Clear" while the initial saved-analyses load is still in-flight,
   // we must ignore that async result to prevent the content from "reappearing".
@@ -559,6 +562,42 @@ export function CaseAIAnalysisPanel({
                   {i18n.language === 'hy' ? 'Օdelays փоdelays' : i18n.language === 'en' ? 'Law Changes' : 'Изменения закона'}
                 </span>
               </Button>
+              <Button 
+                variant="outline" 
+                size="sm" 
+                onClick={async () => {
+                  setIsCrossExamLoading(true);
+                  setCrossExamData(null);
+                  try {
+                    const result = await analyzeCase('cross_exam', caseId, facts, legalQuestion || '', referencesText);
+                    if (result) {
+                      if (result.cross_exam_data) {
+                        setCrossExamData(result.cross_exam_data as CrossExamResult);
+                      } else {
+                        try {
+                          const parsed = JSON.parse(result.analysis);
+                          setCrossExamData(parsed);
+                        } catch {
+                          setCrossExamData(null);
+                        }
+                      }
+                    }
+                  } finally {
+                    setIsCrossExamLoading(false);
+                  }
+                }}
+                disabled={isCrossExamLoading || isAnalyzing}
+                className="h-10 rounded-xl text-mobile-sm sm:text-sm"
+              >
+                {isCrossExamLoading ? (
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin shrink-0" />
+                ) : (
+                  <MessageSquareQuote className="mr-2 h-4 w-4 shrink-0" />
+                )}
+                <span className="truncate">
+                  {i18n.language === 'hy' ? 'Հարdelays' : i18n.language === 'en' ? 'Cross-Exam' : 'Перекрёстный'}
+                </span>
+              </Button>
               {Object.values(results).some(r => r !== null) && (
                 <>
                   <Button
@@ -820,6 +859,18 @@ export function CaseAIAnalysisPanel({
                  : 'Сводка изменений закона'}
               </h3>
               <LawUpdateSummaryView data={lawUpdateData} language={i18n.language} />
+            </div>
+          )}
+
+          {/* Cross-Examination Results */}
+          {crossExamData && (
+            <div className="mt-6 pt-6 border-t">
+              <h3 className="font-semibold text-lg mb-3">
+                {i18n.language === 'hy' ? 'Перекрёстный допрос' 
+                 : i18n.language === 'en' ? 'Cross-Examination Questions' 
+                 : 'Вопросы перекрёстного допроса'}
+              </h3>
+              <CrossExamView data={crossExamData} language={i18n.language} />
             </div>
           )}
 
