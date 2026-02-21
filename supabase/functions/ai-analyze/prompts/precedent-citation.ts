@@ -19,9 +19,11 @@ STRUCTURED CITATION RULES ([PRACTICE] BLOCK ONLY):
 - Use citations ONLY from [PRACTICE] blocks provided in the RAG context.
 - Extract Case, Date, CaseNo, ID, Court fields from each [PRACTICE] block.
 - NEVER invent paragraph numbers, section numbers, or anchors not present in the [PRACTICE] block.
+- When Source field = "ECHR" (or practice_category/court_type = echr), always use "ECHR" as the court label in citations.
+- If the Excerpt is in English, you may translate it for Armenian output, but do NOT add any content beyond what the Excerpt contains.
 - Citation format:
-  If Date AND ID exist: (\u054F\u0565\u0301\u057D\u0589 <Court>, <Case>, <Date>, ID:<ID>)
-  If Date missing:      (\u054F\u0565\u0301\u057D\u0589 <Court>, <Case>, ID:<ID>)
+  If Date AND ID exist: (\u054F\u0565\u0301\u057D\u0589 <Source>, <Case>, <Date>, ID:<ID>)
+  If Date missing:      (\u054F\u0565\u0301\u057D\u0589 <Source>, <Case>, ID:<ID>)
   If only Case exists:  (\u054F\u0565\u0301\u057D\u0589 <Case>)
 
 OBJECTIVE:
