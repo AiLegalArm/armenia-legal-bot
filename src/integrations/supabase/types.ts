@@ -1696,6 +1696,7 @@ export type Database = {
           job_type: string
           last_error: string | null
           max_attempts: number
+          source_table: string
           started_at: string | null
           status: string
           updated_at: string
@@ -1709,6 +1710,7 @@ export type Database = {
           job_type?: string
           last_error?: string | null
           max_attempts?: number
+          source_table?: string
           started_at?: string | null
           status?: string
           updated_at?: string
@@ -1722,6 +1724,7 @@ export type Database = {
           job_type?: string
           last_error?: string | null
           max_attempts?: number
+          source_table?: string
           started_at?: string | null
           status?: string
           updated_at?: string
