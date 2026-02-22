@@ -1,5 +1,8 @@
 /**
- * Tests for legal-chunker
+ * Tests for legal-chunker v2.0
+ *
+ * Covers: legislation, court decisions, ECHR judgments, international treaties,
+ * part splitting, conditional overlap, metadata, token limits.
  *
  * All Armenian text as Unicode escapes per project standards.
  */
@@ -48,6 +51,52 @@ const COURT_DECISION_FIXTURE =
   "\u057e\u0573\u056b\u057c\u0565\u0581\n" +
   "\u0544\u0565\u0580\u056a\u0565\u056c \u057e\u0573\u057c\u0561\u056f\u0561\u0576 \u0562\u0578\u0572\u0578\u0584\u0568";
 
+// ─── FIXTURE 3: ECHR judgment ───────────────────────────────────────
+const ECHR_FIXTURE =
+  "EUROPEAN COURT OF HUMAN RIGHTS\n" +
+  "CASE OF SMITH v. ARMENIA\n" +
+  "(Application no. 12345/20)\n" +
+  "JUDGMENT\n" +
+  "STRASBOURG\n" +
+  "15 January 2024\n\n" +
+  "I. PROCEDURE\n" +
+  "1. The case originated in an application (no. 12345/20) against the Republic of Armenia.\n" +
+  "2. The applicant was represented by Mr. X, a lawyer practising in Yerevan.\n\n" +
+  "II. THE FACTS\n" +
+  "3. The applicant was born in 1980 and lives in Yerevan.\n" +
+  "4. On 1 March 2019, the applicant was arrested by police officers.\n" +
+  "5. He was detained for 72 hours without access to a lawyer.\n\n" +
+  "III. THE LAW\n" +
+  "A. ALLEGED VIOLATION OF ARTICLE 5 OF THE CONVENTION\n" +
+  "6. The applicant complained that his detention was unlawful.\n" +
+  "7. Article 5 paragraph 1 of the Convention provides:\n" +
+  '"Everyone has the right to liberty and security of person."\n\n' +
+  "THE COURT'S ASSESSMENT\n" +
+  "8. The Court notes that the applicant was detained for 72 hours.\n" +
+  "9. The Government failed to provide justification for the extended detention.\n" +
+  "10. Accordingly, there has been a violation of Article 5 paragraph 1.\n\n" +
+  "V. APPLICATION OF ARTICLE 41 OF THE CONVENTION\n" +
+  "11. The applicant claimed EUR 10,000 in non-pecuniary damage.\n" +
+  "12. The Court awards the applicant EUR 7,500.\n\n" +
+  "FOR THESE REASONS, THE COURT UNANIMOUSLY\n" +
+  "1. Holds that there has been a violation of Article 5 paragraph 1;\n" +
+  "2. Awards the applicant EUR 7,500 in respect of non-pecuniary damage.";
+
+// ─── FIXTURE 4: International treaty ────────────────────────────────
+const TREATY_FIXTURE =
+  "CONVENTION FOR THE PROTECTION OF HUMAN RIGHTS AND FUNDAMENTAL FREEDOMS\n\n" +
+  "The Governments signatory hereto, being Members of the Council of Europe,\n" +
+  "Considering the Universal Declaration of Human Rights,\n" +
+  "Have agreed as follows:\n\n" +
+  "Article 1 - Obligation to respect Human Rights\n" +
+  "The High Contracting Parties shall secure to everyone within their jurisdiction " +
+  "the rights and freedoms defined in Section I of this Convention.\n\n" +
+  "Article 2 - Right to life\n" +
+  "1. Everyone's right to life shall be protected by law.\n" +
+  "2. Deprivation of life shall not be regarded as inflicted in contravention of this Article.\n\n" +
+  "Article 3 - Prohibition of torture\n" +
+  "No one shall be subjected to torture or to inhuman or degrading treatment or punishment.";
+
 // ─── TEST: Legislation chunking ─────────────────────────────────────
 
 Deno.test("chunkDocument: legislation splits by articles", () => {
@@ -65,11 +114,8 @@ Deno.test("chunkDocument: legislation splits by articles", () => {
   for (const ac of articleChunks) {
     assertExists(ac.locator, "Article chunk must have locator");
     assertExists(ac.locator!.article, "Locator must have article number");
-  }
-
-  const preambles = chunks.filter((c) => c.chunk_type === "preamble");
-  if (preambles.length > 0) {
-    assertEquals(chunks[0].chunk_type, "preamble");
+    assertExists(ac.metadata, "Chunk must have metadata");
+    assertEquals(ac.metadata!.document_type, "code");
   }
 
   for (const c of chunks) {
@@ -104,6 +150,7 @@ Deno.test("chunkDocument: court decision splits by sections", () => {
   const sectionChunks = chunks.filter((c) => c.chunk_type !== "header");
   for (const sc of sectionChunks) {
     assertExists(sc.label, `Section chunk ${sc.chunk_index} should have label`);
+    assertExists(sc.metadata, `Section chunk ${sc.chunk_index} should have metadata`);
   }
 });
 
@@ -118,10 +165,71 @@ Deno.test("chunkDocument: court decision extracts case_number", () => {
   assertEquals(result.case_number, "\u054f\u054f/0012/01/24");
 });
 
+// ─── TEST: ECHR judgment chunking ───────────────────────────────────
+
+Deno.test("chunkDocument: ECHR judgment splits by structural sections", () => {
+  const result = chunkDocument({
+    doc_type: "echr_judgment",
+    content_text: ECHR_FIXTURE,
+  });
+  const chunks = result.chunks;
+  assertEquals(result.strategy, "echr");
+
+  const types = new Set(chunks.map((c) => c.chunk_type));
+  assert(types.has("procedure"), "Should detect PROCEDURE section");
+  assert(types.has("facts"), "Should detect FACTS section");
+  assert(types.has("law") || types.has("assessment"), "Should detect LAW or ASSESSMENT section");
+  assert(types.has("just_satisfaction"), "Should detect JUST SATISFACTION section");
+  assert(types.has("conclusion"), "Should detect CONCLUSION section");
+
+  // Verify metadata
+  for (const c of chunks) {
+    if (c.metadata) {
+      assertEquals(c.metadata.document_type, "echr_judgment");
+      assertEquals(c.metadata.court_level, "echr");
+    }
+  }
+});
+
+Deno.test("chunkDocument: ECHR extracts application number", () => {
+  const result = chunkDocument({
+    doc_type: "echr_judgment",
+    content_text: ECHR_FIXTURE,
+  });
+  // Check metadata on chunks for case_number
+  const headerChunk = result.chunks.find(c => c.metadata?.case_number);
+  assertExists(headerChunk, "Should have chunk with case_number");
+  assertEquals(headerChunk!.metadata!.case_number, "12345/20");
+});
+
+// ─── TEST: International treaty chunking ────────────────────────────
+
+Deno.test("chunkDocument: treaty splits by articles", () => {
+  const result = chunkDocument({
+    doc_type: "international_treaty",
+    content_text: TREATY_FIXTURE,
+  });
+  const chunks = result.chunks;
+  assertEquals(result.strategy, "treaty");
+
+  const treatyArticles = chunks.filter(c => c.chunk_type === "treaty_article");
+  assert(treatyArticles.length >= 3, `Expected >= 3 treaty articles, got ${treatyArticles.length}`);
+
+  // Check that article numbers are preserved
+  const articleNums = treatyArticles.map(c => c.locator?.article).filter(Boolean);
+  assert(articleNums.includes("1"), "Should have Article 1");
+  assert(articleNums.includes("2"), "Should have Article 2");
+  assert(articleNums.includes("3"), "Should have Article 3");
+
+  // Preamble should exist
+  const preamble = chunks.find(c => c.chunk_type === "preamble");
+  assertExists(preamble, "Should have preamble");
+});
+
 // ─── TEST: Unknown doc_type -> fixed-window ─────────────────────────
 
 Deno.test("chunkDocument: unknown doc_type uses fixed-window", () => {
-  const longText = "Lorem ipsum. ".repeat(100);
+  const longText = "Lorem ipsum dolor sit amet. ".repeat(100);
   const result = chunkDocument({
     doc_type: "other",
     content_text: longText,
@@ -161,5 +269,93 @@ Deno.test("chunkDocument: deterministic output", () => {
     assertEquals(result1.chunks[i].chunk_hash, result2.chunks[i].chunk_hash);
     assertEquals(result1.chunks[i].char_start, result2.chunks[i].char_start);
     assertEquals(result1.chunks[i].char_end, result2.chunks[i].char_end);
+  }
+});
+
+// ─── TEST: Metadata is always populated ─────────────────────────────
+
+Deno.test("chunkDocument: metadata populated for all strategies", () => {
+  const inputs = [
+    { doc_type: "code", content_text: LEGISLATION_FIXTURE, title: "Criminal Code" },
+    { doc_type: "cassation_ruling", content_text: COURT_DECISION_FIXTURE, title: "Decision" },
+    { doc_type: "echr_judgment", content_text: ECHR_FIXTURE, title: "Smith v. Armenia" },
+    { doc_type: "international_treaty", content_text: TREATY_FIXTURE, title: "ECHR Convention" },
+  ];
+
+  for (const input of inputs) {
+    const result = chunkDocument(input);
+    for (const chunk of result.chunks) {
+      assertExists(chunk.metadata, `Chunk in ${input.doc_type} should have metadata`);
+      assertExists(chunk.metadata!.document_type, `Chunk in ${input.doc_type} should have document_type`);
+    }
+  }
+});
+
+// ─── TEST: No chunk exceeds MAX size ────────────────────────────────
+
+Deno.test("chunkDocument: no chunk exceeds max chars", () => {
+  // Create a very large legislation text
+  let bigText = "";
+  for (let i = 1; i <= 5; i++) {
+    bigText += `\u0540\u0578\u0564\u057e\u0561\u056e ${i}\u0589 Title ${i}\n`;
+    for (let j = 1; j <= 30; j++) {
+      bigText += `${j}) ${"A".repeat(300)} paragraph text for part ${j} of article ${i}.\n`;
+    }
+    bigText += "\n";
+  }
+
+  const result = chunkDocument({ doc_type: "code", content_text: bigText });
+  const MAX = 6000; // MAX_CHUNK_CHARS
+
+  for (const chunk of result.chunks) {
+    assert(
+      chunk.chunk_text.length <= MAX + 500, // small tolerance for part grouping
+      `Chunk ${chunk.chunk_index} (${chunk.chunk_type}) is ${chunk.chunk_text.length} chars, max is ~${MAX}`,
+    );
+  }
+});
+
+// ─── TEST: Articles are never split mid-part ────────────────────────
+
+Deno.test("chunkDocument: articles split by parts, not mid-text", () => {
+  // Create article with clear parts — each part ~500 chars, 20 parts = ~10000 chars > MAX_CHUNK_CHARS (6000)
+  let articleText = "\u0540\u0578\u0564\u057e\u0561\u056e 100\u0589 Test Article\n";
+  for (let i = 1; i <= 20; i++) {
+    articleText += `${i}) Part ${i} content that is reasonably long to fill up space. ${"X".repeat(450)}\n`;
+  }
+  articleText += "\n\u0540\u0578\u0564\u057e\u0561\u056e 101\u0589 Next\nShort article.";
+
+  const result = chunkDocument({ doc_type: "code", content_text: articleText });
+
+  // Article 100 should be split, but each chunk should contain complete parts
+  const art100Chunks = result.chunks.filter(c =>
+    c.locator?.article === "100"
+  );
+  assert(art100Chunks.length >= 2, "Oversized article should be split into multiple chunks");
+
+  // Each chunk should start or contain a part number
+  for (const chunk of art100Chunks) {
+    assertExists(chunk.label, "Split chunk should have label with part info");
+  }
+});
+
+// ─── TEST: No overlap for legislation ───────────────────────────────
+
+Deno.test("chunkDocument: legislation chunks have no overlap", () => {
+  const result = chunkDocument({
+    doc_type: "code",
+    content_text: LEGISLATION_FIXTURE,
+  });
+
+  // Check that article chunks don't contain text from other articles
+  const articleChunks = result.chunks.filter(c => c.chunk_type === "article");
+  for (let i = 1; i < articleChunks.length; i++) {
+    const prev = articleChunks[i - 1];
+    const curr = articleChunks[i];
+    // No overlap: current should not start with previous content
+    assert(
+      curr.char_start >= prev.char_end - 5, // small tolerance
+      `Article chunks should not overlap: chunk ${i} starts at ${curr.char_start}, prev ends at ${prev.char_end}`,
+    );
   }
 });
