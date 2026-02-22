@@ -7,6 +7,7 @@
  */
 
 import { getModelConfig, type ModelConfig } from "./openai-router.ts";
+import { getAIProvider, resolveEndpoint } from "./ai-provider.ts";
 
 const AI_GATEWAY = "https://ai.gateway.lovable.dev/v1/chat/completions";
 
@@ -75,9 +76,12 @@ export async function callGatewayBypass(
 ): Promise<BypassResult> {
   const cfg = getModelConfig(options.functionName);
   const requestId = crypto.randomUUID();
-  const apiKey = getApiKey();
+  const provider = await getAIProvider();
+  const endpoint = resolveEndpoint(provider, cfg.model);
 
   const body = buildBypassBody(cfg, messages, options.extraBody);
+  // Update model in body to resolved model name
+  body.model = endpoint.modelForApi;
   const timeoutMs = options.timeoutMs ?? 60000;
   const maxRetries = options.maxRetries ?? 0;
 
@@ -89,10 +93,10 @@ export async function callGatewayBypass(
     const timer = setTimeout(() => controller.abort(), timeoutMs);
 
     try {
-      const response = await fetch(AI_GATEWAY, {
+      const response = await fetch(endpoint.url, {
         method: "POST",
         headers: {
-          Authorization: `Bearer ${apiKey}`,
+          Authorization: `Bearer ${endpoint.apiKey}`,
           "Content-Type": "application/json",
         },
         body: JSON.stringify(body),
@@ -165,22 +169,24 @@ export async function callStreamBypass(
 ): Promise<{ response: Response; model_used: string; request_id: string }> {
   const cfg = getModelConfig(options.functionName);
   const requestId = crypto.randomUUID();
-  const apiKey = getApiKey();
+  const provider = await getAIProvider();
+  const endpoint = resolveEndpoint(provider, cfg.model);
 
   const body = buildBypassBody(cfg, messages, {
     ...options.extraBody,
     stream: true,
   });
+  body.model = endpoint.modelForApi;
   const timeoutMs = options.timeoutMs ?? 60000;
 
   const t0 = Date.now();
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
 
-  const response = await fetch(AI_GATEWAY, {
+  const response = await fetch(endpoint.url, {
     method: "POST",
     headers: {
-      Authorization: `Bearer ${apiKey}`,
+      Authorization: `Bearer ${endpoint.apiKey}`,
       "Content-Type": "application/json",
     },
     body: JSON.stringify(body),
