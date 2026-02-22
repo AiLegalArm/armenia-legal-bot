@@ -14,7 +14,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { toast } from "sonner";
-import { Download, Copy, Loader2, Database, FileJson } from "lucide-react";
+import { Download, Copy, Loader2, Database, FileJson, FileSpreadsheet } from "lucide-react";
 
 interface KBExportProps {
   open: boolean;
@@ -29,7 +29,8 @@ export function KBExport({ open, onOpenChange }: KBExportProps) {
   const [selectedTables, setSelectedTables] = useState<TableType[]>(["knowledge_base"]);
   const [sqlOutput, setSqlOutput] = useState("");
   const [jsonOutput, setJsonOutput] = useState("");
-  const [activeTab, setActiveTab] = useState<"sql" | "json">("sql");
+  const [csvOutput, setCsvOutput] = useState("");
+  const [activeTab, setActiveTab] = useState<"csv" | "sql" | "json">("csv");
 
   const toggleTable = (table: TableType) => {
     setSelectedTables((prev) =>
@@ -46,6 +47,7 @@ export function KBExport({ open, onOpenChange }: KBExportProps) {
     setIsLoading(true);
     setSqlOutput("");
     setJsonOutput("");
+    setCsvOutput("");
 
     try {
       const allData: Record<string, unknown[]> = {};
@@ -85,6 +87,26 @@ export function KBExport({ open, onOpenChange }: KBExportProps) {
 
       setSqlOutput(sqlStatements.join("\n"));
       setJsonOutput(JSON.stringify(allData, null, 2));
+
+      // Generate CSV
+      const csvParts: string[] = [];
+      for (const table of selectedTables) {
+        const rows = allData[table];
+        if (rows && rows.length > 0) {
+          const columns = Object.keys(rows[0] as Record<string, unknown>);
+          csvParts.push(columns.map(c => `"${c}"`).join(","));
+          for (const row of rows) {
+            const r = row as Record<string, unknown>;
+            csvParts.push(columns.map(col => {
+              const val = r[col];
+              if (val === null || val === undefined) return "";
+              const str = typeof val === "object" ? JSON.stringify(val) : String(val);
+              return `"${str.replace(/"/g, '""')}"`;
+            }).join(","));
+          }
+        }
+      }
+      setCsvOutput(csvParts.join("\n"));
 
       toast.success(`\u042d\u043a\u0441\u043f\u043e\u0440\u0442 \u0437\u0430\u0432\u0435\u0440\u0448\u0435\u043d: ${Object.values(allData).flat().length} \u0437\u0430\u043f\u0438\u0441\u0435\u0439`);
     } catch (error) {
@@ -164,9 +186,13 @@ export function KBExport({ open, onOpenChange }: KBExportProps) {
           </Button>
 
           {/* Output tabs */}
-          {(sqlOutput || jsonOutput) && (
-            <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as "sql" | "json")} className="flex-1 flex flex-col overflow-hidden">
+          {(sqlOutput || jsonOutput || csvOutput) && (
+            <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as "csv" | "sql" | "json")} className="flex-1 flex flex-col overflow-hidden">
               <TabsList>
+                <TabsTrigger value="csv" className="flex items-center gap-1">
+                  <FileSpreadsheet className="h-4 w-4" />
+                  CSV
+                </TabsTrigger>
                 <TabsTrigger value="sql" className="flex items-center gap-1">
                   <Database className="h-4 w-4" />
                   SQL
@@ -176,6 +202,32 @@ export function KBExport({ open, onOpenChange }: KBExportProps) {
                   JSON
                 </TabsTrigger>
               </TabsList>
+
+              <TabsContent value="csv" className="flex-1 flex flex-col overflow-hidden mt-2">
+                <div className="flex gap-2 mb-2">
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => copyToClipboard(csvOutput, "CSV")}
+                  >
+                    <Copy className="mr-1 h-3 w-3" />
+                    {"Копировать"}
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => downloadFile(csvOutput, "kb_export.csv", "text/csv")}
+                  >
+                    <Download className="mr-1 h-3 w-3" />
+                    {"Скачать .csv"}
+                  </Button>
+                </div>
+                <Textarea
+                  value={csvOutput}
+                  readOnly
+                  className="flex-1 font-mono text-xs resize-none min-h-[200px]"
+                />
+              </TabsContent>
 
               <TabsContent value="sql" className="flex-1 flex flex-col overflow-hidden mt-2">
                 <div className="flex gap-2 mb-2">
