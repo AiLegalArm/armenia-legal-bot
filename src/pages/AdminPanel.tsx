@@ -27,6 +27,7 @@ import { EmbeddingManager } from "@/components/admin/EmbeddingManager";
 import { PracticeChunkManager } from "@/components/admin/PracticeChunkManager";
 import { ErrorLogs } from "@/components/admin/ErrorLogs";
 import { DictionaryImport } from "@/components/admin/DictionaryImport";
+import { AIProviderSwitch } from "@/components/admin/AIProviderSwitch";
 
 const AdminPanel = () => {
   const navigate = useNavigate();
@@ -133,7 +134,8 @@ const AdminPanel = () => {
           </TabsContent>
 
           {/* Analytics Tab */}
-          <TabsContent value="analytics">
+          <TabsContent value="analytics" className="space-y-6">
+            <AIProviderSwitch />
             <UsageMonitor budgetLimit={10.0} compact={false} />
           </TabsContent>
 

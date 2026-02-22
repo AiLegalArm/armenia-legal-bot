@@ -421,6 +421,8 @@ export interface JSONResult<T = unknown> {
 
 const AI_GATEWAY = "https://ai.gateway.lovable.dev/v1/chat/completions";
 
+import { getAIProvider, resolveEndpoint } from "./ai-provider.ts";
+
 function getApiKey(): string {
   const key = Deno.env.get("LOVABLE_API_KEY");
   if (!key) throw new Error("[openai-router] LOVABLE_API_KEY is not configured");
@@ -460,7 +462,14 @@ async function fetchWithRetry(
   body: Record<string, unknown>,
   timeoutMs: number
 ): Promise<{ data: Record<string, unknown>; latency_ms: number }> {
-  const apiKey = getApiKey();
+  // Resolve provider for this request
+  const provider = await getAIProvider();
+  const modelName = body.model as string;
+  const endpoint = resolveEndpoint(provider, modelName);
+  
+  // Update model name in body if routing to OpenAI directly
+  const resolvedBody = { ...body, model: endpoint.modelForApi };
+
   const max = maxRetries();
   let lastError: Error | null = null;
 
@@ -472,13 +481,13 @@ async function fetchWithRetry(
       const controller = new AbortController();
       const timer = setTimeout(() => controller.abort(), timeoutMs);
 
-      response = await fetch(AI_GATEWAY, {
+      response = await fetch(endpoint.url, {
         method: "POST",
         headers: {
-          Authorization: `Bearer ${apiKey}`,
+          Authorization: `Bearer ${endpoint.apiKey}`,
           "Content-Type": "application/json",
         },
-        body: JSON.stringify(body),
+        body: JSON.stringify(resolvedBody),
         signal: controller.signal,
       });
 
