@@ -3,9 +3,13 @@
  *
  * Background worker that processes practice_chunk_jobs:
  * 1. Picks N pending jobs (configurable concurrency)
- * 2. For each doc: chunks content_text using shared chunker
- * 3. Upserts chunks into legal_practice_kb_chunks
+ * 2. For each doc: chunks content_text using fixed-window chunker
+ * 3. Upserts chunks into the appropriate target table
  * 4. Marks job done or failed with retry+backoff
+ *
+ * Supports two source tables:
+ *   - legal_practice_kb  → legal_practice_kb_chunks
+ *   - knowledge_base     → knowledge_base_chunks
  *
  * Idempotent: uses DELETE+INSERT per doc (atomic).
  * Resumable: safe to call repeatedly until all jobs done.
@@ -23,13 +27,9 @@ const corsHeaders = {
   "Access-Control-Allow-Methods": "POST, OPTIONS",
 };
 
-// ─── Lightweight chunker for practice docs ─────────────────────────
-// Practice docs are court decisions / ECHR judgments.
-// We use fixed-window chunking with overlap, matching the shared chunker's approach.
-
-const MAX_INPUT_CHARS = 30_000;  // reduced from 80k to prevent OOM
-const CHUNK_SIZE = 4000;       // ~1000 tokens
-const OVERLAP_CHARS = 600;     // ~150 tokens overlap
+const MAX_INPUT_CHARS = 30_000;
+const CHUNK_SIZE = 4000;
+const OVERLAP_CHARS = 600;
 const MIN_CHUNK_SIZE = 200;
 
 function normalizeWhitespace(text: string): string {
@@ -50,29 +50,26 @@ function simpleHash(text: string): string {
   return Math.abs(hash).toString(16).padStart(8, "0");
 }
 
-interface PracticeChunk {
+interface ChunkResult {
   chunk_index: number;
   chunk_text: string;
   chunk_hash: string;
-  title: string | null;
+  label: string | null;
 }
 
-function chunkPracticeDoc(
+function chunkDocument(
   contentText: string,
   docTitle: string | null,
   keyParagraphs: unknown,
-): PracticeChunk[] {
-  // Pick best source text: key_paragraphs > content_text
+): ChunkResult[] {
   let sourceText = "";
 
-  // Try key_paragraphs first (array of precedent_units with quote fields)
   if (keyParagraphs && Array.isArray(keyParagraphs) && keyParagraphs.length > 0) {
     const parts: string[] = [];
     for (const kp of keyParagraphs) {
       if (typeof kp === "string") {
         parts.push(kp);
       } else if (kp && typeof kp === "object") {
-        // precedent_unit format: { principle, quote, anchor, ... }
         const fields = [kp.principle, kp.quote, kp.anchor].filter(Boolean);
         if (fields.length > 0) parts.push(fields.join("\n"));
       }
@@ -90,21 +87,18 @@ function chunkPracticeDoc(
     return [];
   }
 
-  // Normalize and cap
   sourceText = normalizeWhitespace(sourceText);
   if (sourceText.length > MAX_INPUT_CHARS) {
     sourceText = sourceText.substring(0, MAX_INPUT_CHARS);
   }
 
-  // Fixed-window chunking with overlap
-  const chunks: PracticeChunk[] = [];
+  const chunks: ChunkResult[] = [];
   let pos = 0;
   let idx = 0;
 
   while (pos < sourceText.length) {
     let end = Math.min(pos + CHUNK_SIZE, sourceText.length);
 
-    // Try to break at paragraph boundary
     if (end < sourceText.length) {
       const lastPara = sourceText.lastIndexOf("\n\n", end);
       if (lastPara > pos + MIN_CHUNK_SIZE) {
@@ -123,16 +117,120 @@ function chunkPracticeDoc(
         chunk_index: idx++,
         chunk_text: chunkText,
         chunk_hash: simpleHash(chunkText),
-        title: docTitle,
+        label: docTitle,
       });
     }
 
-    // Advance with overlap
     pos = end > pos ? end - OVERLAP_CHARS : end + 1;
     if (end >= sourceText.length) break;
   }
 
   return chunks;
+}
+
+// ─── Process a single job ──────────────────────────────────────────
+async function processJob(
+  supabase: ReturnType<typeof createClient>,
+  job: { id: string; document_id: string; source_table: string; attempts: number; max_attempts?: number },
+) {
+  const attempt = (job.attempts || 0) + 1;
+  const src = job.source_table || "legal_practice_kb";
+
+  // Fetch document from source table
+  const selectFields = src === "knowledge_base"
+    ? "id, title, content_text"
+    : "id, title, content_text, key_paragraphs";
+
+  const { data: doc, error: docErr } = await supabase
+    .from(src)
+    .select(selectFields)
+    .eq("id", job.document_id)
+    .single();
+
+  if (docErr || !doc) {
+    throw new Error(docErr?.message || "Document not found");
+  }
+
+  const chunks = chunkDocument(
+    doc.content_text,
+    doc.title,
+    src === "legal_practice_kb" ? doc.key_paragraphs : null,
+  );
+
+  if (chunks.length === 0) {
+    await supabase
+      .from("practice_chunk_jobs")
+      .update({
+        status: "done",
+        attempts: attempt,
+        completed_at: new Date().toISOString(),
+        last_error: "No chunkable content (too short)",
+      })
+      .eq("id", job.id);
+    return 0;
+  }
+
+  // Route to correct chunks table
+  if (src === "knowledge_base") {
+    // knowledge_base_chunks schema: kb_id, chunk_index, chunk_text, chunk_hash, chunk_type, char_start, char_end, label
+    await supabase
+      .from("knowledge_base_chunks")
+      .delete()
+      .eq("kb_id", job.document_id);
+
+    let charPos = 0;
+    const rows = chunks.map((c) => {
+      const row = {
+        kb_id: job.document_id,
+        chunk_index: c.chunk_index,
+        chunk_text: c.chunk_text,
+        chunk_hash: c.chunk_hash,
+        chunk_type: "article",
+        char_start: charPos,
+        char_end: charPos + c.chunk_text.length,
+        label: c.label,
+        is_active: true,
+      };
+      charPos += c.chunk_text.length;
+      return row;
+    });
+
+    const { error: insertErr } = await supabase
+      .from("knowledge_base_chunks")
+      .insert(rows);
+    if (insertErr) throw insertErr;
+  } else {
+    // legal_practice_kb_chunks schema: doc_id, chunk_index, chunk_text, chunk_hash, title
+    await supabase
+      .from("legal_practice_kb_chunks")
+      .delete()
+      .eq("doc_id", job.document_id);
+
+    const rows = chunks.map((c) => ({
+      doc_id: job.document_id,
+      chunk_index: c.chunk_index,
+      chunk_text: c.chunk_text,
+      chunk_hash: c.chunk_hash,
+      title: c.label,
+    }));
+
+    const { error: insertErr } = await supabase
+      .from("legal_practice_kb_chunks")
+      .insert(rows);
+    if (insertErr) throw insertErr;
+  }
+
+  await supabase
+    .from("practice_chunk_jobs")
+    .update({
+      status: "done",
+      attempts: attempt,
+      completed_at: new Date().toISOString(),
+      last_error: null,
+    })
+    .eq("id", job.id);
+
+  return chunks.length;
 }
 
 // ─── Main handler ──────────────────────────────────────────────────
@@ -141,7 +239,6 @@ serve(async (req) => {
     return new Response(null, { headers: corsHeaders });
   }
 
-  // Auth: internal key OR Bearer JWT (admin only)
   const internalKey = req.headers.get("x-internal-key");
   const expectedKey = Deno.env.get("INTERNAL_INGEST_KEY");
   const isInternalAuth = internalKey && expectedKey && internalKey === expectedKey;
@@ -161,6 +258,7 @@ serve(async (req) => {
 
   try {
     const body = await req.json().catch(() => ({}));
+    const sourceFilter = body.source_table || null; // optional filter
     const concurrencyDocs = Math.min(
       Number(body.concurrency_docs) || Number(Deno.env.get("CONCURRENCY_DOCS")) || 2,
       5,
@@ -171,33 +269,35 @@ serve(async (req) => {
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
     );
 
-    // Claim N pending jobs (oldest first, skip dead letters)
-    const { data: jobs, error: fetchErr } = await supabase
+    // Claim N pending jobs
+    let jobQuery = supabase
       .from("practice_chunk_jobs")
-      .select("id, document_id, attempts, max_attempts")
+      .select("id, document_id, source_table, attempts, max_attempts")
       .in("status", ["pending", "failed"])
       .lt("attempts", 5)
       .order("created_at", { ascending: true })
       .limit(concurrencyDocs);
 
+    if (sourceFilter) {
+      jobQuery = jobQuery.eq("source_table", sourceFilter);
+    }
+
+    const { data: jobs, error: fetchErr } = await jobQuery;
     if (fetchErr) throw fetchErr;
 
     if (!jobs || jobs.length === 0) {
-      const { count: pendingCount } = await supabase
+      let countQuery = supabase
         .from("practice_chunk_jobs")
         .select("id", { count: "exact", head: true })
         .in("status", ["pending", "failed"])
         .lt("attempts", 5);
+      if (sourceFilter) countQuery = countQuery.eq("source_table", sourceFilter);
 
-      const { count: deadCount } = await supabase
-        .from("practice_chunk_jobs")
-        .select("id", { count: "exact", head: true })
-        .eq("status", "dead_letter");
+      const { count: pendingCount } = await countQuery;
 
       return new Response(JSON.stringify({
         processed: 0,
         remaining: pendingCount || 0,
-        dead_letter: deadCount || 0,
         duration_ms: Date.now() - startTime,
       }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
     }
@@ -214,78 +314,17 @@ serve(async (req) => {
     let totalChunks = 0;
     const errors: string[] = [];
 
-    // Process each job
     for (const job of jobs) {
-      const attempt = (job.attempts || 0) + 1;
       try {
-        // Fetch document
-        const { data: doc, error: docErr } = await supabase
-          .from("legal_practice_kb")
-          .select("id, title, content_text, key_paragraphs")
-          .eq("id", job.document_id)
-          .single();
-
-        if (docErr || !doc) {
-          throw new Error(docErr?.message || "Document not found");
-        }
-
-        // Generate chunks
-        const chunks = chunkPracticeDoc(doc.content_text, doc.title, doc.key_paragraphs);
-
-        if (chunks.length === 0) {
-          // No content to chunk — mark done
-          await supabase
-            .from("practice_chunk_jobs")
-            .update({
-              status: "done",
-              attempts: attempt,
-              completed_at: new Date().toISOString(),
-              last_error: "No chunkable content (too short)",
-            })
-            .eq("id", job.id);
-          processed++;
-          continue;
-        }
-
-        // Atomic: delete existing chunks for this doc, then insert new ones
-        await supabase
-          .from("legal_practice_kb_chunks")
-          .delete()
-          .eq("doc_id", job.document_id);
-
-        const rows = chunks.map((c) => ({
-          doc_id: job.document_id,
-          chunk_index: c.chunk_index,
-          chunk_text: c.chunk_text,
-          chunk_hash: c.chunk_hash,
-          title: c.title,
-        }));
-
-        const { error: insertErr } = await supabase
-          .from("legal_practice_kb_chunks")
-          .insert(rows);
-
-        if (insertErr) throw insertErr;
-
-        totalChunks += chunks.length;
-
-        // Mark done
-        await supabase
-          .from("practice_chunk_jobs")
-          .update({
-            status: "done",
-            attempts: attempt,
-            completed_at: new Date().toISOString(),
-            last_error: null,
-          })
-          .eq("id", job.id);
-
+        const count = await processJob(supabase, job);
+        totalChunks += count;
         processed++;
       } catch (err) {
         const errMsg = err instanceof Error ? err.message : "Unknown error";
         errors.push(`${job.document_id}: ${errMsg}`);
         failed++;
 
+        const attempt = (job.attempts || 0) + 1;
         const newStatus = attempt >= (job.max_attempts || 5) ? "dead_letter" : "failed";
 
         await supabase
@@ -299,21 +338,17 @@ serve(async (req) => {
       }
     }
 
-    // Get remaining counts
-    const { count: remainingCount } = await supabase
+    let remainQuery = supabase
       .from("practice_chunk_jobs")
       .select("id", { count: "exact", head: true })
       .in("status", ["pending", "failed"])
       .lt("attempts", 5);
-
-    const { count: deadLetterCount } = await supabase
-      .from("practice_chunk_jobs")
-      .select("id", { count: "exact", head: true })
-      .eq("status", "dead_letter");
+    if (sourceFilter) remainQuery = remainQuery.eq("source_table", sourceFilter);
+    const { count: remainingCount } = await remainQuery;
 
     const duration = Date.now() - startTime;
     console.log(
-      `[practice-chunk-worker] processed=${processed} failed=${failed} chunks=${totalChunks} remaining=${remainingCount} dead=${deadLetterCount} duration=${duration}ms`,
+      `[practice-chunk-worker] src=${sourceFilter || "all"} processed=${processed} failed=${failed} chunks=${totalChunks} remaining=${remainingCount} duration=${duration}ms`,
     );
 
     return new Response(JSON.stringify({
@@ -321,7 +356,6 @@ serve(async (req) => {
       failed,
       total_chunks_inserted: totalChunks,
       remaining: remainingCount || 0,
-      dead_letter: deadLetterCount || 0,
       duration_ms: duration,
       errors: errors.length > 0 ? errors : undefined,
     }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });

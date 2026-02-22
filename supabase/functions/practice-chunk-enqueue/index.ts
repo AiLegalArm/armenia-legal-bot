@@ -2,11 +2,13 @@
  * practice-chunk-enqueue
  *
  * Admin-only endpoint to enqueue missing chunks/embeddings jobs.
+ * Supports both legal_practice_kb and knowledge_base tables.
+ *
  * Actions:
- *   - enqueue_missing_chunks: docs without any chunks
+ *   - diagnostics:               return coverage stats (requires source_table param)
+ *   - enqueue_missing_chunks:    docs without any chunks
  *   - enqueue_missing_embeddings: docs with embedding_status != 'success'
- *   - diagnostics: return coverage stats
- *   - reset_dead_letters: reset dead-lettered jobs to pending
+ *   - reset_dead_letters:        reset dead-lettered jobs to pending
  */
 
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
@@ -21,12 +23,14 @@ const corsHeaders = {
   "Access-Control-Allow-Methods": "POST, OPTIONS",
 };
 
+const VALID_SOURCES = ["legal_practice_kb", "knowledge_base"] as const;
+type SourceTable = typeof VALID_SOURCES[number];
+
 serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
   }
 
-  // Auth: internal key OR Bearer JWT
   const internalKey = req.headers.get("x-internal-key");
   const expectedKey = Deno.env.get("INTERNAL_INGEST_KEY");
   const isInternalAuth = internalKey && expectedKey && internalKey === expectedKey;
@@ -43,15 +47,61 @@ serve(async (req) => {
   }
 
   try {
-    const { action } = await req.json();
+    const { action, source_table: rawSource } = await req.json();
+    const source: SourceTable = VALID_SOURCES.includes(rawSource) ? rawSource : "legal_practice_kb";
 
     const supabase = createClient(
       Deno.env.get("SUPABASE_URL")!,
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
     );
 
+    // ─── Diagnostics ─────────────────────────────────────────
     if (action === "diagnostics") {
-      // Run all diagnostic queries
+      if (source === "knowledge_base") {
+        const [totalDocsRes, totalChunksRes, embPendingRes, embFailedRes] = await Promise.all([
+          supabase.from("knowledge_base").select("id", { count: "exact", head: true }).eq("is_active", true),
+          supabase.from("knowledge_base_chunks").select("id", { count: "exact", head: true }),
+          supabase.from("knowledge_base").select("id", { count: "exact", head: true }).eq("is_active", true).eq("embedding_status", "pending"),
+          supabase.from("knowledge_base").select("id", { count: "exact", head: true }).eq("is_active", true).eq("embedding_status", "failed"),
+        ]);
+
+        // Count docs with at least one chunk
+        const { data: docsWithChunks } = await supabase
+          .from("knowledge_base_chunks")
+          .select("kb_id")
+          .limit(100000);
+        const uniqueDocIds = new Set((docsWithChunks || []).map((r: { kb_id: string }) => r.kb_id));
+        const totalDocs = totalDocsRes.count || 0;
+        const docsWithoutChunks = totalDocs - uniqueDocIds.size;
+        const avgChunks = uniqueDocIds.size > 0 ? (totalChunksRes.count || 0) / uniqueDocIds.size : 0;
+
+        // Job queue stats for KB
+        const [pendingJobs, processingJobs, doneJobs, failedJobs, deadJobs] = await Promise.all([
+          supabase.from("practice_chunk_jobs").select("id", { count: "exact", head: true }).eq("status", "pending").eq("source_table", "knowledge_base"),
+          supabase.from("practice_chunk_jobs").select("id", { count: "exact", head: true }).eq("status", "processing").eq("source_table", "knowledge_base"),
+          supabase.from("practice_chunk_jobs").select("id", { count: "exact", head: true }).eq("status", "done").eq("source_table", "knowledge_base"),
+          supabase.from("practice_chunk_jobs").select("id", { count: "exact", head: true }).eq("status", "failed").eq("source_table", "knowledge_base"),
+          supabase.from("practice_chunk_jobs").select("id", { count: "exact", head: true }).eq("status", "dead_letter").eq("source_table", "knowledge_base"),
+        ]);
+
+        return new Response(JSON.stringify({
+          total_docs: totalDocs,
+          total_chunks: totalChunksRes.count || 0,
+          docs_without_chunks: docsWithoutChunks,
+          avg_chunks_per_doc: Math.round(avgChunks * 10) / 10,
+          embedding_pending: embPendingRes.count || 0,
+          embedding_failed: embFailedRes.count || 0,
+          jobs: {
+            pending: pendingJobs.count || 0,
+            processing: processingJobs.count || 0,
+            done: doneJobs.count || 0,
+            failed: failedJobs.count || 0,
+            dead_letter: deadJobs.count || 0,
+          },
+        }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
+      }
+
+      // Default: legal_practice_kb diagnostics (existing logic)
       const [totalDocsRes, totalChunksRes, docsNoChunksRes, avgChunksRes, embPendingRes, embFailedRes] = await Promise.all([
         supabase.from("legal_practice_kb").select("id", { count: "exact", head: true }).eq("is_active", true),
         supabase.from("legal_practice_kb_chunks").select("id", { count: "exact", head: true }),
@@ -61,17 +111,15 @@ serve(async (req) => {
         supabase.from("legal_practice_kb").select("id", { count: "exact", head: true }).eq("is_active", true).eq("embedding_status", "failed"),
       ]);
 
-      // Fallback: if RPCs don't exist, use direct queries
-      let docsWithoutChunks = docsNoChunksRes.data;
-      let avgChunks = avgChunksRes.data;
+      const docsWithoutChunks = docsNoChunksRes.data;
+      const avgChunks = avgChunksRes.data;
 
-      // Job queue stats
       const [pendingJobs, processingJobs, doneJobs, failedJobs, deadJobs] = await Promise.all([
-        supabase.from("practice_chunk_jobs").select("id", { count: "exact", head: true }).eq("status", "pending"),
-        supabase.from("practice_chunk_jobs").select("id", { count: "exact", head: true }).eq("status", "processing"),
-        supabase.from("practice_chunk_jobs").select("id", { count: "exact", head: true }).eq("status", "done"),
-        supabase.from("practice_chunk_jobs").select("id", { count: "exact", head: true }).eq("status", "failed"),
-        supabase.from("practice_chunk_jobs").select("id", { count: "exact", head: true }).eq("status", "dead_letter"),
+        supabase.from("practice_chunk_jobs").select("id", { count: "exact", head: true }).eq("status", "pending").eq("source_table", "legal_practice_kb"),
+        supabase.from("practice_chunk_jobs").select("id", { count: "exact", head: true }).eq("status", "processing").eq("source_table", "legal_practice_kb"),
+        supabase.from("practice_chunk_jobs").select("id", { count: "exact", head: true }).eq("status", "done").eq("source_table", "legal_practice_kb"),
+        supabase.from("practice_chunk_jobs").select("id", { count: "exact", head: true }).eq("status", "failed").eq("source_table", "legal_practice_kb"),
+        supabase.from("practice_chunk_jobs").select("id", { count: "exact", head: true }).eq("status", "dead_letter").eq("source_table", "legal_practice_kb"),
       ]);
 
       return new Response(JSON.stringify({
@@ -91,32 +139,53 @@ serve(async (req) => {
       }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
     }
 
+    // ─── Enqueue missing chunks ──────────────────────────────
     if (action === "enqueue_missing_chunks") {
-      // Find all active docs without chunks, not already queued
-      const { data: missingDocs, error: queryErr } = await supabase
-        .rpc("get_practice_docs_without_chunks", { batch_limit: 2000 });
-
-      // Fallback if RPC doesn't exist
       let docIds: string[] = [];
-      if (queryErr || !missingDocs) {
-        // Direct query approach
+
+      if (source === "knowledge_base") {
+        // Get all active KB doc IDs
         const { data: allDocs } = await supabase
-          .from("legal_practice_kb")
+          .from("knowledge_base")
           .select("id")
           .eq("is_active", true);
 
+        // Get all doc IDs that already have chunks
         const { data: chunkedDocs } = await supabase
-          .from("legal_practice_kb_chunks")
-          .select("doc_id");
+          .from("knowledge_base_chunks")
+          .select("kb_id")
+          .limit(100000);
 
         if (allDocs && chunkedDocs) {
-          const chunkedSet = new Set(chunkedDocs.map((c: { doc_id: string }) => c.doc_id));
+          const chunkedSet = new Set(chunkedDocs.map((c: { kb_id: string }) => c.kb_id));
           docIds = allDocs
             .filter((d: { id: string }) => !chunkedSet.has(d.id))
             .map((d: { id: string }) => d.id);
         }
       } else {
-        docIds = missingDocs.map((d: { id: string }) => d.id);
+        // legal_practice_kb - existing logic
+        const { data: missingDocs, error: queryErr } = await supabase
+          .rpc("get_practice_docs_without_chunks", { batch_limit: 2000 });
+
+        if (queryErr || !missingDocs) {
+          const { data: allDocs } = await supabase
+            .from("legal_practice_kb")
+            .select("id")
+            .eq("is_active", true);
+
+          const { data: chunkedDocs } = await supabase
+            .from("legal_practice_kb_chunks")
+            .select("doc_id");
+
+          if (allDocs && chunkedDocs) {
+            const chunkedSet = new Set(chunkedDocs.map((c: { doc_id: string }) => c.doc_id));
+            docIds = allDocs
+              .filter((d: { id: string }) => !chunkedSet.has(d.id))
+              .map((d: { id: string }) => d.id);
+          }
+        } else {
+          docIds = missingDocs.map((d: { id: string }) => d.id);
+        }
       }
 
       if (docIds.length === 0) {
@@ -125,13 +194,13 @@ serve(async (req) => {
         });
       }
 
-      // Batch upsert jobs (skip already-existing)
       const batchSize = 500;
       let enqueued = 0;
 
       for (let i = 0; i < docIds.length; i += batchSize) {
         const batch = docIds.slice(i, i + batchSize).map((id) => ({
           document_id: id,
+          source_table: source,
           job_type: "chunk",
           status: "pending",
           attempts: 0,
@@ -139,7 +208,7 @@ serve(async (req) => {
 
         const { error: upsertErr } = await supabase
           .from("practice_chunk_jobs")
-          .upsert(batch, { onConflict: "document_id,job_type", ignoreDuplicates: true });
+          .upsert(batch, { onConflict: "document_id,source_table,job_type", ignoreDuplicates: true });
 
         if (upsertErr) {
           console.error(`[practice-chunk-enqueue] batch upsert error:`, upsertErr.message);
@@ -148,17 +217,17 @@ serve(async (req) => {
         }
       }
 
-      console.log(`[practice-chunk-enqueue] enqueued ${enqueued} chunk jobs`);
+      console.log(`[practice-chunk-enqueue] enqueued ${enqueued} chunk jobs for ${source}`);
 
       return new Response(JSON.stringify({ enqueued, total_missing: docIds.length }), {
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
 
+    // ─── Enqueue missing embeddings ──────────────────────────
     if (action === "enqueue_missing_embeddings") {
-      // Docs with embedding_status != 'success'
       const { data: docs, error: queryErr } = await supabase
-        .from("legal_practice_kb")
+        .from(source)
         .select("id")
         .eq("is_active", true)
         .neq("embedding_status", "success")
@@ -174,14 +243,13 @@ serve(async (req) => {
         });
       }
 
-      // Reset their embedding_status to pending so generate-embeddings picks them up
       const batchSize = 500;
       let reset = 0;
 
       for (let i = 0; i < docIds.length; i += batchSize) {
         const batch = docIds.slice(i, i + batchSize);
         const { error: updateErr } = await supabase
-          .from("legal_practice_kb")
+          .from(source)
           .update({
             embedding_status: "pending",
             embedding_error: null,
@@ -197,12 +265,18 @@ serve(async (req) => {
       });
     }
 
+    // ─── Reset dead letters ──────────────────────────────────
     if (action === "reset_dead_letters") {
-      const { error } = await supabase
+      let q = supabase
         .from("practice_chunk_jobs")
         .update({ status: "pending", attempts: 0, last_error: null })
         .eq("status", "dead_letter");
 
+      if (rawSource && VALID_SOURCES.includes(rawSource)) {
+        q = q.eq("source_table", rawSource);
+      }
+
+      const { error } = await q;
       if (error) throw error;
 
       return new Response(JSON.stringify({ success: true }), {
