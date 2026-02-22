@@ -104,7 +104,7 @@ export function PracticeChunkManager() {
     try {
       while (remaining > 0 && !abortRef.current.signal.aborted) {
         const { data, error } = await supabase.functions.invoke("practice-chunk-worker", {
-          body: { concurrency_docs: 5 },
+          body: { concurrency_docs: 2 },
         });
         if (error) throw error;
 
