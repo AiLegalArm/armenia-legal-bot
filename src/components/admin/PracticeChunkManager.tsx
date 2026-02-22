@@ -1,4 +1,5 @@
 import { useState, useRef, useCallback, useEffect } from "react";
+import { useTranslation } from "react-i18next";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
@@ -26,6 +27,7 @@ interface Diagnostics {
 }
 
 export function PracticeChunkManager() {
+  const { t } = useTranslation("admin");
   const [diag, setDiag] = useState<Diagnostics | null>(null);
   const [loading, setLoading] = useState(false);
   const [running, setRunning] = useState(false);
@@ -144,91 +146,86 @@ export function PracticeChunkManager() {
       <CardHeader>
         <CardTitle className="flex items-center gap-2">
           <Layers className="h-5 w-5" />
-          Practice Chunk Pipeline
+          {t("chunk_pipeline")}
         </CardTitle>
       </CardHeader>
       <CardContent className="space-y-4">
         <p className="text-sm text-muted-foreground">
-          Chunk legal practice documents and generate embeddings. Safe to re-run (idempotent).
+          {t("chunk_pipeline_desc")}
         </p>
 
-        {/* Diagnostics */}
         {loading ? (
           <div className="flex items-center gap-2 text-sm text-muted-foreground">
-            <Loader2 className="h-4 w-4 animate-spin" /> Loading diagnostics...
+            <Loader2 className="h-4 w-4 animate-spin" /> {t("loading_diagnostics")}
           </div>
         ) : diag ? (
           <div className="space-y-3">
             <div className="flex flex-wrap gap-2 text-xs">
-              <Badge variant="secondary">Docs: {diag.total_docs}</Badge>
-              <Badge variant="secondary">Chunks: {diag.total_chunks}</Badge>
+              <Badge variant="secondary">{t("docs")}: {diag.total_docs}</Badge>
+              <Badge variant="secondary">{t("chunks")}: {diag.total_chunks}</Badge>
               <Badge variant="secondary">
-                Avg: {diag.avg_chunks_per_doc?.toFixed(1) ?? "N/A"} chunks/doc
+                {t("avg_chunks_per_doc", { value: diag.avg_chunks_per_doc?.toFixed(1) ?? "N/A" })}
               </Badge>
               <Badge
                 variant={coveragePct >= 95 ? "secondary" : "destructive"}
-                className={coveragePct >= 95 ? "bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200" : ""}
               >
-                Coverage: {coveragePct}%
+                {t("coverage", { value: coveragePct })}
               </Badge>
             </div>
 
             {(diag.docs_without_chunks ?? 0) > 0 && (
-              <div className="flex items-center gap-2 text-xs text-orange-600 dark:text-orange-400">
+              <div className="flex items-center gap-2 text-xs text-destructive">
                 <AlertTriangle className="h-3 w-3" />
-                {diag.docs_without_chunks} docs without chunks
+                {t("docs_without_chunks", { count: diag.docs_without_chunks })}
               </div>
             )}
 
             <div className="flex flex-wrap gap-2 text-xs">
-              <Badge variant="outline">Jobs pending: {diag.jobs.pending}</Badge>
-              <Badge variant="outline">Processing: {diag.jobs.processing}</Badge>
-              <Badge variant="outline" className="bg-green-50 dark:bg-green-950">Done: {diag.jobs.done}</Badge>
-              {diag.jobs.failed > 0 && <Badge variant="outline" className="text-orange-600">Failed: {diag.jobs.failed}</Badge>}
-              {diag.jobs.dead_letter > 0 && <Badge variant="destructive">Dead: {diag.jobs.dead_letter}</Badge>}
+              <Badge variant="outline">{t("jobs_pending", { count: diag.jobs.pending })}</Badge>
+              <Badge variant="outline">{t("jobs_processing", { count: diag.jobs.processing })}</Badge>
+              <Badge variant="outline">{t("jobs_done", { count: diag.jobs.done })}</Badge>
+              {diag.jobs.failed > 0 && <Badge variant="outline">{t("jobs_failed", { count: diag.jobs.failed })}</Badge>}
+              {diag.jobs.dead_letter > 0 && <Badge variant="destructive">{t("jobs_dead", { count: diag.jobs.dead_letter })}</Badge>}
             </div>
 
             <div className="flex flex-wrap gap-2 text-xs">
-              <Badge variant="outline">Emb pending: {diag.embedding_pending}</Badge>
+              <Badge variant="outline">{t("emb_pending", { count: diag.embedding_pending })}</Badge>
               {diag.embedding_failed > 0 && (
-                <Badge variant="outline" className="text-orange-600">Emb failed: {diag.embedding_failed}</Badge>
+                <Badge variant="outline">{t("emb_failed", { count: diag.embedding_failed })}</Badge>
               )}
             </div>
           </div>
         ) : null}
 
-        {/* Actions */}
         <div className="flex flex-wrap gap-2">
           <Button size="sm" variant="outline" onClick={loadDiagnostics} disabled={loading}>
-            <BarChart3 className="mr-1 h-4 w-4" /> Refresh
+            <BarChart3 className="mr-1 h-4 w-4" /> {t("refresh")}
           </Button>
           <Button size="sm" onClick={enqueueChunks} disabled={running}>
-            Enqueue Missing Chunks
+            {t("enqueue_missing_chunks")}
           </Button>
           <Button size="sm" onClick={enqueueEmbeddings} disabled={running}>
-            Enqueue Missing Embeddings
+            {t("enqueue_missing_embeddings")}
           </Button>
           {(diag?.jobs.dead_letter ?? 0) > 0 && (
             <Button size="sm" variant="outline" onClick={resetDeadLetters}>
-              <RotateCcw className="mr-1 h-3 w-3" /> Reset Dead Letters
+              <RotateCcw className="mr-1 h-3 w-3" /> {t("reset_dead_letters")}
             </Button>
           )}
         </div>
 
-        {/* Worker control */}
         <div className="flex items-center gap-2">
           <Button size="sm" onClick={runWorker} disabled={running}>
             {running ? <Loader2 className="mr-1 h-4 w-4 animate-spin" /> : <Play className="mr-1 h-4 w-4" />}
-            {running ? "Processing..." : "Run Worker"}
+            {running ? t("processing_worker") : t("run_worker")}
           </Button>
           {running && (
             <Button size="sm" variant="destructive" onClick={stop}>
-              <Square className="mr-1 h-4 w-4" /> Stop
+              <Square className="mr-1 h-4 w-4" /> {t("stop")}
             </Button>
           )}
         </div>
 
-        {/* Progress */}
         {running && (
           <div className="space-y-1">
             <Progress
@@ -239,7 +236,7 @@ export function PracticeChunkManager() {
               }
             />
             <p className="text-xs text-muted-foreground">
-              Processed: {progress.processed} | Chunks created: {progress.chunks} | Remaining: {progress.remaining}
+              {t("progress_processed", { processed: progress.processed })} | {t("progress_chunks", { chunks: progress.chunks })} | {t("progress_remaining", { remaining: progress.remaining })}
             </p>
           </div>
         )}
