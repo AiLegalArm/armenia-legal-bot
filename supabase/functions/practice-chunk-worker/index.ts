@@ -27,9 +27,9 @@ const corsHeaders = {
 // Practice docs are court decisions / ECHR judgments.
 // We use fixed-window chunking with overlap, matching the shared chunker's approach.
 
-const MAX_INPUT_CHARS = 80_000;
-const CHUNK_SIZE = 6000;       // ~1500 tokens
-const OVERLAP_CHARS = 800;     // ~200 tokens overlap
+const MAX_INPUT_CHARS = 30_000;  // reduced from 80k to prevent OOM
+const CHUNK_SIZE = 4000;       // ~1000 tokens
+const OVERLAP_CHARS = 600;     // ~150 tokens overlap
 const MIN_CHUNK_SIZE = 200;
 
 function normalizeWhitespace(text: string): string {
@@ -162,8 +162,8 @@ serve(async (req) => {
   try {
     const body = await req.json().catch(() => ({}));
     const concurrencyDocs = Math.min(
-      Number(body.concurrency_docs) || Number(Deno.env.get("CONCURRENCY_DOCS")) || 5,
-      20,
+      Number(body.concurrency_docs) || Number(Deno.env.get("CONCURRENCY_DOCS")) || 2,
+      5,
     );
 
     const supabase = createClient(
