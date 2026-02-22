@@ -69,4 +69,10 @@ verify_jwt = false
 
 [functions.dictionary-import-validate]
 
+[functions.practice-chunk-worker]
+verify_jwt = false
+
+[functions.practice-chunk-enqueue]
+verify_jwt = false
+
 [functions.dictionary-import-run]

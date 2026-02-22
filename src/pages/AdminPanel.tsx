@@ -24,6 +24,7 @@ import { UserFeedback } from "@/components/admin/UserFeedback";
 import { PromptManager } from "@/components/admin/PromptManager";
 import { UsageMonitor } from "@/components/UsageMonitor";
 import { EmbeddingManager } from "@/components/admin/EmbeddingManager";
+import { PracticeChunkManager } from "@/components/admin/PracticeChunkManager";
 import { ErrorLogs } from "@/components/admin/ErrorLogs";
 import { DictionaryImport } from "@/components/admin/DictionaryImport";
 
@@ -111,8 +112,9 @@ const AdminPanel = () => {
           </TabsContent>
 
           {/* Legal Practice KB Tab */}
-          <TabsContent value="practice">
+          <TabsContent value="practice" className="space-y-6">
             <LegalPracticeKB />
+            <PracticeChunkManager />
           </TabsContent>
 
           {/* Users Tab */}
