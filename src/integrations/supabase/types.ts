@@ -1686,6 +1686,56 @@ export type Database = {
           },
         ]
       }
+      practice_chunk_jobs: {
+        Row: {
+          attempts: number
+          completed_at: string | null
+          created_at: string
+          document_id: string
+          id: string
+          job_type: string
+          last_error: string | null
+          max_attempts: number
+          started_at: string | null
+          status: string
+          updated_at: string
+        }
+        Insert: {
+          attempts?: number
+          completed_at?: string | null
+          created_at?: string
+          document_id: string
+          id?: string
+          job_type?: string
+          last_error?: string | null
+          max_attempts?: number
+          started_at?: string | null
+          status?: string
+          updated_at?: string
+        }
+        Update: {
+          attempts?: number
+          completed_at?: string | null
+          created_at?: string
+          document_id?: string
+          id?: string
+          job_type?: string
+          last_error?: string | null
+          max_attempts?: number
+          started_at?: string | null
+          status?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "practice_chunk_jobs_document_id_fkey"
+            columns: ["document_id"]
+            isOneToOne: false
+            referencedRelation: "legal_practice_kb"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       profiles: {
         Row: {
           auditor_id: string | null
