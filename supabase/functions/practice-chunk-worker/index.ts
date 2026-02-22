@@ -3,7 +3,7 @@
  *
  * Background worker that processes practice_chunk_jobs:
  * 1. Picks N pending jobs (configurable concurrency)
- * 2. For each doc: chunks content_text using fixed-window chunker
+ * 2. For each doc: chunks content_text using the shared legal chunker
  * 3. Upserts chunks into the appropriate target table
  * 4. Marks job done or failed with retry+backoff
  *
@@ -17,6 +17,7 @@
 
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.91.1";
+import { chunkDocument, type LegalDocumentInput } from "../_shared/chunker.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -28,104 +29,32 @@ const corsHeaders = {
 };
 
 const MAX_INPUT_CHARS = 30_000;
-const CHUNK_SIZE = 4000;
-const OVERLAP_CHARS = 600;
-const MIN_CHUNK_SIZE = 200;
 
-function normalizeWhitespace(text: string): string {
-  return text
-    .replace(/\r\n/g, "\n")
-    .replace(/\r/g, "\n")
-    .replace(/[ \t]+/g, " ")
-    .replace(/\n{3,}/g, "\n\n")
-    .trim();
-}
+// ─── Map source table to doc_type for chunker ──────────────────────
 
-function simpleHash(text: string): string {
-  let hash = 0;
-  for (let i = 0; i < text.length; i++) {
-    hash = ((hash << 5) - hash) + text.charCodeAt(i);
-    hash |= 0;
-  }
-  return Math.abs(hash).toString(16).padStart(8, "0");
-}
-
-interface ChunkResult {
-  chunk_index: number;
-  chunk_text: string;
-  chunk_hash: string;
-  label: string | null;
-}
-
-function chunkDocument(
-  contentText: string,
-  docTitle: string | null,
-  keyParagraphs: unknown,
-): ChunkResult[] {
-  let sourceText = "";
-
-  if (keyParagraphs && Array.isArray(keyParagraphs) && keyParagraphs.length > 0) {
-    const parts: string[] = [];
-    for (const kp of keyParagraphs) {
-      if (typeof kp === "string") {
-        parts.push(kp);
-      } else if (kp && typeof kp === "object") {
-        const fields = [kp.principle, kp.quote, kp.anchor].filter(Boolean);
-        if (fields.length > 0) parts.push(fields.join("\n"));
-      }
-    }
-    if (parts.join("\n").length > MIN_CHUNK_SIZE) {
-      sourceText = parts.join("\n\n");
-    }
+function inferDocType(doc: Record<string, unknown>, sourceTable: string): string {
+  // For legal_practice_kb, try to infer from practice_category or court_type
+  if (sourceTable === "legal_practice_kb") {
+    const courtType = doc.court_type as string | undefined;
+    if (courtType === "echr") return "echr_judgment";
+    if (courtType === "cassation") return "cassation_ruling";
+    if (courtType === "appeal") return "appeal_ruling";
+    if (courtType === "first_instance") return "first_instance_ruling";
+    if (courtType === "constitutional") return "constitutional_court";
+    return "court_decision";
   }
 
-  if (!sourceText && contentText) {
-    sourceText = contentText;
+  // For knowledge_base, try to infer from category
+  if (sourceTable === "knowledge_base") {
+    const category = doc.category as string | undefined;
+    if (category?.includes("code")) return "code";
+    if (category === "constitution") return "law";
+    if (category === "echr" || category === "echr_judgments") return "echr_judgment";
+    if (category?.includes("cassation")) return "cassation_ruling";
+    return "law"; // default for KB documents
   }
 
-  if (!sourceText || sourceText.trim().length < MIN_CHUNK_SIZE) {
-    return [];
-  }
-
-  sourceText = normalizeWhitespace(sourceText);
-  if (sourceText.length > MAX_INPUT_CHARS) {
-    sourceText = sourceText.substring(0, MAX_INPUT_CHARS);
-  }
-
-  const chunks: ChunkResult[] = [];
-  let pos = 0;
-  let idx = 0;
-
-  while (pos < sourceText.length) {
-    let end = Math.min(pos + CHUNK_SIZE, sourceText.length);
-
-    if (end < sourceText.length) {
-      const lastPara = sourceText.lastIndexOf("\n\n", end);
-      if (lastPara > pos + MIN_CHUNK_SIZE) {
-        end = lastPara;
-      } else {
-        const lastNl = sourceText.lastIndexOf("\n", end);
-        if (lastNl > pos + MIN_CHUNK_SIZE) {
-          end = lastNl;
-        }
-      }
-    }
-
-    const chunkText = sourceText.slice(pos, end).trim();
-    if (chunkText.length >= MIN_CHUNK_SIZE) {
-      chunks.push({
-        chunk_index: idx++,
-        chunk_text: chunkText,
-        chunk_hash: simpleHash(chunkText),
-        label: docTitle,
-      });
-    }
-
-    pos = end > pos ? end - OVERLAP_CHARS : end + 1;
-    if (end >= sourceText.length) break;
-  }
-
-  return chunks;
+  return "other";
 }
 
 // ─── Process a single job ──────────────────────────────────────────
@@ -138,8 +67,8 @@ async function processJob(
 
   // Fetch document from source table
   const selectFields = src === "knowledge_base"
-    ? "id, title, content_text"
-    : "id, title, content_text, key_paragraphs";
+    ? "id, title, content_text, category"
+    : "id, title, content_text, key_paragraphs, court_type, practice_category, case_number_anonymized, decision_date";
 
   const { data: doc, error: docErr } = await supabase
     .from(src)
@@ -151,13 +80,14 @@ async function processJob(
     throw new Error(docErr?.message || "Document not found");
   }
 
-  const chunks = chunkDocument(
-    doc.content_text,
-    doc.title,
-    src === "legal_practice_kb" ? doc.key_paragraphs : null,
-  );
+  let contentText = doc.content_text as string || "";
 
-  if (chunks.length === 0) {
+  // Truncate input to prevent compute errors
+  if (contentText.length > MAX_INPUT_CHARS) {
+    contentText = contentText.substring(0, MAX_INPUT_CHARS);
+  }
+
+  if (!contentText || contentText.trim().length < 100) {
     await supabase
       .from("practice_chunk_jobs")
       .update({
@@ -170,43 +100,60 @@ async function processJob(
     return 0;
   }
 
+  // Use the shared legal chunker
+  const docType = inferDocType(doc, src);
+  const input: LegalDocumentInput = {
+    doc_type: docType,
+    content_text: contentText,
+    title: doc.title as string || undefined,
+    case_number: (doc as Record<string, unknown>).case_number_anonymized as string || undefined,
+  };
+
+  const result = chunkDocument(input);
+
+  if (result.chunks.length === 0) {
+    await supabase
+      .from("practice_chunk_jobs")
+      .update({
+        status: "done",
+        attempts: attempt,
+        completed_at: new Date().toISOString(),
+        last_error: "No chunkable content (chunker returned 0 chunks)",
+      })
+      .eq("id", job.id);
+    return 0;
+  }
+
   // Route to correct chunks table
   if (src === "knowledge_base") {
-    // knowledge_base_chunks schema: kb_id, chunk_index, chunk_text, chunk_hash, chunk_type, char_start, char_end, label
     await supabase
       .from("knowledge_base_chunks")
       .delete()
       .eq("kb_id", job.document_id);
 
-    let charPos = 0;
-    const rows = chunks.map((c) => {
-      const row = {
-        kb_id: job.document_id,
-        chunk_index: c.chunk_index,
-        chunk_text: c.chunk_text,
-        chunk_hash: c.chunk_hash,
-        chunk_type: "article",
-        char_start: charPos,
-        char_end: charPos + c.chunk_text.length,
-        label: c.label,
-        is_active: true,
-      };
-      charPos += c.chunk_text.length;
-      return row;
-    });
+    const rows = result.chunks.map((c) => ({
+      kb_id: job.document_id,
+      chunk_index: c.chunk_index,
+      chunk_text: c.chunk_text,
+      chunk_hash: c.chunk_hash,
+      chunk_type: c.chunk_type,
+      char_start: c.char_start,
+      char_end: c.char_end,
+      label: c.label,
+      is_active: true,
+    }));
 
     const { error: insertErr } = await supabase
       .from("knowledge_base_chunks")
       .insert(rows);
     if (insertErr) throw insertErr;
   } else {
-    // legal_practice_kb_chunks schema: doc_id, chunk_index, chunk_text, chunk_hash, title
     await supabase
       .from("legal_practice_kb_chunks")
       .delete()
       .eq("doc_id", job.document_id);
 
-    const rows = chunks.map((c) => ({
+    const rows = result.chunks.map((c) => ({
       doc_id: job.document_id,
       chunk_index: c.chunk_index,
       chunk_text: c.chunk_text,
@@ -230,7 +177,7 @@ async function processJob(
     })
     .eq("id", job.id);
 
-  return chunks.length;
+  return result.chunks.length;
 }
 
 // ─── Main handler ──────────────────────────────────────────────────
@@ -258,7 +205,7 @@ serve(async (req) => {
 
   try {
     const body = await req.json().catch(() => ({}));
-    const sourceFilter = body.source_table || null; // optional filter
+    const sourceFilter = body.source_table || null;
     const concurrencyDocs = Math.min(
       Number(body.concurrency_docs) || Number(Deno.env.get("CONCURRENCY_DOCS")) || 2,
       5,
