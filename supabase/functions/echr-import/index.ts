@@ -169,9 +169,50 @@ serve(async (req) => {
 
     let processed = 0;
     let inserted = 0;
+    let skipped = 0;
     let errors = 0;
     const insertedIds: string[] = [];
     const errorDetails: Array<{ title: string; error: string }> = [];
+
+    // ── Pre-fetch existing echr_case_ids and content_hashes for dedup ──
+    const stableIds = batchCases
+      .map((c) => getStableId(c))
+      .filter((id): id is string => !!id);
+
+    const existingEchrIds = new Set<string>();
+    if (stableIds.length > 0) {
+      const { data: existing } = await supabaseService
+        .from("legal_practice_kb")
+        .select("echr_case_id")
+        .in("echr_case_id", stableIds);
+      if (existing) {
+        for (const row of existing) {
+          if (row.echr_case_id) existingEchrIds.add(row.echr_case_id);
+        }
+      }
+    }
+
+    // Also collect content hashes for cases without stable IDs
+    async function computeHash(text: string): Promise<string> {
+      const encoder = new TextEncoder();
+      const data = encoder.encode(text);
+      const hashBuffer = await crypto.subtle.digest("SHA-256", data);
+      const hashArray = Array.from(new Uint8Array(hashBuffer));
+      return hashArray.map((b) => b.toString(16).padStart(2, "0")).join("");
+    }
+
+    const existingHashes = new Set<string>();
+    // Fetch recent content hashes to avoid duplicates for non-ECHR cases
+    const { data: hashRows } = await supabaseService
+      .from("legal_practice_kb")
+      .select("content_hash")
+      .not("content_hash", "is", null)
+      .limit(10000);
+    if (hashRows) {
+      for (const row of hashRows) {
+        if (row.content_hash) existingHashes.add(row.content_hash);
+      }
+    }
 
     // Process cases in parallel (up to 5 concurrently)
     const CONCURRENCY = 5;
@@ -181,6 +222,13 @@ serve(async (req) => {
       const results = await Promise.all(chunk.map(async (caseObj) => {
         try {
           const stableId = getStableId(caseObj);
+
+          // ── Dedup by echr_case_id ──
+          if (stableId && existingEchrIds.has(stableId)) {
+            const title = String(caseObj.docname || caseObj.title || caseObj.case_name || stableId).slice(0, 200);
+            return { ok: true, skipped: true, title };
+          }
+
           const title = String(
             caseObj.docname || caseObj.title || caseObj.case_name || `ECHR-${stableId ?? "unknown"}`
           ).replace(/^_+/, "").slice(0, 500);
@@ -189,6 +237,12 @@ serve(async (req) => {
           const contentText = rawText.replace(/\u0000/g, "").slice(0, 500000);
 
           if (!contentText) return { ok: false, title, error: "No extractable text content" };
+
+          // ── Dedup by content_hash ──
+          const contentHash = await computeHash(contentText);
+          if (existingHashes.has(contentHash)) {
+            return { ok: true, skipped: true, title };
+          }
 
           const violations = extractViolations(caseObj);
           const echrArticles = extractArticles(caseObj);
@@ -218,6 +272,7 @@ serve(async (req) => {
           const row: Record<string, unknown> = {
             title,
             content_text: contentText,
+            content_hash: contentHash,
             practice_category: practiceCategory,
             court_type: "echr",
             outcome: mapOutcome(outcomeRaw),
@@ -235,28 +290,18 @@ serve(async (req) => {
 
           if (stableId) row.echr_case_id = stableId;
 
-          const upsertOptions = stableId ? { onConflict: "echr_case_id" } : undefined;
+          const { data: ins, error: insertErr } = await supabaseService
+            .from("legal_practice_kb")
+            .insert(row)
+            .select("id")
+            .single();
+          if (insertErr) throw insertErr;
 
-          let insertedId: string | null = null;
-          if (upsertOptions) {
-            const { data: upserted, error: upsertErr } = await supabaseService
-              .from("legal_practice_kb")
-              .upsert(row, upsertOptions)
-              .select("id")
-              .single();
-            if (upsertErr) throw upsertErr;
-            insertedId = upserted?.id ?? null;
-          } else {
-            const { data: ins, error: insertErr } = await supabaseService
-              .from("legal_practice_kb")
-              .insert(row)
-              .select("id")
-              .single();
-            if (insertErr) throw insertErr;
-            insertedId = ins?.id ?? null;
-          }
+          // Track new hashes/ids to avoid intra-batch duplicates
+          existingHashes.add(contentHash);
+          if (stableId) existingEchrIds.add(stableId);
 
-          return { ok: true, insertedId };
+          return { ok: true, insertedId: ins?.id ?? null };
         } catch (e) {
           const errMsg = e instanceof Error ? e.message : String(e);
           const caseTitle = String(caseObj.docname || caseObj.title || caseObj.case_name || "Unknown").slice(0, 200);
@@ -267,7 +312,9 @@ serve(async (req) => {
 
       for (const r of results) {
         processed++;
-        if (r.ok && (r as { insertedId?: string }).insertedId) {
+        if (r.ok && (r as { skipped?: boolean }).skipped) {
+          skipped++;
+        } else if (r.ok && (r as { insertedId?: string }).insertedId) {
           inserted++;
           insertedIds.push((r as { insertedId: string }).insertedId);
         } else if (!r.ok) {
@@ -283,6 +330,7 @@ serve(async (req) => {
       total: batchCases.length,
       batchProcessed: processed,
       inserted,
+      skipped,
       errors,
       insertedIds,
       errorDetails: errorDetails.length > 0 ? errorDetails : undefined,
