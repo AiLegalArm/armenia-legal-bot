@@ -170,6 +170,9 @@ serve(async (req) => {
     let processed = 0;
     let inserted = 0;
     let skipped = 0;
+    let skippedById = 0;
+    let skippedByHash = 0;
+    let skippedNoText = 0;
     let errors = 0;
     const insertedIds: string[] = [];
     const errorDetails: Array<{ title: string; error: string }> = [];
@@ -226,7 +229,7 @@ serve(async (req) => {
           // ── Dedup by echr_case_id ──
           if (stableId && existingEchrIds.has(stableId)) {
             const title = String(caseObj.docname || caseObj.title || caseObj.case_name || stableId).slice(0, 200);
-            return { ok: true, skipped: true, title };
+            return { ok: true, skipped: true, skipReason: "duplicate_id", title };
           }
 
           const title = String(
@@ -236,12 +239,12 @@ serve(async (req) => {
           const rawText = extractCaseText(caseObj);
           const contentText = rawText.replace(/\u0000/g, "").slice(0, 500000);
 
-          if (!contentText) return { ok: false, title, error: "No extractable text content" };
+          if (!contentText) return { ok: true, skipped: true, skipReason: "no_text", title };
 
           // ── Dedup by content_hash ──
           const contentHash = await computeHash(contentText);
           if (existingHashes.has(contentHash)) {
-            return { ok: true, skipped: true, title };
+            return { ok: true, skipped: true, skipReason: "duplicate_hash", title };
           }
 
           const violations = extractViolations(caseObj);
@@ -314,6 +317,10 @@ serve(async (req) => {
         processed++;
         if (r.ok && (r as { skipped?: boolean }).skipped) {
           skipped++;
+          const reason = (r as { skipReason?: string }).skipReason;
+          if (reason === "duplicate_id") skippedById++;
+          else if (reason === "duplicate_hash") skippedByHash++;
+          else if (reason === "no_text") skippedNoText++;
         } else if (r.ok && (r as { insertedId?: string }).insertedId) {
           inserted++;
           insertedIds.push((r as { insertedId: string }).insertedId);
@@ -331,6 +338,9 @@ serve(async (req) => {
       batchProcessed: processed,
       inserted,
       skipped,
+      skippedById,
+      skippedByHash,
+      skippedNoText,
       errors,
       insertedIds,
       errorDetails: errorDetails.length > 0 ? errorDetails : undefined,

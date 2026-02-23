@@ -38,6 +38,9 @@ interface ImportStats {
   processed: number;
   inserted: number;
   skipped: number;
+  skippedById: number;
+  skippedByHash: number;
+  skippedNoText: number;
   errors: number;
   parseSkipped: number;
 }
@@ -152,10 +155,10 @@ export function EchrImportWizard({ open, onOpenChange, onSuccess }: EchrImportWi
   const [error, setError] = useState<string | null>(null);
 
   const [practiceCategory, setPracticeCategory] = useState("echr");
-  const BATCH_SIZE = 3;
+  const BATCH_SIZE = 20;
 
   const [stats, setStats] = useState<ImportStats>({
-    total: 0, processed: 0, inserted: 0, skipped: 0, errors: 0, parseSkipped: 0,
+    total: 0, processed: 0, inserted: 0, skipped: 0, skippedById: 0, skippedByHash: 0, skippedNoText: 0, errors: 0, parseSkipped: 0,
   });
 
   const [errorDetails, setErrorDetails] = useState<Array<{ title: string; error: string }>>([]);
@@ -250,11 +253,14 @@ export function EchrImportWizard({ open, onOpenChange, onSuccess }: EchrImportWi
     let processed = 0;
     let inserted = 0;
     let importSkipped = 0;
+    let importSkippedById = 0;
+    let importSkippedByHash = 0;
+    let importSkippedNoText = 0;
     let importErrors = 0;
     let consecutiveErrors = 0;
     const MAX_CONSECUTIVE_ERRORS = 5;
 
-    setStats({ total, processed: 0, inserted: 0, skipped: 0, errors: 0, parseSkipped });
+    setStats({ total, processed: 0, inserted: 0, skipped: 0, skippedById: 0, skippedByHash: 0, skippedNoText: 0, errors: 0, parseSkipped });
 
     for (let batchIdx = 0; batchIdx < total; batchIdx += BATCH_SIZE) {
       if (abortRef.current) break;
@@ -282,6 +288,9 @@ export function EchrImportWizard({ open, onOpenChange, onSuccess }: EchrImportWi
           processed += data.batchProcessed ?? BATCH_SIZE;
           inserted += data.inserted ?? 0;
           importSkipped += data.skipped ?? 0;
+          importSkippedById += data.skippedById ?? 0;
+          importSkippedByHash += data.skippedByHash ?? 0;
+          importSkippedNoText += data.skippedNoText ?? 0;
           importErrors += data.errors ?? 0;
 
           if (Array.isArray(data.errorDetails)) {
@@ -290,7 +299,7 @@ export function EchrImportWizard({ open, onOpenChange, onSuccess }: EchrImportWi
 
           consecutiveErrors = 0;
           batchOk = true;
-          setStats({ total, processed, inserted, skipped: importSkipped, errors: importErrors, parseSkipped });
+          setStats({ total, processed, inserted, skipped: importSkipped, skippedById: importSkippedById, skippedByHash: importSkippedByHash, skippedNoText: importSkippedNoText, errors: importErrors, parseSkipped });
           break;
         } catch (err) {
           console.error(`Batch ${batchIdx} error:`, err);
@@ -302,7 +311,7 @@ export function EchrImportWizard({ open, onOpenChange, onSuccess }: EchrImportWi
         consecutiveErrors++;
         importErrors += BATCH_SIZE;
         processed += BATCH_SIZE;
-        setStats({ total, processed, inserted, skipped: importSkipped, errors: importErrors, parseSkipped });
+        setStats({ total, processed, inserted, skipped: importSkipped, skippedById: importSkippedById, skippedByHash: importSkippedByHash, skippedNoText: importSkippedNoText, errors: importErrors, parseSkipped });
       }
 
       await new Promise((r) => setTimeout(r, 200));
@@ -326,7 +335,7 @@ export function EchrImportWizard({ open, onOpenChange, onSuccess }: EchrImportWi
     setParsedCases([]);
     setParseSkipped(0);
     setError(null);
-    setStats({ total: 0, processed: 0, inserted: 0, skipped: 0, errors: 0, parseSkipped: 0 });
+    setStats({ total: 0, processed: 0, inserted: 0, skipped: 0, skippedById: 0, skippedByHash: 0, skippedNoText: 0, errors: 0, parseSkipped: 0 });
     onOpenChange(false);
   }, [onOpenChange]);
 
@@ -481,8 +490,8 @@ export function EchrImportWizard({ open, onOpenChange, onSuccess }: EchrImportWi
                   <p className="font-mono font-bold text-primary">{stats.inserted}</p>
                   <p className="text-muted-foreground">{"\u0546\u0565\u0580\u0574\u0578\u0582\u056E\u057E\u0561\u056E"}</p>
                 </div>
-                <div className="rounded border bg-yellow-500/10 p-2">
-                  <p className="font-mono font-bold text-yellow-600">{stats.skipped}</p>
+                <div className="rounded border bg-accent p-2">
+                  <p className="font-mono font-bold text-accent-foreground">{stats.skipped}</p>
                   <p className="text-muted-foreground">{"\u0532\u0561\u0581 \u0569\u0578\u0572\u057E\u0561\u056E"}</p>
                 </div>
                 <div className="rounded border bg-destructive/10 p-2">
@@ -494,6 +503,32 @@ export function EchrImportWizard({ open, onOpenChange, onSuccess }: EchrImportWi
                   <p className="text-muted-foreground">{"\u054A\u0561\u0580\u057D. \u0562\u0561\u0581"}</p>
                 </div>
               </div>
+
+              {stats.skipped > 0 && (
+                <div className="rounded border bg-muted/40 p-2 text-xs space-y-1">
+                  <p className="font-semibold text-muted-foreground">{"\u0532\u0561\u0581 \u0569\u0578\u0572\u057E\u0561\u056E\u056B \u057A\u0561\u057F\u0573\u0561\u057C\u0576\u0565\u0580"}:</p>
+                  <div className="flex flex-wrap gap-3">
+                    {stats.skippedById > 0 && (
+                      <span className="flex items-center gap-1">
+                        <span className="font-mono font-bold">{stats.skippedById}</span>
+                        <span className="text-muted-foreground">{"\u056F\u0580\u056F\u0576\u0578\u0580\u0564 ID"}</span>
+                      </span>
+                    )}
+                    {stats.skippedByHash > 0 && (
+                      <span className="flex items-center gap-1">
+                        <span className="font-mono font-bold">{stats.skippedByHash}</span>
+                        <span className="text-muted-foreground">{"\u056F\u0580\u056F\u0576\u0578\u0580\u0564 \u0562\u0578\u057E\u0561\u0576\u0564"}</span>
+                      </span>
+                    )}
+                    {stats.skippedNoText > 0 && (
+                      <span className="flex items-center gap-1">
+                        <span className="font-mono font-bold">{stats.skippedNoText}</span>
+                        <span className="text-muted-foreground">{"\u0564\u0561\u057F\u0561\u0580\u056F \u057F\u0565\u0584\u057D\u057F"}</span>
+                      </span>
+                    )}
+                  </div>
+                </div>
+              )}
 
               {errorDetails.length > 0 && (
                 <div className="mt-3 space-y-1">
