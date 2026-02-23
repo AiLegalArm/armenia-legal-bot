@@ -1,6 +1,6 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.91.1";
-import { handleCors, checkInternalAuth } from "../_shared/edge-security.ts";
+import { handleCors, checkInternalAuth, callInternalFunction } from "../_shared/edge-security.ts";
 
 // Language-specific templates
 const templates = {
@@ -134,19 +134,18 @@ serve(async (req) => {
           .replace("{description}", reminder.description || "");
 
         try {
-          const response = await fetch(`${supabaseUrl}/functions/v1/send-telegram-notification`, {
-            method: "POST",
-            headers: {
-              "Content-Type": "application/json",
-              "Authorization": `Bearer ${supabaseServiceKey}`,
-              "x-internal-key": Deno.env.get("INTERNAL_INGEST_KEY") || "",
-            },
-            body: JSON.stringify({
+          const response = await callInternalFunction(
+            `${supabaseUrl}/functions/v1/send-telegram-notification`,
+            {
               chatId: profile.telegram_chat_id,
               message,
               parseMode: "HTML",
-            }),
-          });
+            },
+            {
+              extraHeaders: { Authorization: `Bearer ${supabaseServiceKey}` },
+              timeoutMs: 15_000,
+            },
+          );
 
           if (response.ok) {
             totalSent++;

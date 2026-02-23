@@ -14,7 +14,7 @@
 
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.49.4";
-import { handleCors, checkInternalAuth, checkInputSize } from "../_shared/edge-security.ts";
+import { handleCors, checkInternalAuth, checkInputSize, callInternalFunction } from "../_shared/edge-security.ts";
 import {
   normalizeText,
   chunkDoc,
@@ -166,16 +166,11 @@ serve(async (req) => {
     // ── Step 5: Trigger table screenshot processing (async, non-blocking) ──
     const hasTableChunks = chunkRows.some(c => c.chunk_type === "table");
     if (hasTableChunks) {
-      const internalKey = Deno.env.get("INTERNAL_API_KEY") || Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || "";
-      fetch(`${supabaseUrl}/functions/v1/kb-table-screenshots`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "x-internal-key": internalKey,
-        },
-        body: JSON.stringify({ docId }),
-      }).catch((e) => {
-        console.error("Failed to trigger table screenshots:", e);
+      callInternalFunction(
+        `${supabaseUrl}/functions/v1/kb-table-screenshots`,
+        { docId },
+      ).catch((e) => {
+        console.error("[ingest-document] Failed to trigger table screenshots:", e instanceof Error ? e.message : String(e));
       });
     }
 
