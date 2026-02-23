@@ -351,14 +351,27 @@ export function EchrImportWizard({ open, onOpenChange, onSuccess }: EchrImportWi
               <Files className="h-4 w-4" />
               {"\u0556\u0561\u0575\u056C (.json / .jsonl / .txt) \u2014 \u056F\u0561\u0580\u0565\u056C\u056B \u0567 \u0574\u056B \u0584\u0561\u0576\u056B \u0586\u0561\u0575\u056C"}
             </Label>
-            <Input
+            <input
               ref={fileInputRef}
               type="file"
               accept=".json,.jsonl,.txt"
               multiple
               onChange={handleFileSelect}
               disabled={isRunning}
+              className="hidden"
             />
+            <Button
+              type="button"
+              variant="outline"
+              className="w-full justify-start gap-2"
+              disabled={isRunning}
+              onClick={() => fileInputRef.current?.click()}
+            >
+              <Upload className="h-4 w-4" />
+              {fileEntries.length > 0
+                ? `${"\u0538\u0576\u057F\u0580\u057E\u0561\u056E \u0567"} ${fileEntries.length} ${"\u0586\u0561\u0575\u056C"}`
+                : "\u0538\u0576\u057F\u0580\u0565\u056C \u0586\u0561\u0575\u056C\u0565\u0580"}
+            </Button>
 
             {status === "parsing" && parseProgress && (
               <div className="space-y-1.5">
