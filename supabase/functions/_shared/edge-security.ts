@@ -6,10 +6,14 @@
  *   2) INTERNAL — No Origin needed; validated via `x-internal-key` header
  *      against INTERNAL_INGEST_KEY secret. Server-to-server calls use this.
  *
- * Header Contract for Internal Calls:
- *   x-internal-key: <value of INTERNAL_INGEST_KEY secret>
- *   Content-Type:   application/json
- *   (Authorization is optional — for service_role JWT if needed by Supabase client)
+ * Internal Call Header Contract:
+ *   REQUIRED:
+ *     x-internal-key : <value of INTERNAL_INGEST_KEY secret>
+ *     x-request-id   : <unique request identifier for tracing>
+ *     content-type   : application/json
+ *   OPTIONAL (audit only — NOT used for auth):
+ *     x-user-id      : <original user id if available>
+ *     authorization  : Bearer <service_role JWT> (if Supabase client needed)
  *
  * Env vars:
  *   ALLOWED_ORIGINS        – comma-separated allowlist (REQUIRED in prod for browser)
@@ -43,6 +47,14 @@ export function isValidInternalCall(req: Request): boolean {
   if (!secret) return false;
   const provided = req.headers.get("x-internal-key");
   return !!provided && provided === secret;
+}
+
+/**
+ * Determine request mode: "internal" if valid x-internal-key present,
+ * "browser" otherwise. Use this for routing logic.
+ */
+export function getRequestMode(req: Request): "browser" | "internal" {
+  return isValidInternalCall(req) ? "internal" : "browser";
 }
 
 // ─── CORS ALLOWLIST ────────────────────────────────────────────────
@@ -257,19 +269,71 @@ export function checkInputSize(
   return null;
 }
 
-// ─── INTERNAL CALL HEADER BUILDER ──────────────────────────────────
+// ─── INTERNAL CALL HELPERS ─────────────────────────────────────────
+
+/** Generate a short unique request ID for tracing */
+function generateRequestId(): string {
+  return `req_${Date.now().toString(36)}_${Math.random().toString(36).substring(2, 8)}`;
+}
 
 /**
  * Build headers for server-to-server calls between Edge Functions.
- * Usage:
- *   const headers = buildInternalHeaders();
- *   fetch(`${supabaseUrl}/functions/v1/vector-search`, { headers, ... });
+ * Includes: x-internal-key, x-request-id, content-type.
+ * Optionally pass x-user-id for audit (NOT used for auth).
  */
 export function buildInternalHeaders(extraHeaders?: Record<string, string>): Record<string, string> {
   const key = Deno.env.get("INTERNAL_INGEST_KEY") || "";
   return {
     "Content-Type": "application/json",
     "x-internal-key": key,
+    "x-request-id": generateRequestId(),
     ...extraHeaders,
   };
+}
+
+/**
+ * Make a server-to-server call to another Edge Function.
+ * Automatically adds x-internal-key, x-request-id, content-type.
+ *
+ * @param url      Full URL (e.g. `${supabaseUrl}/functions/v1/vector-search`)
+ * @param body     JSON-serializable body
+ * @param options  Optional: extra headers, userId for audit, timeout
+ * @returns        fetch Response
+ *
+ * Usage:
+ *   const res = await callInternalFunction(
+ *     `${Deno.env.get("SUPABASE_URL")}/functions/v1/vector-search`,
+ *     { query: "test", tables: "both" },
+ *     { userId: "abc-123" }
+ *   );
+ */
+export async function callInternalFunction(
+  url: string,
+  body: unknown,
+  options?: {
+    extraHeaders?: Record<string, string>;
+    userId?: string;
+    timeoutMs?: number;
+  },
+): Promise<Response> {
+  const extra: Record<string, string> = { ...options?.extraHeaders };
+  if (options?.userId) {
+    extra["x-user-id"] = options.userId;
+  }
+  const headers = buildInternalHeaders(extra);
+
+  const controller = new AbortController();
+  const timeoutMs = options?.timeoutMs ?? 30_000;
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+
+  try {
+    return await fetch(url, {
+      method: "POST",
+      headers,
+      body: JSON.stringify(body),
+      signal: controller.signal,
+    });
+  } finally {
+    clearTimeout(timer);
+  }
 }

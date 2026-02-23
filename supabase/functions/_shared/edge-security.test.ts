@@ -17,6 +17,7 @@ import {
   checkInputSize,
   getMaxInputChars,
   isValidInternalCall,
+  getRequestMode,
   validateBrowserRequest,
   validateInternalRequest,
   buildInternalHeaders,
@@ -382,5 +383,52 @@ Deno.test("INTEGRATION: browser from disallowed origin -> 403", async () => {
     assertExists(result.errorResponse);
     assertEquals(result.errorResponse!.status, 403);
     await result.errorResponse!.text();
+  });
+});
+
+// ─── getRequestMode ────────────────────────────────────────────────
+
+Deno.test("getRequestMode: valid internal key -> 'internal'", () => {
+  return withEnv({ INTERNAL_INGEST_KEY: "secret-123" }, () => {
+    const req = new Request("https://example.com", {
+      method: "POST",
+      headers: { "x-internal-key": "secret-123" },
+    });
+    assertEquals(getRequestMode(req), "internal");
+  });
+});
+
+Deno.test("getRequestMode: no key -> 'browser'", () => {
+  return withEnv({ INTERNAL_INGEST_KEY: "secret-123" }, () => {
+    const req = new Request("https://example.com", { method: "POST" });
+    assertEquals(getRequestMode(req), "browser");
+  });
+});
+
+Deno.test("getRequestMode: wrong key -> 'browser'", () => {
+  return withEnv({ INTERNAL_INGEST_KEY: "secret-123" }, () => {
+    const req = new Request("https://example.com", {
+      method: "POST",
+      headers: { "x-internal-key": "wrong" },
+    });
+    assertEquals(getRequestMode(req), "browser");
+  });
+});
+
+// ─── buildInternalHeaders: x-request-id ────────────────────────────
+
+Deno.test("buildInternalHeaders: includes x-request-id", () => {
+  return withEnv({ INTERNAL_INGEST_KEY: "my-key" }, () => {
+    const headers = buildInternalHeaders();
+    assertExists(headers["x-request-id"]);
+    assertEquals(headers["x-request-id"].startsWith("req_"), true);
+  });
+});
+
+Deno.test("buildInternalHeaders: x-request-id is unique per call", () => {
+  return withEnv({ INTERNAL_INGEST_KEY: "my-key" }, () => {
+    const h1 = buildInternalHeaders();
+    const h2 = buildInternalHeaders();
+    assertEquals(h1["x-request-id"] !== h2["x-request-id"], true);
   });
 });
