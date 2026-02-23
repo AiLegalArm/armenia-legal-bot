@@ -47,11 +47,15 @@ export interface VectorSearchResponse {
   kb: KBSearchResult[];
   practice: PracticeSearchResult[];
   /** Telemetry: which retrieval methods produced results */
-  retrieval_mode?: "semantic+keyword" | "keyword_only" | "rpc_fallback";
-  /** If semantic retrieval failed, contains the error message */
-  semantic_error?: string;
-  /** Whether semantic (AI rerank) succeeded */
+  retrieval_mode?: "keyword+rerank" | "keyword_only" | "rpc_fallback";
+  /** Whether AI reranking succeeded */
+  rerank_ok?: boolean;
+  /** Error message if AI reranking failed */
+  rerank_error?: string;
+  /** @deprecated Use retrieval_mode (kept for backward compat in logs) */
   semantic_ok?: boolean;
+  /** @deprecated Use rerank_error */
+  semantic_error?: string;
   /** Request tracing ID */
   request_id?: string;
 }

@@ -5,7 +5,7 @@ import { handleCors, checkInternalAuth } from "../_shared/edge-security.ts";
 
 /**
  * Hybrid search: keyword (ILIKE + RPC) → AI reranking via Gemini Flash.
- * Returns { kb, practice, retrieval_mode, semantic_ok, semantic_error }.
+ * Returns { kb, practice, retrieval_mode, rerank_ok, rerank_error }.
  */
 serve(async (req) => {
   const cors = handleCors(req);
@@ -40,8 +40,8 @@ serve(async (req) => {
     const results: { kb: unknown[]; practice: unknown[] } = { kb: [], practice: [] };
 
     // Telemetry tracking
-    let semanticOk = true;
-    let semanticError: string | undefined;
+    let rerankOk = true;
+    let rerankError: string | undefined;
     let kbCandidateCount = 0;
     let practiceCandidateCount = 0;
     let rerankUsed = false;
@@ -56,17 +56,17 @@ serve(async (req) => {
             results.kb = await rerankWithAI(query, candidates, safeLimit, LOVABLE_API_KEY);
             rerankUsed = true;
           } catch (rerankErr) {
-            semanticOk = false;
-            semanticError = `KB rerank failed: ${rerankErr instanceof Error ? rerankErr.message : String(rerankErr)}`;
-            warn("vector-search", semanticError, { requestId });
+            rerankOk = false;
+            rerankError = `KB rerank failed: ${rerankErr instanceof Error ? rerankErr.message : String(rerankErr)}`;
+            warn("vector-search", rerankError, { requestId });
             // Fallback: return unranked candidates
             results.kb = candidates.slice(0, safeLimit);
           }
         }
       } catch (kbErr) {
         err("vector-search", "KB search failed", { error: kbErr, requestId });
-        semanticOk = false;
-        semanticError = `KB search error: ${kbErr instanceof Error ? kbErr.message : String(kbErr)}`;
+        rerankOk = false;
+        rerankError = `KB search error: ${kbErr instanceof Error ? kbErr.message : String(kbErr)}`;
       }
     }
 
@@ -80,24 +80,24 @@ serve(async (req) => {
             results.practice = await rerankWithAI(query, candidates, safeLimit, LOVABLE_API_KEY);
             rerankUsed = true;
           } catch (rerankErr) {
-            semanticOk = false;
+            rerankOk = false;
             const msg = `Practice rerank failed: ${rerankErr instanceof Error ? rerankErr.message : String(rerankErr)}`;
-            semanticError = semanticError ? `${semanticError}; ${msg}` : msg;
+            rerankError = rerankError ? `${rerankError}; ${msg}` : msg;
             warn("vector-search", msg, { requestId });
             results.practice = candidates.slice(0, safeLimit);
           }
         }
       } catch (practiceErr) {
         err("vector-search", "Practice search failed", { error: practiceErr, requestId });
-        semanticOk = false;
+        rerankOk = false;
         const msg = `Practice search error: ${practiceErr instanceof Error ? practiceErr.message : String(practiceErr)}`;
-        semanticError = semanticError ? `${semanticError}; ${msg}` : msg;
+        rerankError = rerankError ? `${rerankError}; ${msg}` : msg;
       }
     }
 
     // Determine retrieval mode
     const retrievalMode = rerankUsed
-      ? "semantic+keyword" as const
+      ? "keyword+rerank" as const
       : (kbCandidateCount > 0 || practiceCandidateCount > 0)
         ? "keyword_only" as const
         : "rpc_fallback" as const;
@@ -105,7 +105,7 @@ serve(async (req) => {
     log("vector-search", "Search complete", {
       requestId,
       retrieval_mode: retrievalMode,
-      semantic_ok: semanticOk,
+      rerank_ok: rerankOk,
       kb_results: results.kb.length,
       practice_results: results.practice.length,
       kb_candidates: kbCandidateCount,
@@ -116,8 +116,11 @@ serve(async (req) => {
       JSON.stringify({
         ...results,
         retrieval_mode: retrievalMode,
-        semantic_ok: semanticOk,
-        semantic_error: semanticError || undefined,
+        rerank_ok: rerankOk,
+        rerank_error: rerankError || undefined,
+        // Backward compat aliases
+        semantic_ok: rerankOk,
+        semantic_error: rerankError || undefined,
         request_id: requestId,
       }),
       { headers: { ...corsHeaders, "Content-Type": "application/json" } }
@@ -130,6 +133,8 @@ serve(async (req) => {
         kb: [],
         practice: [],
         retrieval_mode: "keyword_only",
+        rerank_ok: false,
+        rerank_error: error instanceof Error ? error.message : "Unknown error",
         semantic_ok: false,
         semantic_error: error instanceof Error ? error.message : "Unknown error",
         request_id: requestId,

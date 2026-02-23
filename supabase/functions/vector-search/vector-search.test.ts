@@ -4,7 +4,8 @@
  * Tests the deployed vector-search Edge Function end-to-end:
  * 1. Valid internal call → 200 with telemetry fields
  * 2. Missing auth → rejected
- * 3. Response includes retrieval_mode, semantic_ok, request_id
+ * 3. Response includes retrieval_mode, rerank_ok, request_id
+ *    (semantic_ok/semantic_error kept as backward-compat aliases)
  *
  * Run: deno test --allow-net --allow-env supabase/functions/vector-search/vector-search.test.ts
  */
@@ -53,20 +54,22 @@ Deno.test("vector-search: internal call with valid key returns telemetry fields"
 
   const data = await response.json();
 
-  // Must have telemetry fields
+  // Must have canonical telemetry fields
   assertExists(data.retrieval_mode, "Missing retrieval_mode");
-  assertEquals(typeof data.semantic_ok, "boolean", "semantic_ok must be boolean");
+  assertEquals(typeof data.rerank_ok, "boolean", "rerank_ok must be boolean");
   assertExists(data.request_id, "Missing request_id");
+  // Backward compat aliases
+  assertEquals(typeof data.semantic_ok, "boolean", "semantic_ok (compat) must be boolean");
 
   // Must have results arrays
   assertExists(data.kb, "Missing kb array");
   assertEquals(Array.isArray(data.kb), true);
 
   console.log("[TEST] retrieval_mode:", data.retrieval_mode);
-  console.log("[TEST] semantic_ok:", data.semantic_ok);
+  console.log("[TEST] rerank_ok:", data.rerank_ok);
   console.log("[TEST] kb results:", data.kb.length);
-  if (data.semantic_error) {
-    console.log("[TEST] semantic_error:", data.semantic_error);
+  if (data.rerank_error) {
+    console.log("[TEST] rerank_error:", data.rerank_error);
   }
 });
 
@@ -127,15 +130,17 @@ Deno.test("vector-search: response shape matches contract", async () => {
   assertEquals(Array.isArray(data.kb), true, "kb must be array");
   assertEquals(Array.isArray(data.practice), true, "practice must be array");
   assertEquals(
-    ["semantic+keyword", "keyword_only", "rpc_fallback"].includes(data.retrieval_mode),
+    ["keyword+rerank", "keyword_only", "rpc_fallback"].includes(data.retrieval_mode),
     true,
     `Invalid retrieval_mode: ${data.retrieval_mode}`,
   );
-  assertEquals(typeof data.semantic_ok, "boolean");
+  assertEquals(typeof data.rerank_ok, "boolean");
   assertEquals(typeof data.request_id, "string");
+  // Backward compat
+  assertEquals(typeof data.semantic_ok, "boolean");
 
-  // If semantic failed, error field must be present
-  if (!data.semantic_ok) {
-    assertExists(data.semantic_error, "semantic_error must be present when semantic_ok=false");
+  // If rerank failed, error field must be present
+  if (!data.rerank_ok) {
+    assertExists(data.rerank_error, "rerank_error must be present when rerank_ok=false");
   }
 });
