@@ -1,12 +1,11 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.91.1";
-import { log, err } from "../_shared/safe-logger.ts";
+import { log, warn, err } from "../_shared/safe-logger.ts";
 import { handleCors, checkInternalAuth } from "../_shared/edge-security.ts";
 
 /**
  * Hybrid search: keyword (ILIKE + RPC) → AI reranking via Gemini Flash.
- * Drop-in replacement for the old embedding-based vector-search.
- * Returns the same { kb: [...], practice: [...] } shape.
+ * Returns { kb, practice, retrieval_mode, semantic_ok, semantic_error }.
  */
 serve(async (req) => {
   const cors = handleCors(req);
@@ -15,6 +14,8 @@ serve(async (req) => {
 
   const authErr = checkInternalAuth(req, corsHeaders);
   if (authErr) return authErr;
+
+  const requestId = req.headers.get("x-request-id") || crypto.randomUUID();
 
   try {
     const { query, tables = "both", category, limit = 10, threshold: _threshold, reference_date } = await req.json();
@@ -34,37 +35,105 @@ serve(async (req) => {
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
     const safeLimit = Math.min(Math.max(Number(limit) || 10, 1), 30);
-    // Fetch more candidates for reranking (3x the desired limit)
     const candidateLimit = Math.min(safeLimit * 3, 50);
 
     const results: { kb: unknown[]; practice: unknown[] } = { kb: [], practice: [] };
 
+    // Telemetry tracking
+    let semanticOk = true;
+    let semanticError: string | undefined;
+    let kbCandidateCount = 0;
+    let practiceCandidateCount = 0;
+    let rerankUsed = false;
+
     // --- Knowledge Base search ---
     if (tables === "kb" || tables === "both") {
-      const candidates = await keywordSearchKB(supabase, query, candidateLimit, reference_date || null);
-      if (candidates.length > 0) {
-        results.kb = await rerankWithAI(query, candidates, safeLimit, LOVABLE_API_KEY);
+      try {
+        const candidates = await keywordSearchKB(supabase, query, candidateLimit, reference_date || null);
+        kbCandidateCount = candidates.length;
+        if (candidates.length > 0) {
+          try {
+            results.kb = await rerankWithAI(query, candidates, safeLimit, LOVABLE_API_KEY);
+            rerankUsed = true;
+          } catch (rerankErr) {
+            semanticOk = false;
+            semanticError = `KB rerank failed: ${rerankErr instanceof Error ? rerankErr.message : String(rerankErr)}`;
+            warn("vector-search", semanticError, { requestId });
+            // Fallback: return unranked candidates
+            results.kb = candidates.slice(0, safeLimit);
+          }
+        }
+      } catch (kbErr) {
+        err("vector-search", "KB search failed", { error: kbErr, requestId });
+        semanticOk = false;
+        semanticError = `KB search error: ${kbErr instanceof Error ? kbErr.message : String(kbErr)}`;
       }
     }
 
     // --- Legal Practice search ---
     if (tables === "practice" || tables === "both") {
-      const candidates = await keywordSearchPractice(supabase, query, candidateLimit, category || null);
-      if (candidates.length > 0) {
-        results.practice = await rerankWithAI(query, candidates, safeLimit, LOVABLE_API_KEY);
+      try {
+        const candidates = await keywordSearchPractice(supabase, query, candidateLimit, category || null);
+        practiceCandidateCount = candidates.length;
+        if (candidates.length > 0) {
+          try {
+            results.practice = await rerankWithAI(query, candidates, safeLimit, LOVABLE_API_KEY);
+            rerankUsed = true;
+          } catch (rerankErr) {
+            semanticOk = false;
+            const msg = `Practice rerank failed: ${rerankErr instanceof Error ? rerankErr.message : String(rerankErr)}`;
+            semanticError = semanticError ? `${semanticError}; ${msg}` : msg;
+            warn("vector-search", msg, { requestId });
+            results.practice = candidates.slice(0, safeLimit);
+          }
+        }
+      } catch (practiceErr) {
+        err("vector-search", "Practice search failed", { error: practiceErr, requestId });
+        semanticOk = false;
+        const msg = `Practice search error: ${practiceErr instanceof Error ? practiceErr.message : String(practiceErr)}`;
+        semanticError = semanticError ? `${semanticError}; ${msg}` : msg;
       }
     }
 
-    log("vector-search", "Search complete", { kb: results.kb.length, practice: results.practice.length });
+    // Determine retrieval mode
+    const retrievalMode = rerankUsed
+      ? "semantic+keyword" as const
+      : (kbCandidateCount > 0 || practiceCandidateCount > 0)
+        ? "keyword_only" as const
+        : "rpc_fallback" as const;
+
+    log("vector-search", "Search complete", {
+      requestId,
+      retrieval_mode: retrievalMode,
+      semantic_ok: semanticOk,
+      kb_results: results.kb.length,
+      practice_results: results.practice.length,
+      kb_candidates: kbCandidateCount,
+      practice_candidates: practiceCandidateCount,
+    });
 
     return new Response(
-      JSON.stringify(results),
+      JSON.stringify({
+        ...results,
+        retrieval_mode: retrievalMode,
+        semantic_ok: semanticOk,
+        semantic_error: semanticError || undefined,
+        request_id: requestId,
+      }),
       { headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
   } catch (error) {
-    err("vector-search", "Search error", error);
+    err("vector-search", "Search error", { error, requestId });
     return new Response(
-      JSON.stringify({ error: error instanceof Error ? error.message : "Unknown error" }),
+      JSON.stringify({
+        error: error instanceof Error ? error.message : "Unknown error",
+        kb: [],
+        practice: [],
+        retrieval_mode: "keyword_only",
+        semantic_ok: false,
+        semantic_error: error instanceof Error ? error.message : "Unknown error",
+        request_id: requestId,
+      }),
       { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
   }
@@ -80,12 +149,14 @@ async function keywordSearchKB(
 ): Promise<Array<{ id: string; title: string; content_text: string; similarity?: number }>> {
   const results = new Map<string, { id: string; title: string; content_text: string; similarity: number }>();
 
-  // Build RPC params with optional temporal filter
   const rpcParams: Record<string, unknown> = { search_query: query, result_limit: limit };
   if (referenceDate) rpcParams.reference_date = referenceDate;
 
-  // 1. Try RPC with full query (date-aware)
-  const { data: rpcData } = await supabase.rpc("search_knowledge_base", rpcParams);
+  // 1. Try RPC with full query
+  const { data: rpcData, error: rpcError } = await supabase.rpc("search_knowledge_base", rpcParams);
+  if (rpcError) {
+    warn("vector-search", "KB RPC search_knowledge_base failed", { error: rpcError.message });
+  }
   for (const r of rpcData || []) {
     results.set(r.id, {
       id: r.id, title: r.title,
@@ -94,7 +165,7 @@ async function keywordSearchKB(
     });
   }
 
-  // 2. Also try individual words (handles cross-language queries)
+  // 2. Individual word search
   const words = query.split(/\s+/).filter(w => w.length >= 2);
   for (const word of words.slice(0, 5)) {
     if (results.size >= limit) break;
@@ -106,13 +177,13 @@ async function keywordSearchKB(
         results.set(r.id, {
           id: r.id, title: r.title,
           content_text: (r.content_text || "").substring(0, 2000),
-          similarity: (r.rank || 0) * 0.8, // slightly lower weight for single-word matches
+          similarity: (r.rank || 0) * 0.8,
         });
       }
     }
   }
 
-  // 3. Fallback: ILIKE on title with individual words
+  // 3. Fallback: ILIKE
   if (results.size === 0) {
     for (const word of words.slice(0, 3)) {
       const searchTerm = sanitize(word);
@@ -141,7 +212,6 @@ async function keywordSearchKB(
     .slice(0, limit);
 }
 
-/** Practice result shape used internally */
 interface PracticeCandidate {
   id: string;
   title: string;
@@ -163,7 +233,6 @@ async function keywordSearchPractice(
   const results = new Map<string, PracticeCandidate>();
   const selectCols = "id, title, content_text, practice_category, court_type, decision_date, case_number_anonymized, court_name, legal_reasoning_summary";
 
-  // 1. Primary ILIKE search on title + legal_reasoning_summary (full query)
   {
     const searchTerm = sanitize(query);
     if (searchTerm.length >= 2) {
@@ -191,7 +260,6 @@ async function keywordSearchPractice(
     }
   }
 
-  // 2. Individual word search for broader recall
   const words = query.split(/\s+/).filter(w => w.length >= 2);
   for (const word of words.slice(0, 5)) {
     if (results.size >= limit) break;
@@ -235,81 +303,76 @@ async function rerankWithAI(
   topK: number,
   apiKey: string
 ): Promise<unknown[]> {
-  // If few candidates, skip AI and return as-is
   if (candidates.length <= topK) return candidates;
 
-  // Build a compact list for the model (id + title + snippet)
   const items = candidates.map((c, i) => ({
     idx: i,
     title: c.title,
     snippet: c.content_text.substring(0, 500),
   }));
 
-  try {
-    const { callGatewayBypass } = await import("../_shared/gateway-bypass.ts");
+  const { callGatewayBypass } = await import("../_shared/gateway-bypass.ts");
 
-    const bypassResult = await callGatewayBypass(
-      [
-        {
-          role: "system",
-          content: `You are a legal document relevance ranker. Given a user query and a list of candidate documents, call the rank_results function with the indices of the most relevant documents in order of decreasing relevance. Return at most ${topK} indices. Consider legal terminology, article references, and semantic meaning.`,
-        },
-        {
-          role: "user",
-          content: `Query: "${query}"\n\nCandidates:\n${items.map(it => `[${it.idx}] ${it.title}: ${it.snippet}`).join("\n\n")}`,
-        },
-      ],
+  const bypassResult = await callGatewayBypass(
+    [
       {
-        functionName: "vector-search-rerank",
-        bypassReason: "tool_calling",
-        timeoutMs: 30000,
-        extraBody: {
-          tools: [
-            {
-              type: "function",
-              function: {
-                name: "rank_results",
-                description: "Return ranked indices of the most relevant documents",
-                parameters: {
-                  type: "object",
-                  properties: {
-                    ranked_indices: {
-                      type: "array",
-                      items: { type: "number" },
-                      description: `Array of candidate indices (0-based) in order of relevance, max ${topK}`,
-                    },
+        role: "system",
+        content: `You are a legal document relevance ranker. Given a user query and a list of candidate documents, call the rank_results function with the indices of the most relevant documents in order of decreasing relevance. Return at most ${topK} indices. Consider legal terminology, article references, and semantic meaning.`,
+      },
+      {
+        role: "user",
+        content: `Query: "${query}"\n\nCandidates:\n${items.map(it => `[${it.idx}] ${it.title}: ${it.snippet}`).join("\n\n")}`,
+      },
+    ],
+    {
+      functionName: "vector-search-rerank",
+      bypassReason: "tool_calling",
+      timeoutMs: 30000,
+      extraBody: {
+        tools: [
+          {
+            type: "function",
+            function: {
+              name: "rank_results",
+              description: "Return ranked indices of the most relevant documents",
+              parameters: {
+                type: "object",
+                properties: {
+                  ranked_indices: {
+                    type: "array",
+                    items: { type: "number" },
+                    description: `Array of candidate indices (0-based) in order of relevance, max ${topK}`,
                   },
-                  required: ["ranked_indices"],
-                  additionalProperties: false,
                 },
+                required: ["ranked_indices"],
+                additionalProperties: false,
               },
             },
-          ],
-          tool_choice: { type: "function", function: { name: "rank_results" } },
-        },
-      }
-    );
+          },
+        ],
+        tool_choice: { type: "function", function: { name: "rank_results" } },
+      },
+    }
+  );
 
-    const data = bypassResult.data;
-    const toolCall = data.choices?.[0]?.message?.tool_calls?.[0];
-    if (toolCall?.function?.arguments) {
-      const args = JSON.parse(toolCall.function.arguments);
-      const indices = args.ranked_indices as number[];
-      if (Array.isArray(indices)) {
-        const valid = indices
-          .filter((i) => typeof i === "number" && i >= 0 && i < candidates.length)
-          .slice(0, topK);
-        if (valid.length > 0) {
-          return valid.map((i) => candidates[i]);
-        }
+  const data = bypassResult.data;
+  const toolCall = data.choices?.[0]?.message?.tool_calls?.[0];
+  if (toolCall?.function?.arguments) {
+    const args = JSON.parse(toolCall.function.arguments);
+    const indices = args.ranked_indices as number[];
+    if (Array.isArray(indices)) {
+      const valid = indices
+        .filter((i) => typeof i === "number" && i >= 0 && i < candidates.length)
+        .slice(0, topK);
+      if (valid.length > 0) {
+        return valid.map((i) => candidates[i]);
       }
     }
-
-    return candidates.slice(0, topK);
-  } catch (e) {
-    err("vector-search", "Rerank error", e);
-    return candidates.slice(0, topK);
   }
+
+  // Rerank returned no usable indices — not an error, just use original order
+  warn("vector-search", "Rerank returned no usable indices, using original order");
+  return candidates.slice(0, topK);
 }
 
 function sanitize(input: string): string {

@@ -51,6 +51,12 @@ export interface RAGPracticeOptions extends RAGSearchOptions {
 export interface RAGResult<T> {
   results: T[];
   sources: Array<{ title: string; category?: string; source_name?: string }>;
+  /** Telemetry: retrieval mode used */
+  retrieval_mode?: "semantic+keyword" | "keyword_only" | "rpc_fallback";
+  /** Whether semantic retrieval succeeded */
+  semantic_ok?: boolean;
+  /** Error message if semantic retrieval failed */
+  semantic_error?: string;
 }
 
 // deno-lint-ignore no-explicit-any
@@ -78,14 +84,20 @@ export function sanitizeForPostgrest(input: string): string {
 
 // ─── Vector Search Helper ───────────────────────────────────────────────────
 
-/** Call the vector-search edge function */
+/** Result from callVectorSearch including telemetry */
+interface VectorSearchCallResult extends VectorSearchResponse {
+  _failed: boolean;
+  _error?: string;
+}
+
+/** Call the vector-search edge function — surfaces errors explicitly */
 async function callVectorSearch(
   supabaseUrl: string,
   supabaseKey: string,
   query: string,
   tables: "kb" | "practice" | "both",
   opts: { limit?: number; category?: string | null; referenceDate?: string | null } = {}
-): Promise<VectorSearchResponse> {
+): Promise<VectorSearchCallResult> {
   try {
     const response = await callInternalFunction(
       `${supabaseUrl}/functions/v1/vector-search`,
@@ -101,10 +113,28 @@ async function callVectorSearch(
         extraHeaders: { Authorization: `Bearer ${supabaseKey}` },
       },
     );
-    if (!response.ok) return { kb: [], practice: [] };
-    return await response.json();
-  } catch {
-    return { kb: [], practice: [] };
+
+    if (!response.ok) {
+      const errorText = await response.text().catch(() => "unknown");
+      const msg = `vector-search returned ${response.status}: ${errorText.substring(0, 200)}`;
+      console.warn(`[rag-search] ${msg}`);
+      return { kb: [], practice: [], _failed: true, _error: msg };
+    }
+
+    const data = await response.json();
+    return {
+      kb: data.kb || [],
+      practice: data.practice || [],
+      retrieval_mode: data.retrieval_mode,
+      semantic_ok: data.semantic_ok,
+      semantic_error: data.semantic_error,
+      request_id: data.request_id,
+      _failed: false,
+    };
+  } catch (fetchErr) {
+    const msg = `vector-search fetch failed: ${fetchErr instanceof Error ? fetchErr.message : String(fetchErr)}`;
+    console.error(`[rag-search] ${msg}`);
+    return { kb: [], practice: [], _failed: true, _error: msg };
   }
 }
 
@@ -230,7 +260,23 @@ export async function searchKB(opts: RAGKBOptions): Promise<RAGResult<KBSearchRe
     source_name: r.source_name || "RA Legal Database",
   }));
 
-  return { results: trimmed, sources };
+  // Propagate telemetry from vector-search
+  const semanticOk = !vectorResults._failed && vectorResults.semantic_ok !== false;
+  const retrievalMode = vectorResults._failed
+    ? (merged.length > 0 ? "keyword_only" as const : "rpc_fallback" as const)
+    : (vectorResults.retrieval_mode || "keyword_only" as const);
+
+  if (vectorResults._failed) {
+    console.warn(`[rag-search/searchKB] Semantic retrieval failed: ${vectorResults._error}`);
+  }
+
+  return {
+    results: trimmed,
+    sources,
+    retrieval_mode: retrievalMode,
+    semantic_ok: semanticOk,
+    semantic_error: vectorResults._error || vectorResults.semantic_error,
+  };
 }
 
 // ─── Legal Practice Search ──────────────────────────────────────────────────
@@ -312,7 +358,22 @@ export async function searchPractice(opts: RAGPracticeOptions): Promise<RAGResul
     category: r.practice_category,
   }));
 
-  return { results: sorted, sources };
+  const semanticOk = !vectorResults._failed && vectorResults.semantic_ok !== false;
+  const retrievalMode = vectorResults._failed
+    ? (merged.length > 0 ? "keyword_only" as const : "rpc_fallback" as const)
+    : (vectorResults.retrieval_mode || "keyword_only" as const);
+
+  if (vectorResults._failed) {
+    console.warn(`[rag-search/searchPractice] Semantic retrieval failed: ${vectorResults._error}`);
+  }
+
+  return {
+    results: sorted,
+    sources,
+    retrieval_mode: retrievalMode,
+    semantic_ok: semanticOk,
+    semantic_error: vectorResults._error || vectorResults.semantic_error,
+  };
 }
 
 // ─── Formatters ─────────────────────────────────────────────────────────────
@@ -394,6 +455,12 @@ export interface DualRAGResult {
   kbResults: KBSearchResult[];
   practiceResults: PracticeSearchResult[];
   sources: Array<{ title: string; category?: string; source_name?: string }>;
+  /** Telemetry: overall retrieval mode */
+  retrieval_mode: "semantic+keyword" | "keyword_only" | "rpc_fallback";
+  /** Whether all semantic retrieval succeeded */
+  semantic_ok: boolean;
+  /** Aggregated semantic errors if any */
+  semantic_error?: string;
 }
 
 /**
@@ -418,11 +485,29 @@ export async function dualSearch(opts: RAGSearchOptions & {
     }),
   ]);
 
+  // Aggregate telemetry
+  const semanticOk = (kb.semantic_ok !== false) && (practice.semantic_ok !== false);
+  const errors = [kb.semantic_error, practice.semantic_error].filter(Boolean).join("; ");
+
+  // Pick the "best" retrieval mode (if either used semantic, report it)
+  const retrievalMode = (kb.retrieval_mode === "semantic+keyword" || practice.retrieval_mode === "semantic+keyword")
+    ? "semantic+keyword" as const
+    : (kb.retrieval_mode === "keyword_only" || practice.retrieval_mode === "keyword_only")
+      ? "keyword_only" as const
+      : "rpc_fallback" as const;
+
+  if (!semanticOk) {
+    console.warn(`[rag-search/dualSearch] Semantic degradation: ${errors}`);
+  }
+
   return {
     kbContext: formatKBContext(kb.results, opts.kbSnippetLength ?? 4000),
     practiceContext: formatPracticeContext(practice.results, opts.fullPracticeText ?? true),
     kbResults: kb.results,
     practiceResults: practice.results,
     sources: [...kb.sources, ...practice.sources],
+    retrieval_mode: retrievalMode,
+    semantic_ok: semanticOk,
+    semantic_error: errors || undefined,
   };
 }

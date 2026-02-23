@@ -46,6 +46,14 @@ export interface PracticeSearchResult {
 export interface VectorSearchResponse {
   kb: KBSearchResult[];
   practice: PracticeSearchResult[];
+  /** Telemetry: which retrieval methods produced results */
+  retrieval_mode?: "semantic+keyword" | "keyword_only" | "rpc_fallback";
+  /** If semantic retrieval failed, contains the error message */
+  semantic_error?: string;
+  /** Whether semantic (AI rerank) succeeded */
+  semantic_ok?: boolean;
+  /** Request tracing ID */
+  request_id?: string;
 }
 
 /** OpenAI-compatible chat completion message content part */
