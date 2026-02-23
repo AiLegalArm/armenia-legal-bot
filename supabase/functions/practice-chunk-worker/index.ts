@@ -2,10 +2,12 @@
  * practice-chunk-worker
  *
  * Background worker that processes practice_chunk_jobs:
- * 1. Picks N pending jobs (configurable concurrency)
- * 2. For each doc: chunks content_text using the shared legal chunker
- * 3. Upserts chunks into the appropriate target table
- * 4. Marks job done or failed with retry+backoff
+ * 1. Auto-recovers stuck "processing" jobs (>5 min)
+ * 2. Picks N pending jobs (configurable, default 10)
+ * 3. Processes in parallel batches
+ * 4. For each doc: chunks content_text using the shared legal chunker
+ * 5. Upserts chunks into the appropriate target table
+ * 6. Marks job done or failed with retry+backoff
  *
  * Supports two source tables:
  *   - legal_practice_kb  → legal_practice_kb_chunks
@@ -28,12 +30,12 @@ const corsHeaders = {
   "Access-Control-Allow-Methods": "POST, OPTIONS",
 };
 
-const MAX_INPUT_CHARS = 30_000;
+// No hard truncation — let the chunker handle full documents
+const MAX_INPUT_CHARS = 200_000;
 
 // ─── Map source table to doc_type for chunker ──────────────────────
 
 function inferDocType(doc: Record<string, unknown>, sourceTable: string): string {
-  // For legal_practice_kb, try to infer from practice_category or court_type
   if (sourceTable === "legal_practice_kb") {
     const courtType = doc.court_type as string | undefined;
     if (courtType === "echr") return "echr_judgment";
@@ -44,14 +46,13 @@ function inferDocType(doc: Record<string, unknown>, sourceTable: string): string
     return "court_decision";
   }
 
-  // For knowledge_base, try to infer from category
   if (sourceTable === "knowledge_base") {
     const category = doc.category as string | undefined;
     if (category?.includes("code")) return "code";
     if (category === "constitution") return "law";
     if (category === "echr" || category === "echr_judgments") return "echr_judgment";
     if (category?.includes("cassation")) return "cassation_ruling";
-    return "law"; // default for KB documents
+    return "law";
   }
 
   return "other";
@@ -65,7 +66,6 @@ async function processJob(
   const attempt = (job.attempts || 0) + 1;
   const src = job.source_table || "legal_practice_kb";
 
-  // Fetch document from source table
   const selectFields = src === "knowledge_base"
     ? "id, title, content_text, category"
     : "id, title, content_text, key_paragraphs, court_type, practice_category, case_number_anonymized, decision_date";
@@ -82,7 +82,7 @@ async function processJob(
 
   let contentText = doc.content_text as string || "";
 
-  // Truncate input to prevent compute errors
+  // Safety limit for extremely large docs
   if (contentText.length > MAX_INPUT_CHARS) {
     contentText = contentText.substring(0, MAX_INPUT_CHARS);
   }
@@ -100,7 +100,6 @@ async function processJob(
     return 0;
   }
 
-  // Use the shared legal chunker
   const docType = inferDocType(doc, src);
   const input: LegalDocumentInput = {
     doc_type: docType,
@@ -124,7 +123,7 @@ async function processJob(
     return 0;
   }
 
-  // Route to correct chunks table
+  // Route to correct chunks table — batch insert
   if (src === "knowledge_base") {
     await supabase
       .from("knowledge_base_chunks")
@@ -143,10 +142,14 @@ async function processJob(
       is_active: true,
     }));
 
-    const { error: insertErr } = await supabase
-      .from("knowledge_base_chunks")
-      .insert(rows);
-    if (insertErr) throw insertErr;
+    // Insert in batches of 100 to avoid payload limits
+    for (let i = 0; i < rows.length; i += 100) {
+      const batch = rows.slice(i, i + 100);
+      const { error: insertErr } = await supabase
+        .from("knowledge_base_chunks")
+        .insert(batch);
+      if (insertErr) throw insertErr;
+    }
   } else {
     await supabase
       .from("legal_practice_kb_chunks")
@@ -161,10 +164,13 @@ async function processJob(
       title: c.label,
     }));
 
-    const { error: insertErr } = await supabase
-      .from("legal_practice_kb_chunks")
-      .insert(rows);
-    if (insertErr) throw insertErr;
+    for (let i = 0; i < rows.length; i += 100) {
+      const batch = rows.slice(i, i + 100);
+      const { error: insertErr } = await supabase
+        .from("legal_practice_kb_chunks")
+        .insert(batch);
+      if (insertErr) throw insertErr;
+    }
   }
 
   await supabase
@@ -206,15 +212,26 @@ serve(async (req) => {
   try {
     const body = await req.json().catch(() => ({}));
     const sourceFilter = body.source_table || null;
+    // Default concurrency increased to 10, max 20
     const concurrencyDocs = Math.min(
-      Number(body.concurrency_docs) || Number(Deno.env.get("CONCURRENCY_DOCS")) || 2,
-      5,
+      Number(body.concurrency_docs) || Number(Deno.env.get("CONCURRENCY_DOCS")) || 10,
+      20,
     );
 
     const supabase = createClient(
       Deno.env.get("SUPABASE_URL")!,
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
     );
+
+    // ── Auto-recover stuck "processing" jobs (>5 min old) ──────────
+    const fiveMinAgo = new Date(Date.now() - 5 * 60 * 1000).toISOString();
+    let recoverQuery = supabase
+      .from("practice_chunk_jobs")
+      .update({ status: "pending", started_at: null })
+      .eq("status", "processing")
+      .lt("started_at", fiveMinAgo);
+    if (sourceFilter) recoverQuery = recoverQuery.eq("source_table", sourceFilter);
+    await recoverQuery;
 
     // Claim N pending jobs
     let jobQuery = supabase
@@ -239,7 +256,6 @@ serve(async (req) => {
         .in("status", ["pending", "failed"])
         .lt("attempts", 5);
       if (sourceFilter) countQuery = countQuery.eq("source_table", sourceFilter);
-
       const { count: pendingCount } = await countQuery;
 
       return new Response(JSON.stringify({
@@ -261,27 +277,38 @@ serve(async (req) => {
     let totalChunks = 0;
     const errors: string[] = [];
 
-    for (const job of jobs) {
-      try {
-        const count = await processJob(supabase, job);
-        totalChunks += count;
-        processed++;
-      } catch (err) {
-        const errMsg = err instanceof Error ? err.message : "Unknown error";
-        errors.push(`${job.document_id}: ${errMsg}`);
-        failed++;
+    // ── Process in parallel batches of 5 ─────────────────────────
+    const PARALLEL_BATCH = 5;
+    for (let i = 0; i < jobs.length; i += PARALLEL_BATCH) {
+      const batch = jobs.slice(i, i + PARALLEL_BATCH);
+      const results = await Promise.allSettled(
+        batch.map((job) => processJob(supabase, job))
+      );
 
-        const attempt = (job.attempts || 0) + 1;
-        const newStatus = attempt >= (job.max_attempts || 5) ? "dead_letter" : "failed";
+      for (let j = 0; j < results.length; j++) {
+        const result = results[j];
+        const job = batch[j];
 
-        await supabase
-          .from("practice_chunk_jobs")
-          .update({
-            status: newStatus,
-            attempts: attempt,
-            last_error: errMsg.substring(0, 500),
-          })
-          .eq("id", job.id);
+        if (result.status === "fulfilled") {
+          totalChunks += result.value;
+          processed++;
+        } else {
+          const errMsg = result.reason instanceof Error ? result.reason.message : "Unknown error";
+          errors.push(`${job.document_id}: ${errMsg}`);
+          failed++;
+
+          const attempt = (job.attempts || 0) + 1;
+          const newStatus = attempt >= (job.max_attempts || 5) ? "dead_letter" : "failed";
+
+          await supabase
+            .from("practice_chunk_jobs")
+            .update({
+              status: newStatus,
+              attempts: attempt,
+              last_error: errMsg.substring(0, 500),
+            })
+            .eq("id", job.id);
+        }
       }
     }
 
