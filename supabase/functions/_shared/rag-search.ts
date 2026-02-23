@@ -32,6 +32,8 @@ export interface RAGSearchOptions {
   referenceDate?: string | null;
   /** Practice category filter */
   category?: string | null;
+  /** Incoming x-request-id to propagate through internal calls */
+  requestId?: string;
 }
 
 export interface RAGKBOptions extends RAGSearchOptions {
@@ -96,7 +98,7 @@ async function callVectorSearch(
   supabaseKey: string,
   query: string,
   tables: "kb" | "practice" | "both",
-  opts: { limit?: number; category?: string | null; referenceDate?: string | null } = {}
+  opts: { limit?: number; category?: string | null; referenceDate?: string | null; requestId?: string } = {}
 ): Promise<VectorSearchCallResult> {
   try {
     const response = await callInternalFunction(
@@ -111,6 +113,7 @@ async function callVectorSearch(
       },
       {
         extraHeaders: { Authorization: `Bearer ${supabaseKey}` },
+        requestId: opts.requestId,
       },
     );
 
@@ -203,6 +206,7 @@ export async function searchKB(opts: RAGKBOptions): Promise<RAGResult<KBSearchRe
   const vectorPromise = callVectorSearch(supabaseUrl, supabaseKey, query, "kb", {
     limit: 10,
     referenceDate,
+    requestId: opts.requestId,
   });
 
   const keywordPromise = (async (): Promise<KBSearchResult[]> => {
@@ -295,6 +299,7 @@ export async function searchPractice(opts: RAGPracticeOptions): Promise<RAGResul
   const vectorPromise = callVectorSearch(supabaseUrl, supabaseKey, query, "practice", {
     limit: 10,
     category,
+    requestId: opts.requestId,
   });
 
   const keywordPromise = (async (): Promise<PracticeSearchResult[]> => {
