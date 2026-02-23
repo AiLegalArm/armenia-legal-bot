@@ -4,7 +4,11 @@ import { OCR_EXTRACTION, buildModelParams } from "../_shared/model-config.ts";
 import { redactForLog } from "../_shared/pii-redactor.ts";
 import { parseDocx } from "../_shared/docx-parser.ts";
 
+// ─── Constants ──────────────────────────────────────────────────────────────
+
 const CONFIDENCE_THRESHOLD = 0.70;
+const MAX_FILE_SIZE = 15 * 1024 * 1024; // 15 MB
+const ALLOWED_EXTENSIONS = new Set(["pdf", "jpg", "jpeg", "png", "tiff", "tif", "webp", "docx", "txt"]);
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -12,19 +16,85 @@ const corsHeaders = {
   'Access-Control-Allow-Methods': 'POST, OPTIONS',
 };
 
+// ─── Output schema ──────────────────────────────────────────────────────────
+
+interface OcrResponse {
+  ok: boolean;
+  text: string;
+  pages?: number;
+  language?: string;
+  warnings?: string[];
+  usage?: {
+    provider: string;
+    model: string;
+    input_tokens: number;
+    output_tokens: number;
+    cost_usd: number;
+  };
+  // Legacy fields kept for backward compat
+  ocr_id?: string;
+  confidence_score?: number;
+  confidence_reason?: string;
+  needs_review?: boolean;
+  review_warning?: string | null;
+  word_count?: number;
+}
+
+function jsonResponse(body: OcrResponse, status = 200): Response {
+  return new Response(JSON.stringify(body), {
+    status,
+    headers: { ...corsHeaders, "Content-Type": "application/json" },
+  });
+}
+
+function errorResponse(message: string, status = 400): Response {
+  const body: OcrResponse = { ok: false, text: "", warnings: [message] };
+  return new Response(JSON.stringify(body), {
+    status,
+    headers: { ...corsHeaders, "Content-Type": "application/json" },
+  });
+}
+
+// ─── System prompt ──────────────────────────────────────────────────────────
+
 export const OCR_SYSTEM_PROMPT = `You are an expert OCR specialist for Armenian legal documents with advanced handwritten text recognition capabilities. Your task is to accurately extract BOTH printed AND handwritten text from scanned documents, PDFs, and images containing Armenian (hy), Russian (ru), or English (en) text.
 
-// ... keep existing code (entire OCR_SYSTEM_PROMPT constant body)
+CRITICAL INSTRUCTIONS:
+1) Return ONLY valid JSON — no markdown, no backticks.
+2) Identify ALL languages present (Armenian, Russian, English).
+3) Detect and separately note handwritten sections.
+4) Preserve exact legal terminology and article references (e.g., ՀՀ ՔԿ 123-րդ հdelays).
+5) Maintain document structure: paragraphs, numbered lists, tables.
+6) If confidence is low for any section, add a warning.
+7) For PDF documents, estimate the page count in your response.
 
+JSON schema:
+{
+  "extracted_text": "<full text or {full, printed_only, handwritten_only}>",
+  "languages_detected": ["hy","ru","en"],
+  "confidence_score": 0.0-1.0,
+  "confidence_reason": "...",
+  "text_types_detected": ["printed","handwritten"],
+  "handwritten_sections": [],
+  "warnings": [],
+  "word_count": 0,
+  "pages": 0
+}
+
+8) Mark unclear/illegible text with [illegible] or [unclear].
 9) Preserve handwritten Armenian text exactly as written (no spelling correction).`;
+
+// ─── Main handler ───────────────────────────────────────────────────────────
 
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
   }
 
+  const requestId = req.headers.get("x-request-id") || crypto.randomUUID();
+
   try {
-    // === AUTH GUARD (Prevent Anonymous Access) ===
+    // === AUTH GUARD ===
     const authHeader = req.headers.get("Authorization") ?? "";
     const sb = createClient(
       Deno.env.get("SUPABASE_URL")!,
@@ -33,24 +103,27 @@ serve(async (req) => {
     );
     const { data: { user }, error: authError } = await sb.auth.getUser();
     if (authError || !user) {
-      return new Response(JSON.stringify({ error: "Unauthorized" }), {
-        status: 401,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
+      return errorResponse("Unauthorized", 401);
     }
-    // === END AUTH GUARD ===
 
     const body = await req.json();
-    // Support both old format (imageUrl) and new format (fileUrl)
     const fileUrl = body.fileUrl || body.imageUrl;
-    const fileName = body.fileName || 'document';
+    const fileName: string = body.fileName || 'document';
     const { caseId, fileId } = body;
 
-    if (!fileUrl) {
-      return new Response(JSON.stringify({ error: "File URL is required" }), {
-        status: 400,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
+    // === INPUT VALIDATION ===
+    if (!fileUrl || typeof fileUrl !== "string") {
+      return errorResponse("File URL is required");
+    }
+
+    const fileExt = fileName.split('.').pop()?.toLowerCase() || '';
+
+    if (!ALLOWED_EXTENSIONS.has(fileExt)) {
+      return errorResponse(`Unsupported file type: .${fileExt}. Allowed: ${[...ALLOWED_EXTENSIONS].join(", ")}`);
+    }
+
+    if (fileExt === 'doc') {
+      return errorResponse("Legacy .doc format is not supported. Please convert to DOCX or PDF.");
     }
 
     const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
@@ -62,140 +135,114 @@ serve(async (req) => {
     const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
-    // Reuse user from auth guard above
     const userId = user.id;
 
-    console.log(`Processing OCR for file: ${fileName}, URL type: ${fileUrl.startsWith('data:') ? 'base64' : 'url'}`);
+    console.log(`[ocr-process] requestId=${requestId} file=${fileName} ext=${fileExt}`);
 
-    // Determine file type from fileName
-    const fileExt = fileName.split('.').pop()?.toLowerCase() || '';
     const isPdf = fileExt === 'pdf';
     const isDocx = fileExt === 'docx';
-    const isDoc = fileExt === 'doc';
     const isTxt = fileExt === 'txt';
     const isImage = ['jpg', 'jpeg', 'png', 'tiff', 'tif', 'webp'].includes(fileExt);
-    
-    // Reject legacy .doc files
-    if (isDoc) {
-      return new Response(JSON.stringify({ 
-        error: "Legacy .doc format is not supported. Please convert to DOCX or PDF." 
-      }), {
-        status: 400,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
-    }
-    
+
     let imageContent: { type: string; image_url?: { url: string }; text?: string } | null = null;
     let docxTextContent: string | null = null;
-    let docxImages: string[] = []; // Base64 images extracted from DOCX
-    let txtContent: string | null = null; // Direct text content for TXT files
+    let docxImages: string[] = [];
+    let txtContent: string | null = null;
     let fileBuffer: ArrayBuffer | null = null;
-    
-    // Check if this is a base64 data URL (sent directly from client)
+
+    // ─── File acquisition ───────────────────────────────────────────────
     if (fileUrl.startsWith('data:')) {
-      console.log("Processing base64 data URL...");
-      
-      // For images and PDFs, we can use the data URL directly
       if (isImage || isPdf) {
-        imageContent = { 
-          type: "image_url", 
-          image_url: { url: fileUrl } 
-        };
-        console.log(`Using base64 data URL directly for ${isPdf ? 'PDF' : 'image'}`);
+        imageContent = { type: "image_url", image_url: { url: fileUrl } };
       } else if (isDocx) {
-        // For DOCX, we need to extract the base64 and decode it
         const base64Match = fileUrl.match(/^data:[^;]+;base64,(.+)$/);
-        if (!base64Match) {
-          throw new Error('Invalid base64 data URL format');
-        }
-        const base64Data = base64Match[1];
-        
-        // Decode base64 to ArrayBuffer
-        const binaryString = atob(base64Data);
+        if (!base64Match) throw new Error('Invalid base64 data URL format');
+        const binaryString = atob(base64Match[1]);
         const bytes = new Uint8Array(binaryString.length);
         for (let i = 0; i < binaryString.length; i++) {
           bytes[i] = binaryString.charCodeAt(i);
         }
         fileBuffer = bytes.buffer;
       } else if (isTxt) {
-        // For TXT, decode the base64 to text directly
         const base64Match = fileUrl.match(/^data:[^;]+;base64,(.+)$/);
         if (base64Match) {
-          const base64Data = base64Match[1];
           try {
-            txtContent = decodeURIComponent(escape(atob(base64Data)));
+            txtContent = decodeURIComponent(escape(atob(base64Match[1])));
           } catch {
-            txtContent = atob(base64Data);
+            txtContent = atob(base64Match[1]);
           }
         } else {
-          // Try to extract text directly from data URL
           const textMatch = fileUrl.match(/^data:text\/plain[^,]*,(.+)$/);
-          if (textMatch) {
-            txtContent = decodeURIComponent(textMatch[1]);
-          }
+          if (textMatch) txtContent = decodeURIComponent(textMatch[1]);
         }
-        console.log(`Extracted TXT content directly, length: ${txtContent?.length || 0} chars`);
       }
     } else if (fileUrl.includes('/storage/v1/object/')) {
-      // Supabase storage URL
       const storageMatch = fileUrl.match(/\/storage\/v1\/object\/(?:public\/)?([^\/]+)\/(.+)$/);
-      if (storageMatch) {
-        const [, bucket, path] = storageMatch;
-        const decodedPath = decodeURIComponent(path);
-        console.log(`Downloading from Supabase storage: bucket=${bucket}, path=${decodedPath}`);
-        
-        const { data, error } = await supabase.storage.from(bucket).download(decodedPath);
-        if (error || !data) {
-          throw new Error(`Failed to download from storage: ${error?.message || 'Unknown error'}`);
-        }
-        fileBuffer = await data.arrayBuffer();
-      } else {
-        throw new Error('Invalid Supabase storage URL format');
-      }
+      if (!storageMatch) throw new Error('Invalid Supabase storage URL format');
+      const [, bucket, path] = storageMatch;
+      const decodedPath = decodeURIComponent(path);
+      const { data, error } = await supabase.storage.from(bucket).download(decodedPath);
+      if (error || !data) throw new Error(`Failed to download from storage: ${error?.message || 'Unknown error'}`);
+      fileBuffer = await data.arrayBuffer();
     } else {
-      // Regular URL fetch
       const fileResponse = await fetch(fileUrl);
-      if (!fileResponse.ok) {
-        throw new Error(`Failed to download file: ${fileResponse.status}`);
-      }
+      if (!fileResponse.ok) throw new Error(`Failed to download file: ${fileResponse.status}`);
       fileBuffer = await fileResponse.arrayBuffer();
     }
-    
-    // Handle TXT files - read directly as text without AI processing
-    if (isTxt && fileBuffer && !txtContent) {
-      const decoder = new TextDecoder('utf-8');
-      txtContent = decoder.decode(fileBuffer);
-      console.log(`Read TXT file from storage, length: ${txtContent.length} chars`);
+
+    // ─── File size check ────────────────────────────────────────────────
+    if (fileBuffer && fileBuffer.byteLength > MAX_FILE_SIZE) {
+      return errorResponse(`File size ${(fileBuffer.byteLength / 1024 / 1024).toFixed(1)}MB exceeds ${MAX_FILE_SIZE / 1024 / 1024}MB limit`);
     }
-    // Handle DOCX files - extract both text AND embedded images via ZIP-based parser
+
+    // ─── TXT: direct text, no AI ────────────────────────────────────────
+    if (isTxt && fileBuffer && !txtContent) {
+      txtContent = new TextDecoder('utf-8').decode(fileBuffer);
+    }
+
+    if (txtContent) {
+      await supabase.rpc("log_api_usage", {
+        _service_type: "ocr",
+        _model_name: "direct_text",
+        _tokens_used: 0,
+        _estimated_cost: 0,
+        _metadata: { file_name: fileName, file_type: "txt", chars_count: txtContent.length, request_id: requestId }
+      });
+
+      if (fileId) {
+        await upsertOcrResult(supabase, fileId, txtContent, 1.0, "hy, ru, en", false);
+      }
+
+      return jsonResponse({
+        ok: true,
+        text: txtContent,
+        language: "hy, ru, en",
+        warnings: [],
+        word_count: txtContent.split(/\s+/).length,
+        confidence_score: 1.0,
+        confidence_reason: "Direct text file — no OCR required",
+        needs_review: false,
+        usage: { provider: "direct", model: "direct_text", input_tokens: 0, output_tokens: 0, cost_usd: 0 },
+      });
+    }
+
+    // ─── DOCX: parse text + images ──────────────────────────────────────
     if (isDocx && fileBuffer) {
-      console.log("Extracting text and images from DOCX file via ZIP parser...");
-      try {
-        const parsed = await parseDocx(fileBuffer);
-
-        if (parsed.text && parsed.text.length >= 20) {
-          docxTextContent = parsed.text;
-          console.log("Successfully extracted " + docxTextContent.length + " characters from DOCX (" + parsed.paragraphs.length + " paragraphs)");
-        }
-
-        if (parsed.images.length > 0) {
-          docxImages = parsed.images;
-          console.log("Found " + docxImages.length + " embedded images in DOCX");
-        }
-
-        if (parsed.warnings.length > 0) {
-          console.warn("DOCX parse warnings:", parsed.warnings);
-        }
-
-        if ((!docxTextContent || docxTextContent.length < 20) && docxImages.length === 0) {
-          throw new Error("Could not extract meaningful text or images from DOCX");
-        }
-      } catch (docxError) {
-        console.error("DOCX extraction error:", docxError);
-        throw new Error("Failed to extract content from DOCX file: " + (docxError instanceof Error ? docxError.message : 'Unknown error') + ". Try converting to PDF.");
+      const parsed = await parseDocx(fileBuffer);
+      if (parsed.text && parsed.text.length >= 20) {
+        docxTextContent = parsed.text;
+      }
+      if (parsed.images.length > 0) {
+        docxImages = parsed.images;
+      }
+      if (parsed.warnings.length > 0) {
+        console.warn("[ocr-process] DOCX warnings:", parsed.warnings);
+      }
+      if ((!docxTextContent || docxTextContent.length < 20) && docxImages.length === 0) {
+        throw new Error("Could not extract meaningful content from DOCX. Try converting to PDF.");
       }
     } else if (!imageContent && fileBuffer) {
-      // For PDF and images downloaded from URL - convert to base64 for vision model
+      // PDF or image from URL → base64
       const bytes = new Uint8Array(fileBuffer);
       let binary = '';
       const chunkSize = 8192;
@@ -204,188 +251,75 @@ serve(async (req) => {
         binary += String.fromCharCode.apply(null, chunk as unknown as number[]);
       }
       const base64 = btoa(binary);
-      
-      // Determine MIME type
+
       let mimeType = 'image/jpeg';
-      if (isPdf) {
-        mimeType = 'application/pdf';
-      } else if (fileExt === 'png') {
-        mimeType = 'image/png';
-      } else if (fileExt === 'tiff' || fileExt === 'tif') {
-        mimeType = 'image/tiff';
-      } else if (fileExt === 'webp') {
-        mimeType = 'image/webp';
-      }
-      
-      const dataUrl = `data:${mimeType};base64,${base64}`;
-      console.log(`File converted to base64, size: ${base64.length} chars, type: ${mimeType}`);
-      
-      imageContent = { 
-        type: "image_url", 
-        image_url: { url: dataUrl } 
-      };
+      if (isPdf) mimeType = 'application/pdf';
+      else if (fileExt === 'png') mimeType = 'image/png';
+      else if (fileExt === 'tiff' || fileExt === 'tif') mimeType = 'image/tiff';
+      else if (fileExt === 'webp') mimeType = 'image/webp';
+
+      imageContent = { type: "image_url", image_url: { url: `data:${mimeType};base64,${base64}` } };
     }
 
-    // Build request based on file type
+    // ─── Build messages for AI ──────────────────────────────────────────
     let messages;
-    
-    // Handle TXT files directly without AI processing
-    if (txtContent) {
-      console.log(`TXT file processed directly, saving ${txtContent.length} chars`);
-      
-      // For TXT files, we have the text directly - save without AI call
-      const result = {
-        extracted_text: txtContent,
-        languages_detected: ["hy", "ru", "en"],
-        confidence_score: 1.0,
-        confidence_reason: "Direct text file - no OCR required",
-        text_types_detected: ["plain_text"],
-        handwritten_sections: [],
-        warnings: [],
-        word_count: txtContent.split(/\s+/).length
-      };
-      
-      const needsReview = false; // TXT files are always readable
-      
-      // Log API usage
-      await supabase.rpc("log_api_usage", {
-        _service_type: "ocr",
-        _model_name: "direct_text",
-        _tokens_used: 0,
-        _estimated_cost: 0,
-        _metadata: { file_name: fileName, file_type: "txt", chars_count: txtContent.length }
-      });
-      
-      // Save OCR result if fileId provided
-      if (fileId) {
-        // Check if result already exists
-        const { data: existingOcr } = await supabase
-          .from("ocr_results")
-          .select("id")
-          .eq("file_id", fileId)
-          .maybeSingle();
-          
-        if (existingOcr) {
-          await supabase
-            .from("ocr_results")
-            .update({
-              extracted_text: txtContent,
-              confidence: result.confidence_score,
-              language: result.languages_detected?.join(", ") || null,
-              needs_review: needsReview
-            })
-            .eq("id", existingOcr.id);
-        } else {
-          await supabase
-            .from("ocr_results")
-            .insert({
-              file_id: fileId,
-              extracted_text: txtContent,
-              confidence: result.confidence_score,
-              language: result.languages_detected?.join(", ") || null,
-              needs_review: needsReview
-            });
-        }
-      }
-      
-      return new Response(JSON.stringify({
-        success: true,
-        text: txtContent,
-        confidence: result.confidence_score,
-        needsReview,
-        languages: result.languages_detected,
-        warnings: result.warnings,
-        wordCount: result.word_count,
-        model: "direct_text"
-      }), {
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
-    }
-    
+
     if (docxTextContent || docxImages.length > 0) {
-      // For DOCX: send extracted text and/or images for analysis
       if (docxImages.length > 0) {
-        // DOCX has embedded images - use vision model
-        const contentParts: Array<{type: string; text?: string; image_url?: {url: string}}> = [];
-        
-        // Add text instruction
-        let instructionText = "This is content extracted from a Word document (DOCX). File name: " + fileName + ". ";
+        const contentParts: Array<{ type: string; text?: string; image_url?: { url: string } }> = [];
+        let instruction = "Content extracted from a Word document (DOCX). File: " + fileName + ". ";
         if (docxTextContent) {
-          instructionText += "The document contains both text and embedded images/screenshots. Please:\n1. First, extract and transcribe ALL text from the embedded images (especially screenshots of documents)\n2. Then combine with the extracted text below\n3. Preserve all Armenian legal terminology\n\nExtracted text from DOCX:\n" + docxTextContent;
+          instruction += "Contains text and embedded images. Extract ALL text from images, combine with extracted text, preserve Armenian legal terms.\n\nExtracted text:\n" + docxTextContent;
         } else {
-          instructionText += "The document appears to contain only images/screenshots. Please extract ALL text from these images, focusing on Armenian legal terminology.";
+          instruction += "Contains only images/screenshots. Extract ALL text, focusing on Armenian legal terminology.";
         }
-        
-        contentParts.push({ type: "text", text: instructionText });
-        
-        // Add all extracted images (limit to first 5 to avoid token limits)
-        const imagesToProcess = docxImages.slice(0, 5);
-        for (const imgData of imagesToProcess) {
-          contentParts.push({
-            type: "image_url",
-            image_url: { url: imgData }
-          });
+        contentParts.push({ type: "text", text: instruction });
+        for (const imgData of docxImages.slice(0, 5)) {
+          contentParts.push({ type: "image_url", image_url: { url: imgData } });
         }
-        
         messages = [
           { role: "system", content: OCR_SYSTEM_PROMPT },
           { role: "user", content: contentParts }
         ];
-        console.log("Using vision model for DOCX with " + imagesToProcess.length + " embedded images");
       } else {
-        // Text-only DOCX
         messages = [
           { role: "system", content: OCR_SYSTEM_PROMPT },
-          { 
-            role: "user", 
-            content: "This is extracted text from a Word document (DOCX). File name: " + fileName + ". Please analyze and structure this Armenian legal document text, preserving exact legal terminology. If there are any formatting issues or unclear sections, note them in warnings.\n\nExtracted text:\n" + docxTextContent
-          }
+          { role: "user", content: "Extracted text from DOCX. File: " + fileName + ". Analyze and structure this Armenian legal document.\n\nText:\n" + docxTextContent }
         ];
       }
     } else if (imageContent) {
-      // For PDF and images: use vision model
       messages = [
         { role: "system", content: OCR_SYSTEM_PROMPT },
-        { 
-          role: "user", 
-          content: [
-            { 
-              type: "text", 
-              text: "Please extract all text from this " + (isPdf ? 'PDF document' : 'document image') + ". File name: " + fileName + ". Focus on accurate Armenian legal terminology preservation."
-            },
-            imageContent
-          ]
-        }
+        { role: "user", content: [
+          { type: "text", text: "Extract all text from this " + (isPdf ? 'PDF' : 'image') + ". File: " + fileName + ". Preserve Armenian legal terminology." },
+          imageContent
+        ]}
       ];
     } else {
       throw new Error('No content to process');
     }
 
-    // Call AI via centralized gateway-bypass (multimodal requires bypass)
+    // ─── Call AI ────────────────────────────────────────────────────────
     const { callGatewayBypass } = await import("../_shared/gateway-bypass.ts");
     const bypassResult = await callGatewayBypass(messages, {
       functionName: "ocr-process",
       bypassReason: "multimodal",
       timeoutMs: 90000,
     });
-    const response = { ok: true, status: 200 } as const;
-    const ocrData = bypassResult.data;
+    const aiData = bypassResult.data;
 
-    const rawContent = (ocrData.choices as Array<{ message?: { content?: string } }>)?.[0]?.message?.content || "";
-    
-    console.log("Raw OCR response:", redactForLog(rawContent, 500));
+    const rawContent = (aiData.choices as Array<{ message?: { content?: string } }>)?.[0]?.message?.content || "";
 
-    // Parse the JSON response
-    let ocrResult;
+    console.log("[ocr-process] Raw AI response:", redactForLog(rawContent, 500));
+
+    // ─── Parse AI response ──────────────────────────────────────────────
+    let ocrResult: Record<string, unknown>;
     try {
       let jsonStr = rawContent;
       const jsonMatch = rawContent.match(/```(?:json)?\s*([\s\S]*?)```/);
-      if (jsonMatch) {
-        jsonStr = jsonMatch[1].trim();
-      }
+      if (jsonMatch) jsonStr = jsonMatch[1].trim();
       ocrResult = JSON.parse(jsonStr);
-    } catch (parseError) {
-      console.error("Failed to parse OCR JSON:", parseError);
+    } catch {
       ocrResult = {
         extracted_text: rawContent,
         languages_detected: ["unknown"],
@@ -396,115 +330,140 @@ serve(async (req) => {
       };
     }
 
-    const {
-      languages_detected,
-      confidence_score,
-      confidence_reason,
-      warnings,
-      word_count
-    } = ocrResult;
-    
-    // Handle both new format (object with full/printed_only/handwritten_only) and old format (string)
-    const extracted_text = typeof ocrResult.extracted_text === 'object' && ocrResult.extracted_text?.full
-      ? ocrResult.extracted_text.full
-      : ocrResult.extracted_text;
-
+    const extracted_text = typeof ocrResult.extracted_text === 'object' && (ocrResult.extracted_text as Record<string, unknown>)?.full
+      ? (ocrResult.extracted_text as Record<string, unknown>).full as string
+      : ocrResult.extracted_text as string || "";
+    const languages_detected = ocrResult.languages_detected as string[] | undefined;
+    const confidence_score = (ocrResult.confidence_score as number) || 0.5;
+    const confidence_reason = (ocrResult.confidence_reason as string) || "";
+    const warnings = (ocrResult.warnings as string[]) || [];
+    const word_count = (ocrResult.word_count as number) || extracted_text.split(/\s+/).length;
+    const pages = (ocrResult.pages as number) || undefined;
     const needsReview = confidence_score < CONFIDENCE_THRESHOLD;
 
-    // Save to ocr_results table (only if fileId is provided)
-    let ocrRecord = null;
-    if (fileId) {
-      // Check if result already exists for this file
-      const { data: existingOcr } = await supabase
-        .from("ocr_results")
-        .select("id")
-        .eq("file_id", fileId)
-        .maybeSingle();
+    // ─── Extract usage from AI response ─────────────────────────────────
+    const aiUsage = aiData.usage as { prompt_tokens?: number; completion_tokens?: number; total_tokens?: number } | undefined;
+    const inputTokens = aiUsage?.prompt_tokens || 0;
+    const outputTokens = aiUsage?.completion_tokens || 0;
+    const totalTokens = aiUsage?.total_tokens || (inputTokens + outputTokens);
+    const modelName = (aiData.model as string) || "google/gemini-2.5-flash";
+    const costUsd = totalTokens * 0.0000005;
 
-      if (existingOcr) {
-        const { data: updated, error: updateError } = await supabase
-          .from("ocr_results")
-          .update({
-            extracted_text: extracted_text,
-            confidence: confidence_score,
-            language: languages_detected?.join(", ") || "unknown",
-            needs_review: needsReview,
-          })
-          .eq("id", existingOcr.id)
-          .select()
-          .single();
-        if (updateError) {
-          console.error("Failed to update OCR result:", updateError);
-        } else {
-          ocrRecord = updated;
-        }
-      } else {
-        const { data: inserted, error: insertError } = await supabase
-          .from("ocr_results")
-          .insert({
-            file_id: fileId,
-            extracted_text: extracted_text,
-            confidence: confidence_score,
-            language: languages_detected?.join(", ") || "unknown",
-            needs_review: needsReview,
-          })
-          .select()
-          .single();
-        if (insertError) {
-          console.error("Failed to save OCR result:", insertError);
-          await supabase.rpc("log_error", {
-            _error_type: "ocr",
-            _error_message: "Failed to save OCR result",
-            _error_details: { error: insertError, fileId },
-            _case_id: caseId || null,
-            _file_id: fileId || null
-          });
-        } else {
-          ocrRecord = inserted;
-        }
-      }
-    } else {
-      console.warn("No fileId provided, skipping OCR result save to database");
+    // ─── Save OCR result ────────────────────────────────────────────────
+    let ocrRecordId: string | null = null;
+    if (fileId) {
+      const record = await upsertOcrResult(
+        supabase, fileId, extracted_text, confidence_score,
+        languages_detected?.join(", ") || "unknown", needsReview
+      );
+      ocrRecordId = record?.id || null;
     }
 
-    // Log API usage for cost tracking
-    const tokensUsed = aiResponse.usage?.total_tokens || 0;
-    const estimatedCost = tokensUsed * 0.0000005;
-    
+    // ─── Log usage ──────────────────────────────────────────────────────
     await supabase.rpc("log_api_usage", {
       _service_type: "ocr",
-      _model_name: "google/gemini-2.5-flash",
-      _tokens_used: tokensUsed,
-      _estimated_cost: estimatedCost,
-      _metadata: { fileName, fileId: fileId || null }
+      _model_name: modelName,
+      _tokens_used: totalTokens,
+      _estimated_cost: costUsd,
+      _metadata: {
+        file_name: fileName,
+        file_id: fileId || null,
+        request_id: requestId,
+        input_tokens: inputTokens,
+        output_tokens: outputTokens,
+        confidence: confidence_score,
+        pages: pages || null,
+      }
     });
 
-    // Return result
-    return new Response(JSON.stringify({
-      success: true,
-      ocr_id: ocrRecord?.id,
-      extracted_text,
-      languages_detected,
+    console.log(`[ocr-process] requestId=${requestId} done: ${word_count} words, confidence=${confidence_score}, tokens=${totalTokens}`);
+
+    // ─── Return normalized response ─────────────────────────────────────
+    return jsonResponse({
+      ok: true,
+      text: extracted_text,
+      pages,
+      language: languages_detected?.join(", ") || "unknown",
+      warnings,
+      usage: {
+        provider: "lovable-gateway",
+        model: modelName,
+        input_tokens: inputTokens,
+        output_tokens: outputTokens,
+        cost_usd: costUsd,
+      },
+      // Legacy fields for backward compat
+      ocr_id: ocrRecordId || undefined,
       confidence_score,
       confidence_reason,
-      warnings: warnings || [],
-      word_count,
       needs_review: needsReview,
-      review_warning: needsReview 
+      review_warning: needsReview
         ? `Confidence ${(confidence_score * 100).toFixed(0)}% is below 70% threshold. Manual review recommended.`
         : null,
-      model: "google/gemini-2.5-flash"
-    }), {
-      headers: { ...corsHeaders, "Content-Type": "application/json" },
+      word_count,
     });
 
   } catch (error) {
-    console.error("ocr-process error:", error);
-    return new Response(JSON.stringify({ 
-      error: error instanceof Error ? error.message : "OCR processing failed" 
-    }), {
-      status: 500,
-      headers: { ...corsHeaders, "Content-Type": "application/json" },
-    });
+    const errMsg = error instanceof Error ? error.message : "OCR processing failed";
+    console.error(`[ocr-process] requestId=${requestId} error:`, errMsg);
+
+    // Structured error logging — no PII
+    try {
+      const supabase = createClient(
+        Deno.env.get("SUPABASE_URL")!,
+        Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
+      );
+      await supabase.rpc("log_error", {
+        _error_type: "ocr",
+        _error_message: `OCR processing failed: ${errMsg}`,
+        _error_details: { request_id: requestId, stack: error instanceof Error ? error.stack?.substring(0, 500) : undefined },
+        _case_id: null,
+        _file_id: null,
+      });
+    } catch (logErr) {
+      console.error("[ocr-process] Failed to log error:", logErr);
+    }
+
+    return jsonResponse({
+      ok: false,
+      text: "",
+      warnings: [errMsg],
+    }, 500);
   }
 });
+
+// ─── Helpers ────────────────────────────────────────────────────────────────
+
+async function upsertOcrResult(
+  supabase: ReturnType<typeof createClient>,
+  fileId: string,
+  text: string,
+  confidence: number,
+  language: string,
+  needsReview: boolean,
+): Promise<{ id: string } | null> {
+  const { data: existing } = await supabase
+    .from("ocr_results")
+    .select("id")
+    .eq("file_id", fileId)
+    .maybeSingle();
+
+  if (existing) {
+    const { data, error } = await supabase
+      .from("ocr_results")
+      .update({ extracted_text: text, confidence, language, needs_review: needsReview })
+      .eq("id", existing.id)
+      .select("id")
+      .single();
+    if (error) console.error("[ocr-process] Failed to update OCR result:", error);
+    return data;
+  } else {
+    const { data, error } = await supabase
+      .from("ocr_results")
+      .insert({ file_id: fileId, extracted_text: text, confidence, language, needs_review: needsReview })
+      .select("id")
+      .single();
+    if (error) console.error("[ocr-process] Failed to insert OCR result:", error);
+    return data;
+  }
+}
