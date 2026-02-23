@@ -10,6 +10,26 @@ const CONFIDENCE_THRESHOLD = 0.70;
 const MAX_FILE_SIZE = 15 * 1024 * 1024; // 15 MB
 const ALLOWED_EXTENSIONS = new Set(["pdf", "jpg", "jpeg", "png", "tiff", "tif", "webp", "docx", "txt"]);
 
+// ─── Pricing map (per 1K tokens) ────────────────────────────────────────────
+const MODEL_PRICING: Record<string, { input_per_1k: number; output_per_1k: number }> = {
+  "google/gemini-2.5-flash":      { input_per_1k: 0.000075, output_per_1k: 0.0003 },
+  "google/gemini-2.5-flash-lite": { input_per_1k: 0.000025, output_per_1k: 0.0001 },
+  "google/gemini-2.5-pro":        { input_per_1k: 0.00125,  output_per_1k: 0.01 },
+  "google/gemini-3-flash-preview":{ input_per_1k: 0.0001,   output_per_1k: 0.0004 },
+  "google/gemini-3-pro-preview":  { input_per_1k: 0.0015,   output_per_1k: 0.01 },
+  "openai/gpt-5":                 { input_per_1k: 0.005,    output_per_1k: 0.015 },
+  "openai/gpt-5-mini":            { input_per_1k: 0.0004,   output_per_1k: 0.0016 },
+};
+
+function computeCost(model: string, inputTokens: number, outputTokens: number): { cost_usd: number; cost_unknown: boolean } {
+  const pricing = MODEL_PRICING[model];
+  if (!pricing) return { cost_usd: 0, cost_unknown: true };
+  return {
+    cost_usd: (inputTokens / 1000) * pricing.input_per_1k + (outputTokens / 1000) * pricing.output_per_1k,
+    cost_unknown: false,
+  };
+}
+
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version',
@@ -350,7 +370,7 @@ serve(async (req) => {
     const outputTokens = aiUsage?.completion_tokens || 0;
     const totalTokens = aiUsage?.total_tokens || (inputTokens + outputTokens);
     const modelName = (aiData.model as string) || "google/gemini-2.5-flash";
-    const costUsd = totalTokens * 0.0000005;
+    const { cost_usd: costUsd, cost_unknown: costUnknown } = computeCost(modelName, inputTokens, outputTokens);
 
     // ─── Determine pipeline ─────────────────────────────────────────────
     let pipeline: string;
@@ -386,6 +406,7 @@ serve(async (req) => {
         confidence: confidence_score,
         pages: pages || null,
         usage_missing: usageMissing,
+        cost_unknown: costUnknown,
       }
     });
 
