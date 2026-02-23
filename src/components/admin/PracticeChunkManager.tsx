@@ -97,7 +97,7 @@ function PipelineSection({ source }: { source: SourceTable }) {
     }
   };
 
-  const runWorker = useCallback(async () => {
+  const runFullPipeline = useCallback(async () => {
     setRunning(true);
     setProgress({ processed: 0, remaining: 0, chunks: 0 });
     abortRef.current = new AbortController();
@@ -105,15 +105,26 @@ function PipelineSection({ source }: { source: SourceTable }) {
     let totalProcessed = 0;
     let totalChunks = 0;
     let remaining = Infinity;
+    let consecutiveEmpty = 0;
 
     try {
-      while (remaining > 0 && !abortRef.current.signal.aborted) {
+      // Step 1: Auto-enqueue all missing chunks first
+      const { data: enqData, error: enqErr } = await supabase.functions.invoke("practice-chunk-enqueue", {
+        body: { action: "enqueue_missing_chunks", source_table: source },
+      });
+      if (!enqErr && enqData?.enqueued > 0) {
+        toast.info(`${t("enqueue_missing_chunks")}: ${enqData.enqueued}`);
+      }
+
+      // Step 2: Process all jobs with high concurrency
+      while (remaining > 0 && !abortRef.current.signal.aborted && consecutiveEmpty < 3) {
         const { data, error } = await supabase.functions.invoke("practice-chunk-worker", {
-          body: { concurrency_docs: 2, source_table: source },
+          body: { concurrency_docs: 10, source_table: source },
         });
         if (error) throw error;
 
-        totalProcessed += data.processed || 0;
+        const batchProcessed = data.processed || 0;
+        totalProcessed += batchProcessed;
         totalChunks += data.total_chunks_inserted || 0;
         remaining = data.remaining || 0;
 
@@ -121,7 +132,11 @@ function PipelineSection({ source }: { source: SourceTable }) {
           setProgress({ processed: totalProcessed, remaining, chunks: totalChunks });
         }
 
-        if ((data.processed || 0) === 0) break;
+        if (batchProcessed === 0) {
+          consecutiveEmpty++;
+        } else {
+          consecutiveEmpty = 0;
+        }
       }
 
       toast.success(`${t("progress_processed", { processed: totalProcessed })} | ${t("progress_chunks", { chunks: totalChunks })}`);
@@ -205,7 +220,7 @@ function PipelineSection({ source }: { source: SourceTable }) {
       </div>
 
       <div className="flex items-center gap-2">
-        <Button size="sm" onClick={runWorker} disabled={running}>
+        <Button size="sm" onClick={runFullPipeline} disabled={running}>
           {running ? <Loader2 className="mr-1 h-4 w-4 animate-spin" /> : <Play className="mr-1 h-4 w-4" />}
           {running ? t("processing_worker") : t("run_worker")}
         </Button>
