@@ -521,6 +521,32 @@ export async function dualSearch(opts: RAGSearchOptions & {
     console.warn(`[rag-search/dualSearch] Rerank degradation: ${errors}`);
   }
 
+  // ── Fire-and-forget retrieval telemetry ──
+  // Uses log_api_usage RPC; no PII — only counts and status fields.
+  try {
+    const telemetryMeta = {
+      request_id: opts.requestId || null,
+      retrieval_mode: retrievalMode,
+      rerank_ok: rerankOk,
+      rerank_error: errors || null,
+      kb_results_count: kb.results.length,
+      practice_results_count: practice.results.length,
+      kb_retrieval_mode: kb.retrieval_mode || null,
+      practice_retrieval_mode: practice.retrieval_mode || null,
+    };
+    opts.supabase.rpc("log_api_usage", {
+      _service_type: "rag_retrieval",
+      _model_name: null,
+      _tokens_used: 0,
+      _estimated_cost: 0,
+      _metadata: telemetryMeta,
+    }).then(() => { /* fire-and-forget */ }).catch((e: unknown) => {
+      console.warn("[rag-search] telemetry log failed:", e);
+    });
+  } catch (_) {
+    // Never block search results for telemetry failures
+  }
+
   return {
     kbContext: formatKBContext(kb.results, opts.kbSnippetLength ?? 4000),
     practiceContext: formatPracticeContext(practice.results, opts.fullPracticeText ?? true),
@@ -534,3 +560,4 @@ export async function dualSearch(opts: RAGSearchOptions & {
     semantic_error: errors || undefined,
   };
 }
+
