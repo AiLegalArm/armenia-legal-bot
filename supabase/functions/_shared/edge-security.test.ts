@@ -432,3 +432,78 @@ Deno.test("buildInternalHeaders: x-request-id is unique per call", () => {
     assertEquals(h1["x-request-id"] !== h2["x-request-id"], true);
   });
 });
+
+Deno.test("buildInternalHeaders: extraHeaders x-request-id is preserved", () => {
+  return withEnv({ INTERNAL_INGEST_KEY: "my-key" }, () => {
+    const headers = buildInternalHeaders({ "x-request-id": "custom-trace-42" });
+    assertEquals(headers["x-request-id"], "custom-trace-42");
+  });
+});
+
+// ─── callInternalFunction ──────────────────────────────────────────
+
+Deno.test("callInternalFunction: sends POST with correct headers", async () => {
+  return withEnv({ INTERNAL_INGEST_KEY: "test-key-abc" }, async () => {
+    // Use a local echo-style check: call a non-existent URL and inspect the error
+    // Instead we intercept via a minimal server
+    const controller = new AbortController();
+    const server = Deno.serve({ port: 0, signal: controller.signal, onListen() {} }, (req) => {
+      const result = {
+        method: req.method,
+        hasInternalKey: req.headers.get("x-internal-key") === "test-key-abc",
+        hasRequestId: !!req.headers.get("x-request-id"),
+        requestIdPrefix: req.headers.get("x-request-id")?.startsWith("req_") ?? false,
+        contentType: req.headers.get("content-type"),
+      };
+      return new Response(JSON.stringify(result), {
+        headers: { "Content-Type": "application/json" },
+      });
+    });
+
+    const { callInternalFunction } = await import("./edge-security.ts");
+    const port = server.addr.port;
+    const res = await callInternalFunction(
+      `http://localhost:${port}/test`,
+      { foo: "bar" },
+    );
+    const data = await res.json();
+
+    assertEquals(data.method, "POST");
+    assertEquals(data.hasInternalKey, true);
+    assertEquals(data.hasRequestId, true);
+    assertEquals(data.requestIdPrefix, true);
+    assertEquals(data.contentType, "application/json");
+
+    controller.abort();
+    await server.finished.catch(() => {});
+  });
+});
+
+Deno.test({ name: "callInternalFunction: respects timeout", sanitizeOps: false, sanitizeResources: false, fn: async () => {
+  return withEnv({ INTERNAL_INGEST_KEY: "test-key" }, async () => {
+    const srvController = new AbortController();
+    const server = Deno.serve({ port: 0, signal: srvController.signal, onListen() {} }, async () => {
+      await new Promise((r) => setTimeout(r, 5000));
+      return new Response("too late");
+    });
+
+    const { callInternalFunction } = await import("./edge-security.ts");
+    const port = server.addr.port;
+
+    let threw = false;
+    try {
+      await callInternalFunction(
+        `http://localhost:${port}/slow`,
+        {},
+        { timeoutMs: 200 },
+      );
+    } catch {
+      threw = true;
+    }
+
+    assertEquals(threw, true, "Expected an error from timeout");
+
+    srvController.abort();
+    await server.finished.catch(() => {});
+  });
+}});
