@@ -15,6 +15,7 @@
 // =============================================================================
 
 import type { KBSearchResult, PracticeSearchResult, VectorSearchResponse } from "./rag-types.ts";
+import { buildInternalHeaders } from "./edge-security.ts";
 
 // ─── Configuration ──────────────────────────────────────────────────────────
 
@@ -86,12 +87,12 @@ async function callVectorSearch(
   opts: { limit?: number; category?: string | null; referenceDate?: string | null } = {}
 ): Promise<VectorSearchResponse> {
   try {
+    const headers = buildInternalHeaders({
+      Authorization: `Bearer ${supabaseKey}`,
+    });
     const response = await fetch(`${supabaseUrl}/functions/v1/vector-search`, {
       method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${supabaseKey}`,
-      },
+      headers,
       body: JSON.stringify({
         query,
         tables,

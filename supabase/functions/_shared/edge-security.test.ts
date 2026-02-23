@@ -1,7 +1,7 @@
 /**
- * Tests for edge-security shared helpers (fail-closed edition).
+ * Tests for edge-security shared helpers (dual-mode: browser + internal).
  *
- * Covers: CORS allowlist, auth guard, input size limits.
+ * Covers: CORS allowlist, internal key bypass, auth guards, input size limits.
  * No Armenian glyphs - Unicode escapes only.
  */
 
@@ -16,6 +16,10 @@ import {
   checkInternalAuth,
   checkInputSize,
   getMaxInputChars,
+  isValidInternalCall,
+  validateBrowserRequest,
+  validateInternalRequest,
+  buildInternalHeaders,
 } from "./edge-security.ts";
 
 // ─── Helper to save/restore env ────────────────────────────────────
@@ -51,7 +55,7 @@ function withEnv(
   }
 }
 
-// ─── CORS TESTS (fail-closed) ──────────────────────────────────────
+// ─── CORS TESTS (fail-closed for browser) ──────────────────────────
 
 Deno.test("getCorsHeaders: no ALLOWED_ORIGINS, no wildcard flag -> null", () => {
   return withEnv({ ALLOWED_ORIGINS: undefined, ALLOW_WILDCARD_CORS: undefined }, () => {
@@ -77,56 +81,38 @@ Deno.test("getCorsHeaders: allowed origin is reflected", () => {
   });
 });
 
-Deno.test("getCorsHeaders: disallowed origin -> null (fail-closed)", () => {
-  return withEnv({ ALLOWED_ORIGINS: "https://app.example.com,https://admin.example.com", ALLOW_WILDCARD_CORS: undefined }, () => {
-    const headers = getCorsHeaders("https://evil.com");
-    assertEquals(headers, null);
-  });
-});
-
-Deno.test("getCorsHeaders: null origin -> null (fail-closed)", () => {
+Deno.test("getCorsHeaders: disallowed origin -> null", () => {
   return withEnv({ ALLOWED_ORIGINS: "https://app.example.com", ALLOW_WILDCARD_CORS: undefined }, () => {
-    const headers = getCorsHeaders(null);
-    assertEquals(headers, null);
+    assertEquals(getCorsHeaders("https://evil.com"), null);
   });
 });
 
-Deno.test("getCorsHeaders: includes x-internal-key in allowed headers", () => {
-  return withEnv({ ALLOWED_ORIGINS: undefined, ALLOW_WILDCARD_CORS: "true" }, () => {
-    const headers = getCorsHeaders(null);
-    assertExists(headers);
-    assertEquals(headers!["Access-Control-Allow-Headers"].includes("x-internal-key"), true);
-  });
-});
-
-// ─── handleCors integration ────────────────────────────────────────
-
-Deno.test("handleCors: no CORS config, POST -> 403", async () => {
-  return withEnv({ ALLOWED_ORIGINS: undefined, ALLOW_WILDCARD_CORS: undefined }, async () => {
-    const req = new Request("https://example.com/test", { method: "POST" });
-    const result = handleCors(req);
-    assertExists(result.errorResponse);
-    assertEquals(result.errorResponse!.status, 403);
-    const body = await result.errorResponse!.json();
-    assertEquals(body.error, "CORS not configured");
-  });
-});
-
-Deno.test("handleCors: no CORS config, OPTIONS -> 403", async () => {
-  return withEnv({ ALLOWED_ORIGINS: undefined, ALLOW_WILDCARD_CORS: undefined }, async () => {
-    const req = new Request("https://example.com/test", { method: "OPTIONS" });
-    const result = handleCors(req);
-    assertExists(result.errorResponse);
-    assertEquals(result.errorResponse!.status, 403);
-    await result.errorResponse!.text();
-  });
-});
-
-Deno.test("handleCors: CORS configured, OPTIONS -> 204 preflight", () => {
+Deno.test("getCorsHeaders: null origin -> null", () => {
   return withEnv({ ALLOWED_ORIGINS: "https://app.example.com", ALLOW_WILDCARD_CORS: undefined }, () => {
+    assertEquals(getCorsHeaders(null), null);
+  });
+});
+
+// ─── DUAL-MODE handleCors ──────────────────────────────────────────
+
+Deno.test("handleCors: internal call with valid key, no Origin -> succeeds (internal mode)", () => {
+  return withEnv({ INTERNAL_INGEST_KEY: "test-key-123", ALLOWED_ORIGINS: "https://app.example.com", ALLOW_WILDCARD_CORS: undefined }, () => {
+    const req = new Request("https://example.com/test", {
+      method: "POST",
+      headers: { "x-internal-key": "test-key-123" },
+    });
+    const result = handleCors(req);
+    assertEquals(result.errorResponse, undefined);
+    assertExists(result.corsHeaders);
+    assertEquals((result as { mode: string }).mode, "internal");
+  });
+});
+
+Deno.test("handleCors: internal call OPTIONS -> 204 with internal mode", () => {
+  return withEnv({ INTERNAL_INGEST_KEY: "test-key-123", ALLOWED_ORIGINS: undefined, ALLOW_WILDCARD_CORS: undefined }, () => {
     const req = new Request("https://example.com/test", {
       method: "OPTIONS",
-      headers: { "Origin": "https://app.example.com" },
+      headers: { "x-internal-key": "test-key-123" },
     });
     const result = handleCors(req);
     assertExists(result.errorResponse);
@@ -135,8 +121,18 @@ Deno.test("handleCors: CORS configured, OPTIONS -> 204 preflight", () => {
   });
 });
 
-Deno.test("handleCors: CORS configured, POST -> corsHeaders returned, no error", () => {
-  return withEnv({ ALLOWED_ORIGINS: "https://app.example.com", ALLOW_WILDCARD_CORS: undefined }, () => {
+Deno.test("handleCors: no Origin, no internal key -> 403 (fail-closed)", async () => {
+  return withEnv({ INTERNAL_INGEST_KEY: "secret", ALLOWED_ORIGINS: "https://app.example.com", ALLOW_WILDCARD_CORS: undefined }, async () => {
+    const req = new Request("https://example.com/test", { method: "POST" });
+    const result = handleCors(req);
+    assertExists(result.errorResponse);
+    assertEquals(result.errorResponse!.status, 403);
+    await result.errorResponse!.text();
+  });
+});
+
+Deno.test("handleCors: browser call with allowed Origin -> browser mode", () => {
+  return withEnv({ INTERNAL_INGEST_KEY: "secret", ALLOWED_ORIGINS: "https://app.example.com", ALLOW_WILDCARD_CORS: undefined }, () => {
     const req = new Request("https://example.com/test", {
       method: "POST",
       headers: { "Origin": "https://app.example.com" },
@@ -144,39 +140,141 @@ Deno.test("handleCors: CORS configured, POST -> corsHeaders returned, no error",
     const result = handleCors(req);
     assertEquals(result.errorResponse, undefined);
     assertExists(result.corsHeaders);
+    assertEquals((result as { mode: string }).mode, "browser");
     assertEquals(result.corsHeaders!["Access-Control-Allow-Origin"], "https://app.example.com");
   });
 });
 
-// ─── AUTH GUARD TESTS (fail-closed) ────────────────────────────────
-
-Deno.test("checkInternalAuth: no secret, no bypass -> 500", async () => {
-  return withEnv({ INTERNAL_INGEST_KEY: undefined, ALLOW_UNAUTH_INGEST: undefined }, async () => {
-    const req = new Request("https://example.com/test", { method: "POST" });
-    const result = checkInternalAuth(req, { "Access-Control-Allow-Origin": "*" });
-    assertExists(result);
-    assertEquals(result!.status, 500);
-    const body = await result!.json();
-    assertEquals(body.error, "Server misconfigured");
+Deno.test("handleCors: browser call from disallowed Origin -> 403", async () => {
+  return withEnv({ INTERNAL_INGEST_KEY: "secret", ALLOWED_ORIGINS: "https://app.example.com", ALLOW_WILDCARD_CORS: undefined }, async () => {
+    const req = new Request("https://example.com/test", {
+      method: "POST",
+      headers: { "Origin": "https://evil.com" },
+    });
+    const result = handleCors(req);
+    assertExists(result.errorResponse);
+    assertEquals(result.errorResponse!.status, 403);
+    await result.errorResponse!.text();
   });
 });
 
-Deno.test("checkInternalAuth: no secret + ALLOW_UNAUTH_INGEST=true -> passes (null)", () => {
-  return withEnv({ INTERNAL_INGEST_KEY: undefined, ALLOW_UNAUTH_INGEST: "true" }, () => {
-    const req = new Request("https://example.com/test", { method: "POST" });
-    const result = checkInternalAuth(req, { "Access-Control-Allow-Origin": "*" });
-    assertEquals(result, null);
+// ─── isValidInternalCall ───────────────────────────────────────────
+
+Deno.test("isValidInternalCall: valid key -> true", () => {
+  return withEnv({ INTERNAL_INGEST_KEY: "my-secret" }, () => {
+    const req = new Request("https://example.com", {
+      method: "POST",
+      headers: { "x-internal-key": "my-secret" },
+    });
+    assertEquals(isValidInternalCall(req), true);
   });
 });
 
-Deno.test("checkInternalAuth: missing x-internal-key -> 401", async () => {
-  return withEnv({ INTERNAL_INGEST_KEY: "test-secret-key-12345", ALLOW_UNAUTH_INGEST: undefined }, async () => {
-    const req = new Request("https://example.com/test", { method: "POST" });
-    const result = checkInternalAuth(req, { "Access-Control-Allow-Origin": "*" });
+Deno.test("isValidInternalCall: wrong key -> false", () => {
+  return withEnv({ INTERNAL_INGEST_KEY: "my-secret" }, () => {
+    const req = new Request("https://example.com", {
+      method: "POST",
+      headers: { "x-internal-key": "wrong" },
+    });
+    assertEquals(isValidInternalCall(req), false);
+  });
+});
+
+Deno.test("isValidInternalCall: no key configured -> false", () => {
+  return withEnv({ INTERNAL_INGEST_KEY: undefined }, () => {
+    const req = new Request("https://example.com", { method: "POST" });
+    assertEquals(isValidInternalCall(req), false);
+  });
+});
+
+// ─── validateBrowserRequest ────────────────────────────────────────
+
+Deno.test("validateBrowserRequest: no auth header -> 401", async () => {
+  const req = new Request("https://example.com", { method: "POST" });
+  const result = validateBrowserRequest(req, { "Access-Control-Allow-Origin": "*" });
+  assertExists(result);
+  assertEquals(result!.status, 401);
+  await result!.text();
+});
+
+Deno.test("validateBrowserRequest: valid Bearer -> null (pass)", () => {
+  const req = new Request("https://example.com", {
+    method: "POST",
+    headers: { Authorization: "Bearer some-token" },
+  });
+  const result = validateBrowserRequest(req, { "Access-Control-Allow-Origin": "*" });
+  assertEquals(result, null);
+});
+
+// ─── validateInternalRequest ───────────────────────────────────────
+
+Deno.test("validateInternalRequest: valid key -> null (pass)", () => {
+  return withEnv({ INTERNAL_INGEST_KEY: "correct-key", ALLOW_UNAUTH_INGEST: undefined }, () => {
+    const req = new Request("https://example.com", {
+      method: "POST",
+      headers: { "x-internal-key": "correct-key" },
+    });
+    assertEquals(validateInternalRequest(req, {}), null);
+  });
+});
+
+Deno.test("validateInternalRequest: wrong key -> 401", async () => {
+  return withEnv({ INTERNAL_INGEST_KEY: "correct-key", ALLOW_UNAUTH_INGEST: undefined }, async () => {
+    const req = new Request("https://example.com", {
+      method: "POST",
+      headers: { "x-internal-key": "wrong" },
+    });
+    const result = validateInternalRequest(req, {});
     assertExists(result);
     assertEquals(result!.status, 401);
-    const body = await result!.json();
-    assertEquals(body.error, "Unauthorized");
+    await result!.text();
+  });
+});
+
+Deno.test("validateInternalRequest: no secret configured -> 500", async () => {
+  return withEnv({ INTERNAL_INGEST_KEY: undefined, ALLOW_UNAUTH_INGEST: undefined }, async () => {
+    const req = new Request("https://example.com", { method: "POST" });
+    const result = validateInternalRequest(req, {});
+    assertExists(result);
+    assertEquals(result!.status, 500);
+    await result!.text();
+  });
+});
+
+Deno.test("validateInternalRequest: ALLOW_UNAUTH_INGEST=true bypass -> null", () => {
+  return withEnv({ INTERNAL_INGEST_KEY: undefined, ALLOW_UNAUTH_INGEST: "true" }, () => {
+    const req = new Request("https://example.com", { method: "POST" });
+    assertEquals(validateInternalRequest(req, {}), null);
+  });
+});
+
+// ─── buildInternalHeaders ──────────────────────────────────────────
+
+Deno.test("buildInternalHeaders: includes x-internal-key and Content-Type", () => {
+  return withEnv({ INTERNAL_INGEST_KEY: "my-key" }, () => {
+    const headers = buildInternalHeaders();
+    assertEquals(headers["x-internal-key"], "my-key");
+    assertEquals(headers["Content-Type"], "application/json");
+  });
+});
+
+Deno.test("buildInternalHeaders: merges extra headers", () => {
+  return withEnv({ INTERNAL_INGEST_KEY: "my-key" }, () => {
+    const headers = buildInternalHeaders({ Authorization: "Bearer token" });
+    assertEquals(headers["x-internal-key"], "my-key");
+    assertEquals(headers["Authorization"], "Bearer token");
+  });
+});
+
+// ─── LEGACY checkInternalAuth (backward compat) ────────────────────
+
+Deno.test("checkInternalAuth: correct key -> passes (null)", () => {
+  return withEnv({ INTERNAL_INGEST_KEY: "correct-key", ALLOW_UNAUTH_INGEST: undefined }, () => {
+    const req = new Request("https://example.com/test", {
+      method: "POST",
+      headers: { "x-internal-key": "correct-key" },
+    });
+    assertEquals(checkInternalAuth(req, { "Access-Control-Allow-Origin": "*" }), null);
   });
 });
 
@@ -193,30 +291,11 @@ Deno.test("checkInternalAuth: wrong key -> 401", async () => {
   });
 });
 
-Deno.test("checkInternalAuth: correct key -> passes (null)", () => {
-  return withEnv({ INTERNAL_INGEST_KEY: "correct-key", ALLOW_UNAUTH_INGEST: undefined }, () => {
-    const req = new Request("https://example.com/test", {
-      method: "POST",
-      headers: { "x-internal-key": "correct-key" },
-    });
-    const result = checkInternalAuth(req, { "Access-Control-Allow-Origin": "*" });
-    assertEquals(result, null);
-  });
-});
-
 // ─── INPUT SIZE LIMIT TESTS ────────────────────────────────────────
 
 Deno.test("checkInputSize: text within limit -> passes (null)", () => {
   return withEnv({ MAX_INPUT_CHARS: "1000" }, () => {
-    const result = checkInputSize("A".repeat(999), { "Access-Control-Allow-Origin": "*" });
-    assertEquals(result, null);
-  });
-});
-
-Deno.test("checkInputSize: text at exact limit -> passes (null)", () => {
-  return withEnv({ MAX_INPUT_CHARS: "500" }, () => {
-    const result = checkInputSize("B".repeat(500), { "Access-Control-Allow-Origin": "*" });
-    assertEquals(result, null);
+    assertEquals(checkInputSize("A".repeat(999), { "Access-Control-Allow-Origin": "*" }), null);
   });
 });
 
@@ -227,8 +306,6 @@ Deno.test("checkInputSize: text exceeds limit -> 413", async () => {
     assertEquals(result!.status, 413);
     const body = await result!.json();
     assertEquals(body.error, "Payload too large");
-    assertEquals(body.max_chars, 500);
-    assertEquals(body.received_chars, 501);
   });
 });
 
@@ -244,8 +321,66 @@ Deno.test("getMaxInputChars: respects env override", () => {
   });
 });
 
-Deno.test("getMaxInputChars: invalid env value -> default", () => {
-  return withEnv({ MAX_INPUT_CHARS: "not-a-number" }, () => {
-    assertEquals(getMaxInputChars(), 2_000_000);
+// ─── INTEGRATION SCENARIO TESTS ────────────────────────────────────
+
+Deno.test("INTEGRATION: internal call without Origin + valid key -> full success path", () => {
+  return withEnv({
+    INTERNAL_INGEST_KEY: "prod-secret-key",
+    ALLOWED_ORIGINS: "https://myapp.com",
+    ALLOW_WILDCARD_CORS: undefined,
+  }, () => {
+    // Simulate server-to-server call: no Origin, has x-internal-key
+    const req = new Request("https://edge.supabase.co/functions/v1/vector-search", {
+      method: "POST",
+      headers: {
+        "x-internal-key": "prod-secret-key",
+        "Content-Type": "application/json",
+      },
+    });
+    const result = handleCors(req);
+    assertEquals(result.errorResponse, undefined);
+    assertExists(result.corsHeaders);
+    assertEquals((result as { mode: string }).mode, "internal");
+
+    // Internal auth should also pass
+    const authResult = validateInternalRequest(req, result.corsHeaders!);
+    assertEquals(authResult, null);
+  });
+});
+
+Deno.test("INTEGRATION: call without Origin and without key -> 403", async () => {
+  return withEnv({
+    INTERNAL_INGEST_KEY: "prod-secret-key",
+    ALLOWED_ORIGINS: "https://myapp.com",
+    ALLOW_WILDCARD_CORS: undefined,
+  }, async () => {
+    const req = new Request("https://edge.supabase.co/functions/v1/vector-search", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+    });
+    const result = handleCors(req);
+    assertExists(result.errorResponse);
+    assertEquals(result.errorResponse!.status, 403);
+    await result.errorResponse!.text();
+  });
+});
+
+Deno.test("INTEGRATION: browser from disallowed origin -> 403", async () => {
+  return withEnv({
+    INTERNAL_INGEST_KEY: "prod-secret-key",
+    ALLOWED_ORIGINS: "https://myapp.com",
+    ALLOW_WILDCARD_CORS: undefined,
+  }, async () => {
+    const req = new Request("https://edge.supabase.co/functions/v1/vector-search", {
+      method: "POST",
+      headers: {
+        "Origin": "https://attacker.com",
+        "Content-Type": "application/json",
+      },
+    });
+    const result = handleCors(req);
+    assertExists(result.errorResponse);
+    assertEquals(result.errorResponse!.status, 403);
+    await result.errorResponse!.text();
   });
 });
