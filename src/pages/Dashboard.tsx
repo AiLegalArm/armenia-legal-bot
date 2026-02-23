@@ -465,12 +465,10 @@ const Dashboard = () => {
               </div>
             )}
 
-            {/* Usage Widget for Admins */}
-            {isAdmin && (
-              <div className="mt-8">
-                <UsageMonitor budgetLimit={5.0} compact={true} />
-              </div>
-            )}
+            {/* Usage Widget for all users */}
+            <div className="mt-8">
+              <UsageMonitor budgetLimit={5.0} compact={true} />
+            </div>
           </>
         )}
 
