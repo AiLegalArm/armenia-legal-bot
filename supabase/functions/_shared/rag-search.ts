@@ -99,12 +99,15 @@ interface VectorSearchCallResult extends VectorSearchResponse {
 /** Call the vector-search edge function — surfaces errors explicitly */
 async function callVectorSearch(
   supabaseUrl: string,
-  supabaseKey: string,
   query: string,
   tables: "kb" | "practice" | "both",
   opts: { limit?: number; category?: string | null; referenceDate?: string | null; requestId?: string } = {}
 ): Promise<VectorSearchCallResult> {
   try {
+    // Internal calls authenticate via x-internal-key only (set by callInternalFunction).
+    // Authorization header is intentionally omitted: vector-search creates its
+    // own service_role client server-side, so forwarding a service-role key over
+    // HTTP would be an unnecessary secret exposure.
     const response = await callInternalFunction(
       `${supabaseUrl}/functions/v1/vector-search`,
       {
@@ -116,7 +119,6 @@ async function callVectorSearch(
         reference_date: opts.referenceDate || undefined,
       },
       {
-        extraHeaders: { Authorization: `Bearer ${supabaseKey}` },
         requestId: opts.requestId,
       },
     );
@@ -209,7 +211,7 @@ export async function searchKB(opts: RAGKBOptions): Promise<RAGResult<KBSearchRe
   const safeKeywords = keywords.map(sanitizeForPostgrest).filter((k) => k.length > 0);
 
   // Phase 1: Parallel vector + keyword search
-  const vectorPromise = callVectorSearch(supabaseUrl, supabaseKey, query, "kb", {
+  const vectorPromise = callVectorSearch(supabaseUrl, query, "kb", {
     limit: 10,
     referenceDate,
     requestId: opts.requestId,
@@ -304,7 +306,7 @@ export async function searchPractice(opts: RAGPracticeOptions): Promise<RAGResul
   const safeKeywords = keywords.map(sanitizeForPostgrest).filter((k) => k.length > 0);
 
   // Phase 1: Parallel vector + keyword
-  const vectorPromise = callVectorSearch(supabaseUrl, supabaseKey, query, "practice", {
+  const vectorPromise = callVectorSearch(supabaseUrl, query, "practice", {
     limit: 10,
     category,
     requestId: opts.requestId,
