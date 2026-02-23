@@ -44,7 +44,7 @@ const INTERNAL_CORS_HEADERS: Record<string, string> = {
  */
 export function isValidInternalCall(req: Request): boolean {
   const secret = Deno.env.get("INTERNAL_INGEST_KEY");
-  if (!secret) return false;
+  if (!secret) return false;  // missing or empty → never valid
   const provided = req.headers.get("x-internal-key");
   return !!provided && provided === secret;
 }
@@ -282,13 +282,22 @@ function generateRequestId(): string {
  * Optionally pass x-user-id for audit (NOT used for auth).
  */
 export function buildInternalHeaders(extraHeaders?: Record<string, string>): Record<string, string> {
-  const key = Deno.env.get("INTERNAL_INGEST_KEY") || "";
-  return {
+  const key = Deno.env.get("INTERNAL_INGEST_KEY");
+  if (!key) {
+    throw new Error("INTERNAL_INGEST_KEY is not set — cannot make internal calls");
+  }
+  const base: Record<string, string> = {
     "Content-Type": "application/json",
     "x-internal-key": key,
     "x-request-id": generateRequestId(),
-    ...extraHeaders,
   };
+  // Merge extra headers AFTER base so caller can override x-request-id
+  if (extraHeaders) {
+    for (const [k, v] of Object.entries(extraHeaders)) {
+      base[k] = v;
+    }
+  }
+  return base;
 }
 
 /**
@@ -313,12 +322,16 @@ export async function callInternalFunction(
   options?: {
     extraHeaders?: Record<string, string>;
     userId?: string;
+    requestId?: string;
     timeoutMs?: number;
   },
 ): Promise<Response> {
   const extra: Record<string, string> = { ...options?.extraHeaders };
   if (options?.userId) {
     extra["x-user-id"] = options.userId;
+  }
+  if (options?.requestId) {
+    extra["x-request-id"] = options.requestId;
   }
   const headers = buildInternalHeaders(extra);
 

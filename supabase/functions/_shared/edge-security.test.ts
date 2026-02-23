@@ -433,10 +433,55 @@ Deno.test("buildInternalHeaders: x-request-id is unique per call", () => {
   });
 });
 
-Deno.test("buildInternalHeaders: extraHeaders x-request-id is preserved", () => {
+Deno.test("buildInternalHeaders: extraHeaders x-request-id is preserved (not overwritten)", () => {
   return withEnv({ INTERNAL_INGEST_KEY: "my-key" }, () => {
     const headers = buildInternalHeaders({ "x-request-id": "custom-trace-42" });
     assertEquals(headers["x-request-id"], "custom-trace-42");
+  });
+});
+
+Deno.test("buildInternalHeaders: throws when INTERNAL_INGEST_KEY is missing", () => {
+  return withEnv({ INTERNAL_INGEST_KEY: undefined }, () => {
+    let threw = false;
+    try {
+      buildInternalHeaders();
+    } catch (e) {
+      threw = true;
+      assertEquals((e as Error).message.includes("INTERNAL_INGEST_KEY"), true);
+    }
+    assertEquals(threw, true, "Expected buildInternalHeaders to throw");
+  });
+});
+
+Deno.test("buildInternalHeaders: throws when INTERNAL_INGEST_KEY is empty string", () => {
+  return withEnv({ INTERNAL_INGEST_KEY: "" }, () => {
+    let threw = false;
+    try {
+      buildInternalHeaders();
+    } catch {
+      threw = true;
+    }
+    assertEquals(threw, true, "Expected buildInternalHeaders to throw for empty key");
+  });
+});
+
+Deno.test("getRequestMode: returns 'browser' when INTERNAL_INGEST_KEY is empty", () => {
+  return withEnv({ INTERNAL_INGEST_KEY: "" }, () => {
+    const req = new Request("https://example.com", {
+      method: "POST",
+      headers: { "x-internal-key": "" },
+    });
+    assertEquals(getRequestMode(req), "browser");
+  });
+});
+
+Deno.test("getRequestMode: returns 'browser' when INTERNAL_INGEST_KEY is missing even if header present", () => {
+  return withEnv({ INTERNAL_INGEST_KEY: undefined }, () => {
+    const req = new Request("https://example.com", {
+      method: "POST",
+      headers: { "x-internal-key": "some-value" },
+    });
+    assertEquals(getRequestMode(req), "browser");
   });
 });
 
