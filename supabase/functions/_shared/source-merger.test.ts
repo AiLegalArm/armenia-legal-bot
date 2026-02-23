@@ -102,13 +102,13 @@ Deno.test("matchSources: no match when dates differ", () => {
 
 Deno.test("mergeSources: merges TXT + PDF correctly", async () => {
   const txtChunks = [
-    { chunk_index: 0, chunk_type: "article" as const, chunk_text: "Article 1 text", char_start: 0, char_end: 14, label: "Art. 1", locator: null, chunk_hash: "h1" },
-    { chunk_index: 1, chunk_type: "article" as const, chunk_text: "Article 2 text", char_start: 15, char_end: 29, label: "Art. 2", locator: null, chunk_hash: "h2" },
+    { chunk_index: 0, chunk_type: "article" as const, chunk_text: "Article 1 text", char_start: 0, char_end: 14, label: "Art. 1", locator: null, chunk_hash: "h1", metadata: null },
+    { chunk_index: 1, chunk_type: "article" as const, chunk_text: "Article 2 text", char_start: 15, char_end: 29, label: "Art. 2", locator: null, chunk_hash: "h2", metadata: null },
   ];
 
   const pdfChunks = [
-    { chunk_index: 0, chunk_type: "table" as const, chunk_text: "| Col1 | Col2 |", char_start: 0, char_end: 16, label: "Table 1", locator: null, chunk_hash: "ht1" },
-    { chunk_index: 1, chunk_type: "header" as const, chunk_text: "Header text", char_start: 17, char_end: 28, label: null, locator: null, chunk_hash: "hh1" },
+    { chunk_index: 0, chunk_type: "table" as const, chunk_text: "| Col1 | Col2 |", char_start: 0, char_end: 16, label: "Table 1", locator: null, chunk_hash: "ht1", metadata: null },
+    { chunk_index: 1, chunk_type: "header" as const, chunk_text: "Header text", char_start: 17, char_end: 28, label: null, locator: null, chunk_hash: "hh1", metadata: null },
   ];
 
   const txt = makeSource({

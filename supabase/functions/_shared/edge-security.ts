@@ -1,20 +1,51 @@
 /**
- * edge-security.ts — Fail-closed perimeter guards.
+ * edge-security.ts — Fail-closed perimeter guards with dual-mode support.
+ *
+ * TWO CALL MODES:
+ *   1) BROWSER  — Origin required, checked against ALLOWED_ORIGINS allowlist.
+ *   2) INTERNAL — No Origin needed; validated via `x-internal-key` header
+ *      against INTERNAL_INGEST_KEY secret. Server-to-server calls use this.
+ *
+ * Header Contract for Internal Calls:
+ *   x-internal-key: <value of INTERNAL_INGEST_KEY secret>
+ *   Content-Type:   application/json
+ *   (Authorization is optional — for service_role JWT if needed by Supabase client)
  *
  * Env vars:
- *   ALLOWED_ORIGINS        – comma-separated allowlist (REQUIRED in prod)
+ *   ALLOWED_ORIGINS        – comma-separated allowlist (REQUIRED in prod for browser)
  *   ALLOW_WILDCARD_CORS    – set to "true" to allow "*" when ALLOWED_ORIGINS is missing
  *   INTERNAL_INGEST_KEY    – shared secret for x-internal-key header (REQUIRED in prod)
  *   ALLOW_UNAUTH_INGEST    – set to "true" to bypass auth when key is missing
- *   MAX_INPUT_CHARS         – max text length (default 2 000 000)
+ *   MAX_INPUT_CHARS        – max text length (default 2 000 000)
  */
 
-// ─── CORS ALLOWLIST ─────────────────────────────────────────────────
+// ─── CONSTANTS ─────────────────────────────────────────────────────
 
 const DEFAULT_ALLOWED_HEADERS =
   "authorization, x-client-info, apikey, content-type, x-internal-key, " +
   "x-supabase-client-platform, x-supabase-client-platform-version, " +
   "x-supabase-client-runtime, x-supabase-client-runtime-version";
+
+const INTERNAL_CORS_HEADERS: Record<string, string> = {
+  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Headers": DEFAULT_ALLOWED_HEADERS,
+  "Access-Control-Allow-Methods": "POST, OPTIONS",
+};
+
+// ─── INTERNAL CALL DETECTION ───────────────────────────────────────
+
+/**
+ * Check if request carries a valid internal key.
+ * Returns true if x-internal-key matches INTERNAL_INGEST_KEY.
+ */
+export function isValidInternalCall(req: Request): boolean {
+  const secret = Deno.env.get("INTERNAL_INGEST_KEY");
+  if (!secret) return false;
+  const provided = req.headers.get("x-internal-key");
+  return !!provided && provided === secret;
+}
+
+// ─── CORS ALLOWLIST ────────────────────────────────────────────────
 
 function getAllowedOrigins(): string[] {
   const raw = Deno.env.get("ALLOWED_ORIGINS") || "";
@@ -30,10 +61,10 @@ function isWildcardAllowed(): boolean {
 }
 
 /**
- * Build CORS headers. Fail-closed:
+ * Build CORS headers for browser requests. Fail-closed:
  * - If ALLOWED_ORIGINS is unset and ALLOW_WILDCARD_CORS !== "true" → returns null (caller must 403).
  * - If origin matches allowlist → reflect it.
- * - If origin doesn't match → use first allowlisted origin.
+ * - If origin doesn't match → null.
  * - If wildcard explicitly allowed → "*".
  */
 export function getCorsHeaders(requestOrigin?: string | null): Record<string, string> | null {
@@ -47,11 +78,9 @@ export function getCorsHeaders(requestOrigin?: string | null): Record<string, st
         "Access-Control-Allow-Methods": "POST, OPTIONS",
       };
     }
-    // Fail-closed: CORS not configured
     return null;
   }
 
-  // Fail-closed: reject origins not in allowlist
   if (!requestOrigin || !allowed.includes(requestOrigin)) {
     return null;
   }
@@ -64,29 +93,52 @@ export function getCorsHeaders(requestOrigin?: string | null): Record<string, st
   };
 }
 
-/**
- * Handle CORS preflight or reject if CORS is not configured.
- * Returns a Response for OPTIONS or when CORS is misconfigured; null to continue.
- */
-export function handleCors(req: Request): { corsHeaders: Record<string, string>; errorResponse?: Response } | { corsHeaders?: undefined; errorResponse: Response } {
-  const headers = getCorsHeaders(req.headers.get("origin"));
+// ─── DUAL-MODE REQUEST HANDLER ─────────────────────────────────────
 
-  if (!headers) {
-    // CORS not configured – fail-closed
-    const fallback = { "Content-Type": "application/json" };
+export interface RequestValidation {
+  corsHeaders: Record<string, string>;
+  errorResponse?: Response;
+  mode: "browser" | "internal";
+}
+
+/**
+ * Unified request handler with dual-mode support.
+ *
+ * Logic:
+ * 1. If request has a valid x-internal-key → INTERNAL mode.
+ *    CORS headers are permissive (wildcard) since there's no browser.
+ *    OPTIONS returns 204. POST/other continues.
+ *
+ * 2. If request has an Origin header → BROWSER mode.
+ *    Standard fail-closed CORS check applies.
+ *
+ * 3. No Origin + no valid internal key → FAIL-CLOSED (403).
+ */
+export function handleCors(req: Request): RequestValidation | { corsHeaders?: undefined; errorResponse: Response } {
+  // ── Mode 1: Internal call with valid key ──
+  if (isValidInternalCall(req)) {
     if (req.method === "OPTIONS") {
       return {
-        errorResponse: new Response(JSON.stringify({ error: "CORS not configured" }), {
-          status: 403,
-          headers: fallback,
-        }),
+        corsHeaders: INTERNAL_CORS_HEADERS,
+        errorResponse: new Response(null, { status: 204, headers: INTERNAL_CORS_HEADERS }),
+        mode: "internal",
       };
     }
+    return { corsHeaders: INTERNAL_CORS_HEADERS, mode: "internal" };
+  }
+
+  // ── Mode 2: Browser call — standard CORS ──
+  const origin = req.headers.get("origin");
+  const headers = getCorsHeaders(origin);
+
+  if (!headers) {
+    // No valid Origin + no valid internal key → fail-closed
+    const fallback = { "Content-Type": "application/json" };
     return {
-      errorResponse: new Response(JSON.stringify({ error: "CORS not configured" }), {
-        status: 403,
-        headers: fallback,
-      }),
+      errorResponse: new Response(
+        JSON.stringify({ error: "CORS not configured or origin not allowed" }),
+        { status: 403, headers: fallback },
+      ),
     };
   }
 
@@ -94,54 +146,78 @@ export function handleCors(req: Request): { corsHeaders: Record<string, string>;
     return {
       corsHeaders: headers,
       errorResponse: new Response(null, { status: 204, headers }),
+      mode: "browser",
     };
   }
 
-  return { corsHeaders: headers };
+  return { corsHeaders: headers, mode: "browser" };
 }
 
-// ─── AUTH GUARD ─────────────────────────────────────────────────────
+// ─── VALIDATION HELPERS ────────────────────────────────────────────
 
-function isUnauthAllowed(): boolean {
-  return Deno.env.get("ALLOW_UNAUTH_INGEST") === "true";
+/**
+ * Validate a BROWSER request: checks CORS (done by handleCors) + JWT auth.
+ * Use after handleCors for browser-facing endpoints.
+ * Returns null if OK, or an error Response.
+ */
+export function validateBrowserRequest(
+  req: Request,
+  corsHeaders: Record<string, string>,
+): Response | null {
+  const authHeader = req.headers.get("authorization");
+  if (!authHeader?.startsWith("Bearer ")) {
+    return new Response(
+      JSON.stringify({ error: "Authorization required" }),
+      { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+    );
+  }
+  return null;
 }
 
 /**
- * Validate x-internal-key header against INTERNAL_INGEST_KEY secret.
- * Fail-closed: if secret is missing and ALLOW_UNAUTH_INGEST !== "true" → 500.
+ * Validate an INTERNAL request: checks x-internal-key.
+ * Use after handleCors for internal/service endpoints.
+ * Returns null if OK, or an error Response.
+ *
+ * Note: if handleCors already detected mode="internal", this is
+ * redundant but harmless. Use for endpoints that REQUIRE internal auth.
+ */
+export function validateInternalRequest(
+  req: Request,
+  corsHeaders: Record<string, string>,
+): Response | null {
+  if (isValidInternalCall(req)) return null;
+
+  // Legacy dev bypass
+  if (Deno.env.get("ALLOW_UNAUTH_INGEST") === "true") {
+    return null;
+  }
+
+  const secret = Deno.env.get("INTERNAL_INGEST_KEY");
+  if (!secret) {
+    return new Response(
+      JSON.stringify({ error: "Server misconfigured: INTERNAL_INGEST_KEY not set" }),
+      { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+    );
+  }
+
+  return new Response(
+    JSON.stringify({ error: "Unauthorized: invalid or missing x-internal-key" }),
+    { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+  );
+}
+
+// ─── LEGACY COMPAT (checkInternalAuth) ─────────────────────────────
+
+/**
+ * @deprecated Use validateInternalRequest() instead.
+ * Kept for backward compatibility during migration.
  */
 export function checkInternalAuth(
   req: Request,
   corsHeaders: Record<string, string>,
 ): Response | null {
-  const secret = Deno.env.get("INTERNAL_INGEST_KEY");
-
-  if (!secret) {
-    if (isUnauthAllowed()) {
-      return null; // Explicit dev bypass
-    }
-    // Fail-closed: server misconfigured
-    return new Response(
-      JSON.stringify({ error: "Server misconfigured" }),
-      {
-        status: 500,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      },
-    );
-  }
-
-  const provided = req.headers.get("x-internal-key");
-  if (!provided || provided !== secret) {
-    return new Response(
-      JSON.stringify({ error: "Unauthorized" }),
-      {
-        status: 401,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      },
-    );
-  }
-
-  return null;
+  return validateInternalRequest(req, corsHeaders);
 }
 
 // ─── INPUT SIZE LIMIT ──────────────────────────────────────────────
@@ -179,4 +255,21 @@ export function checkInputSize(
     );
   }
   return null;
+}
+
+// ─── INTERNAL CALL HEADER BUILDER ──────────────────────────────────
+
+/**
+ * Build headers for server-to-server calls between Edge Functions.
+ * Usage:
+ *   const headers = buildInternalHeaders();
+ *   fetch(`${supabaseUrl}/functions/v1/vector-search`, { headers, ... });
+ */
+export function buildInternalHeaders(extraHeaders?: Record<string, string>): Record<string, string> {
+  const key = Deno.env.get("INTERNAL_INGEST_KEY") || "";
+  return {
+    "Content-Type": "application/json",
+    "x-internal-key": key,
+    ...extraHeaders,
+  };
 }
