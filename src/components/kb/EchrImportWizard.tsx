@@ -37,6 +37,7 @@ interface ImportStats {
   total: number;
   processed: number;
   inserted: number;
+  skipped: number;
   errors: number;
   parseSkipped: number;
 }
@@ -154,7 +155,7 @@ export function EchrImportWizard({ open, onOpenChange, onSuccess }: EchrImportWi
   const BATCH_SIZE = 3;
 
   const [stats, setStats] = useState<ImportStats>({
-    total: 0, processed: 0, inserted: 0, errors: 0, parseSkipped: 0,
+    total: 0, processed: 0, inserted: 0, skipped: 0, errors: 0, parseSkipped: 0,
   });
 
   const [errorDetails, setErrorDetails] = useState<Array<{ title: string; error: string }>>([]);
@@ -248,11 +249,12 @@ export function EchrImportWizard({ open, onOpenChange, onSuccess }: EchrImportWi
     const total = parsedCases.length;
     let processed = 0;
     let inserted = 0;
+    let importSkipped = 0;
     let importErrors = 0;
     let consecutiveErrors = 0;
     const MAX_CONSECUTIVE_ERRORS = 5;
 
-    setStats({ total, processed: 0, inserted: 0, errors: 0, parseSkipped });
+    setStats({ total, processed: 0, inserted: 0, skipped: 0, errors: 0, parseSkipped });
 
     for (let batchIdx = 0; batchIdx < total; batchIdx += BATCH_SIZE) {
       if (abortRef.current) break;
@@ -279,6 +281,7 @@ export function EchrImportWizard({ open, onOpenChange, onSuccess }: EchrImportWi
 
           processed += data.batchProcessed ?? BATCH_SIZE;
           inserted += data.inserted ?? 0;
+          importSkipped += data.skipped ?? 0;
           importErrors += data.errors ?? 0;
 
           if (Array.isArray(data.errorDetails)) {
@@ -287,7 +290,7 @@ export function EchrImportWizard({ open, onOpenChange, onSuccess }: EchrImportWi
 
           consecutiveErrors = 0;
           batchOk = true;
-          setStats({ total, processed, inserted, errors: importErrors, parseSkipped });
+          setStats({ total, processed, inserted, skipped: importSkipped, errors: importErrors, parseSkipped });
           break;
         } catch (err) {
           console.error(`Batch ${batchIdx} error:`, err);
@@ -299,14 +302,14 @@ export function EchrImportWizard({ open, onOpenChange, onSuccess }: EchrImportWi
         consecutiveErrors++;
         importErrors += BATCH_SIZE;
         processed += BATCH_SIZE;
-        setStats({ total, processed, inserted, errors: importErrors, parseSkipped });
+        setStats({ total, processed, inserted, skipped: importSkipped, errors: importErrors, parseSkipped });
       }
 
       await new Promise((r) => setTimeout(r, 200));
     }
 
     setStatus("success");
-    toast.success(`\u0546\u0565\u0580\u0574\u0578\u0582\u056E\u0578\u0582\u0574 \u0561\u057E\u0561\u0580\u057f\u057e\u0565\u0581 \u2014 ${inserted} \u0564\u0565\u056C`);
+    toast.success(`\u0546\u0565\u0580\u0574\u0578\u0582\u056E\u0578\u0582\u0574 \u0561\u057E\u0561\u0580\u057F\u057E\u0565\u0581 \u2014 ${inserted} \u0576\u0578\u0580, ${importSkipped} \u0562\u0561\u0581 \u0569\u0578\u0572\u057E\u0561\u056E`);
     onSuccess();
   }, [parsedCases, practiceCategory, parseSkipped, onSuccess]);
 
@@ -323,7 +326,7 @@ export function EchrImportWizard({ open, onOpenChange, onSuccess }: EchrImportWi
     setParsedCases([]);
     setParseSkipped(0);
     setError(null);
-    setStats({ total: 0, processed: 0, inserted: 0, errors: 0, parseSkipped: 0 });
+    setStats({ total: 0, processed: 0, inserted: 0, skipped: 0, errors: 0, parseSkipped: 0 });
     onOpenChange(false);
   }, [onOpenChange]);
 
@@ -473,10 +476,14 @@ export function EchrImportWizard({ open, onOpenChange, onSuccess }: EchrImportWi
               </div>
               <Progress value={progressPct} className="h-2" />
 
-              <div className="grid grid-cols-3 gap-2 text-center text-xs">
+              <div className="grid grid-cols-4 gap-2 text-center text-xs">
                 <div className="rounded border bg-primary/10 p-2">
                   <p className="font-mono font-bold text-primary">{stats.inserted}</p>
                   <p className="text-muted-foreground">{"\u0546\u0565\u0580\u0574\u0578\u0582\u056E\u057E\u0561\u056E"}</p>
+                </div>
+                <div className="rounded border bg-yellow-500/10 p-2">
+                  <p className="font-mono font-bold text-yellow-600">{stats.skipped}</p>
+                  <p className="text-muted-foreground">{"\u0532\u0561\u0581 \u0569\u0578\u0572\u057E\u0561\u056E"}</p>
                 </div>
                 <div className="rounded border bg-destructive/10 p-2">
                   <p className="font-mono font-bold text-destructive">{stats.errors}</p>
@@ -484,7 +491,7 @@ export function EchrImportWizard({ open, onOpenChange, onSuccess }: EchrImportWi
                 </div>
                 <div className="rounded border bg-muted p-2">
                   <p className="font-mono font-bold">{stats.parseSkipped}</p>
-                  <p className="text-muted-foreground">{"\u0532\u0561\u0581 \u0569\u0578\u0572\u057E\u0565\u056C"}</p>
+                  <p className="text-muted-foreground">{"\u054A\u0561\u0580\u057D. \u0562\u0561\u0581"}</p>
                 </div>
               </div>
 
