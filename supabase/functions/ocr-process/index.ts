@@ -24,12 +24,14 @@ interface OcrResponse {
   pages?: number;
   language?: string;
   warnings?: string[];
+  pipeline?: string;
   usage?: {
     provider: string;
     model: string;
     input_tokens: number;
     output_tokens: number;
     cost_usd: number;
+    usage_missing?: boolean;
   };
   // Legacy fields kept for backward compat
   ocr_id?: string;
@@ -40,19 +42,17 @@ interface OcrResponse {
   word_count?: number;
 }
 
-function jsonResponse(body: OcrResponse, status = 200): Response {
-  return new Response(JSON.stringify(body), {
-    status,
-    headers: { ...corsHeaders, "Content-Type": "application/json" },
-  });
+function jsonResponse(body: OcrResponse, status = 200, requestId?: string): Response {
+  const headers: Record<string, string> = { ...corsHeaders, "Content-Type": "application/json" };
+  if (requestId) headers["x-request-id"] = requestId;
+  return new Response(JSON.stringify(body), { status, headers });
 }
 
-function errorResponse(message: string, status = 400): Response {
+function errorResponse(message: string, status = 400, requestId?: string): Response {
   const body: OcrResponse = { ok: false, text: "", warnings: [message] };
-  return new Response(JSON.stringify(body), {
-    status,
-    headers: { ...corsHeaders, "Content-Type": "application/json" },
-  });
+  const headers: Record<string, string> = { ...corsHeaders, "Content-Type": "application/json" };
+  if (requestId) headers["x-request-id"] = requestId;
+  return new Response(JSON.stringify(body), { status, headers });
 }
 
 // ─── System prompt ──────────────────────────────────────────────────────────
@@ -103,7 +103,7 @@ serve(async (req) => {
     );
     const { data: { user }, error: authError } = await sb.auth.getUser();
     if (authError || !user) {
-      return errorResponse("Unauthorized", 401);
+      return errorResponse("Unauthorized", 401, requestId);
     }
 
     const body = await req.json();
@@ -113,17 +113,17 @@ serve(async (req) => {
 
     // === INPUT VALIDATION ===
     if (!fileUrl || typeof fileUrl !== "string") {
-      return errorResponse("File URL is required");
+      return errorResponse("File URL is required", 400, requestId);
     }
 
     const fileExt = fileName.split('.').pop()?.toLowerCase() || '';
 
     if (!ALLOWED_EXTENSIONS.has(fileExt)) {
-      return errorResponse(`Unsupported file type: .${fileExt}. Allowed: ${[...ALLOWED_EXTENSIONS].join(", ")}`);
+      return errorResponse(`Unsupported file type: .${fileExt}. Allowed: ${[...ALLOWED_EXTENSIONS].join(", ")}`, 400, requestId);
     }
 
     if (fileExt === 'doc') {
-      return errorResponse("Legacy .doc format is not supported. Please convert to DOCX or PDF.");
+      return errorResponse("Legacy .doc format is not supported. Please convert to DOCX or PDF.", 400, requestId);
     }
 
     const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
@@ -192,7 +192,7 @@ serve(async (req) => {
 
     // ─── File size check ────────────────────────────────────────────────
     if (fileBuffer && fileBuffer.byteLength > MAX_FILE_SIZE) {
-      return errorResponse(`File size ${(fileBuffer.byteLength / 1024 / 1024).toFixed(1)}MB exceeds ${MAX_FILE_SIZE / 1024 / 1024}MB limit`);
+      return errorResponse(`File size ${(fileBuffer.byteLength / 1024 / 1024).toFixed(1)}MB exceeds ${MAX_FILE_SIZE / 1024 / 1024}MB limit`, 400, requestId);
     }
 
     // ─── TXT: direct text, no AI ────────────────────────────────────────
@@ -201,12 +201,13 @@ serve(async (req) => {
     }
 
     if (txtContent) {
+      const pipeline = "txt_direct";
       await supabase.rpc("log_api_usage", {
         _service_type: "ocr",
         _model_name: "direct_text",
         _tokens_used: 0,
         _estimated_cost: 0,
-        _metadata: { file_name: fileName, file_type: "txt", chars_count: txtContent.length, request_id: requestId }
+        _metadata: { pipeline, file_type: "txt", request_id: requestId, usage_missing: false }
       });
 
       if (fileId) {
@@ -222,8 +223,9 @@ serve(async (req) => {
         confidence_score: 1.0,
         confidence_reason: "Direct text file — no OCR required",
         needs_review: false,
+        pipeline,
         usage: { provider: "direct", model: "direct_text", input_tokens: 0, output_tokens: 0, cost_usd: 0 },
-      });
+      }, 200, requestId);
     }
 
     // ─── DOCX: parse text + images ──────────────────────────────────────
@@ -343,11 +345,22 @@ serve(async (req) => {
 
     // ─── Extract usage from AI response ─────────────────────────────────
     const aiUsage = aiData.usage as { prompt_tokens?: number; completion_tokens?: number; total_tokens?: number } | undefined;
+    const usageMissing = !aiUsage;
     const inputTokens = aiUsage?.prompt_tokens || 0;
     const outputTokens = aiUsage?.completion_tokens || 0;
     const totalTokens = aiUsage?.total_tokens || (inputTokens + outputTokens);
     const modelName = (aiData.model as string) || "google/gemini-2.5-flash";
     const costUsd = totalTokens * 0.0000005;
+
+    // ─── Determine pipeline ─────────────────────────────────────────────
+    let pipeline: string;
+    if (docxTextContent && docxImages.length > 0) {
+      pipeline = "docx_images_multimodal";
+    } else if (docxTextContent) {
+      pipeline = "docx_text_only";
+    } else {
+      pipeline = "pdf_or_image_multimodal";
+    }
 
     // ─── Save OCR result ────────────────────────────────────────────────
     let ocrRecordId: string | null = null;
@@ -366,17 +379,17 @@ serve(async (req) => {
       _tokens_used: totalTokens,
       _estimated_cost: costUsd,
       _metadata: {
-        file_name: fileName,
-        file_id: fileId || null,
+        pipeline,
         request_id: requestId,
         input_tokens: inputTokens,
         output_tokens: outputTokens,
         confidence: confidence_score,
         pages: pages || null,
+        usage_missing: usageMissing,
       }
     });
 
-    console.log(`[ocr-process] requestId=${requestId} done: ${word_count} words, confidence=${confidence_score}, tokens=${totalTokens}`);
+    console.log(`[ocr-process] requestId=${requestId} pipeline=${pipeline} done: ${word_count} words, confidence=${confidence_score}, tokens=${totalTokens}`);
 
     // ─── Return normalized response ─────────────────────────────────────
     return jsonResponse({
@@ -385,12 +398,14 @@ serve(async (req) => {
       pages,
       language: languages_detected?.join(", ") || "unknown",
       warnings,
+      pipeline,
       usage: {
         provider: "lovable-gateway",
         model: modelName,
         input_tokens: inputTokens,
         output_tokens: outputTokens,
         cost_usd: costUsd,
+        usage_missing: usageMissing,
       },
       // Legacy fields for backward compat
       ocr_id: ocrRecordId || undefined,
@@ -401,7 +416,7 @@ serve(async (req) => {
         ? `Confidence ${(confidence_score * 100).toFixed(0)}% is below 70% threshold. Manual review recommended.`
         : null,
       word_count,
-    });
+    }, 200, requestId);
 
   } catch (error) {
     const errMsg = error instanceof Error ? error.message : "OCR processing failed";
@@ -428,7 +443,7 @@ serve(async (req) => {
       ok: false,
       text: "",
       warnings: [errMsg],
-    }, 500);
+    }, 500, requestId);
   }
 });
 
