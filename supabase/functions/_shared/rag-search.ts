@@ -524,15 +524,19 @@ export async function dualSearch(opts: RAGSearchOptions & {
   // ── Fire-and-forget retrieval telemetry ──
   // Uses log_api_usage RPC; no PII — only counts and status fields.
   try {
+    const sanitizedError = errors
+      ? errors.replace(/[\n\r]/g, " ").substring(0, 200)
+      : null;
     const telemetryMeta = {
       request_id: opts.requestId || null,
       retrieval_mode: retrievalMode,
-      rerank_ok: rerankOk,
-      rerank_error: errors || null,
+      semantic_ok: rerankOk,
+      semantic_error: sanitizedError,
       kb_results_count: kb.results.length,
       practice_results_count: practice.results.length,
       kb_retrieval_mode: kb.retrieval_mode || null,
       practice_retrieval_mode: practice.retrieval_mode || null,
+      vector_search_failed: !!(kb.rerank_error || practice.rerank_error),
     };
     opts.supabase.rpc("log_api_usage", {
       _service_type: "rag_retrieval",
