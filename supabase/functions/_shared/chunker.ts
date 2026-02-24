@@ -19,8 +19,12 @@ const CHUNK_TYPES = [
   "article", "preamble", "table", "reference_list", "full_text", "other",
   // ECHR-specific
   "procedure", "law", "assessment", "conclusion", "just_satisfaction",
-  // Court decision extended
+  // Court decision extended (8-section structure)
   "arguments", "legal_position",
+  "procedural_history",        // Procedural History (prior proceedings)
+  "appellant_arguments",       // Arguments of Appellant
+  "respondent_arguments",      // Arguments of Respondent
+  "norm_interpretation",       // Interpretation of Norms
   // International treaties
   "treaty_article",
 ] as const;
@@ -378,13 +382,89 @@ interface SectionPattern {
 
 const COURT_SECTION_PATTERNS: SectionPattern[] = [
   // ── Armenian patterns ──
-  // Arguments of parties (доводы сторон)
+
+  // ── Procedural History (դատավdelays delays) ──
+  {
+    // "դdelays պdelaysdelays" — procedural history
+    re: /\u0564\u0561\u057f\u0561\u057e\u0561\u0580\u0561\u056f\u0561\u0576\s+\u057a\u0561\u057f\u0574\u0578\u0582\u0569\u0575\u0578\u0582\u0576/i,
+    type: "procedural_history",
+    label: "\u0564\u0561\u057f\u0561\u057e\u0561\u0580\u0561\u056f\u0561\u0576 \u057a\u0561\u057f\u0574\u0578\u0582\u0569\u0575\u0578\u0582\u0576",
+  },
+  {
+    // "գdelaysdelays �delaysdelaysdelays" — case history
+    re: /\u0563\u0578\u0580\u056e\u056b\s+\u057a\u0561\u057f\u0574\u0578\u0582\u0569\u0575\u0578\u0582\u0576/i,
+    type: "procedural_history",
+    label: "\u0563\u0578\u0580\u056e\u056b \u057a\u0561\u057f\u0574\u0578\u0582\u0569\u0575\u0578\u0582\u0576",
+  },
+  {
+    // "delays delays / delays delays" — prior proceedings
+    re: /\u0576\u0561\u056d\u0578\u0580\u0564\s+\u057e\u0561\u0580\u0578\u0582\u0575\u0569/i,
+    type: "procedural_history",
+    label: "\u0576\u0561\u056d\u0578\u0580\u0564 \u057e\u0561\u0580\u0578\u0582\u0575\u0569",
+  },
+
+  // ── Arguments of Appellant (բdelaysdelaysdelaysdelays) ──
+  {
+    // "բdelays /delays  �delays /delays" — appellant's arguments
+    re: /\u0562\u0578\u0572\u0578\u0584\u0561\u0580\u056f\u0578\u0572\u056b\s+\u0583\u0561\u057d\u057f\u0561\u0580\u056f\u0576\u0565\u0580/i,
+    type: "appellant_arguments",
+    label: "\u0562\u0578\u0572\u0578\u0584\u0561\u0580\u056f\u0578\u0572\u056b \u0583\u0561\u057d\u057f\u0561\u0580\u056f\u0576\u0565\u0580",
+  },
+  {
+    // "վdelaysdelaysdelaysdelays delays  �delays /delays" — appellant's arguments (cassation)
+    re: /\u057e\u0573\u057c\u0561\u056f\u0561\u0576\s+\u0562\u0578\u0572\u0578\u0584\u056b\s+\u0583\u0561\u057d\u057f\u0561\u0580\u056f\u0576\u0565\u0580/i,
+    type: "appellant_arguments",
+    label: "\u057e\u0573\u057c\u0561\u056f\u0561\u0576 \u0562\u0578\u0572\u0578\u0584\u056b \u0583\u0561\u057d\u057f\u0561\u0580\u056f\u0576\u0565\u0580",
+  },
+  {
+    // "delays delays delays" — appellant's position
+    re: /\u0562\u0578\u0572\u0578\u0584\u0561\u0580\u056f\u0578\u0572\u056b\s+\u0564\u056b\u0580\u0584\u0578\u0580\u0578\u0577\u0578\u0582\u0574/i,
+    type: "appellant_arguments",
+    label: "\u0562\u0578\u0572\u0578\u0584\u0561\u0580\u056f\u0578\u0572\u056b \u0564\u056b\u0580\u0584\u0578\u0580\u0578\u0577\u0578\u0582\u0574",
+  },
+
+  // ── Arguments of Respondent (պdelaysdelaysdelaysdelays) ──
+  {
+    // "պdelays /delays  �delays /delays" — respondent's arguments
+    re: /\u057a\u0561\u057f\u0561\u057d\u056d\u0561\u0576\u0578\u0572\u056b\s+\u0583\u0561\u057d\u057f\u0561\u0580\u056f\u0576\u0565\u0580/i,
+    type: "respondent_arguments",
+    label: "\u057a\u0561\u057f\u0561\u057d\u056d\u0561\u0576\u0578\u0572\u056b \u0583\u0561\u057d\u057f\u0561\u0580\u056f\u0576\u0565\u0580",
+  },
+  {
+    // "delays delays delays" — respondent's position
+    re: /\u057a\u0561\u057f\u0561\u057d\u056d\u0561\u0576\u0578\u0572\u056b\s+\u0564\u056b\u0580\u0584\u0578\u0580\u0578\u0577\u0578\u0582\u0574/i,
+    type: "respondent_arguments",
+    label: "\u057a\u0561\u057f\u0561\u057d\u056d\u0561\u0576\u0578\u0572\u056b \u0564\u056b\u0580\u0584\u0578\u0580\u0578\u0577\u0578\u0582\u0574",
+  },
+
+  // ── Generic arguments (fallback if not split into appellant/respondent) ──
   {
     re: /\u056f\u0578\u0572\u0574\u0565\u0580\u056b\s+\u0583\u0561\u057d\u057f\u0561\u0580\u056f\u0576\u0565\u0580/i,
     type: "arguments",
     label: "\u056f\u0578\u0572\u0574\u0565\u0580\u056b \u0583\u0561\u057d\u057f\u0561\u0580\u056f\u0576\u0565\u0580",
   },
-  // Legal position of the court
+
+  // ── Norm Interpretation (նdelaysdelaysdelays մdelaysdelays) ──
+  {
+    // "նdelaysdelays մdelaysdelays" — interpretation of norms
+    re: /\u0576\u0578\u0580\u0574\u0565\u0580\u056b\s+\u0574\u0565\u056f\u0576\u0561\u0562\u0561\u0576\u0578\u0582\u0569\u0575\u0578\u0582\u0576/i,
+    type: "norm_interpretation",
+    label: "\u0576\u0578\u0580\u0574\u0565\u0580\u056b \u0574\u0565\u056f\u0576\u0561\u0562\u0561\u0576\u0578\u0582\u0569\u0575\u0578\u0582\u0576",
+  },
+  {
+    // "իdelays մdelaysdelays" — legal interpretation
+    re: /\u056b\u0580\u0561\u057e\u0561\u056f\u0561\u0576\s+\u0574\u0565\u056f\u0576\u0561\u0562\u0561\u0576\u0578\u0582\u0569\u0575\u0578\u0582\u0576/i,
+    type: "norm_interpretation",
+    label: "\u056b\u0580\u0561\u057e\u0561\u056f\u0561\u0576 \u0574\u0565\u056f\u0576\u0561\u0562\u0561\u0576\u0578\u0582\u0569\u0575\u0578\u0582\u0576",
+  },
+  {
+    // "delays delays delays" — norm analysis
+    re: /\u0576\u0578\u0580\u0574\u0565\u0580\u056b\s+\u057e\u0565\u0580\u056c\u0578\u0582\u056e\u0578\u0582\u0569\u0575\u0578\u0582\u0576/i,
+    type: "norm_interpretation",
+    label: "\u0576\u0578\u0580\u0574\u0565\u0580\u056b \u057e\u0565\u0580\u056c\u0578\u0582\u056e\u0578\u0582\u0569\u0575\u0578\u0582\u0576",
+  },
+
+  // ── Legal position of the court ──
   {
     re: /\u0564\u0561\u057f\u0561\u0580\u0561\u0576\u056b\s+\u056b\u0580\u0561\u057e\u0561\u056f\u0561\u0576\s+\u0564\u056b\u0580\u0584\u0578\u0580\u0578\u0577\u0578\u0582\u0574/i,
     type: "legal_position",
@@ -430,17 +510,55 @@ const COURT_SECTION_PATTERNS: SectionPattern[] = [
     type: "resolution",
     label: "\u057e\u0573\u056b\u057c\u0565\u0581",
   },
+
   // ── Russian-language patterns ──
+
+  // Procedural history (RU)
   {
-    re: /\u0444\u0430\u043a\u0442\u0438\u0447\u0435\u0441\u043a\u0438\u0435?\s+\u043e\u0431\u0441\u0442\u043e\u044f\u0442\u0435\u043b\u044c\u0441\u0442\u0432/i,
-    type: "facts",
-    label: "\u0444\u0430\u043a\u0442\u0438\u0447\u0435\u0441\u043a\u0438\u0435 \u043e\u0431\u0441\u0442\u043e\u044f\u0442\u0435\u043b\u044c\u0441\u0442\u0432\u0430",
+    re: /\u043f\u0440\u043e\u0446\u0435\u0441\u0441\u0443\u0430\u043b\u044c\u043d\u0430\u044f\s+\u0438\u0441\u0442\u043e\u0440\u0438\u044f/i,
+    type: "procedural_history",
+    label: "\u043f\u0440\u043e\u0446\u0435\u0441\u0441\u0443\u0430\u043b\u044c\u043d\u0430\u044f \u0438\u0441\u0442\u043e\u0440\u0438\u044f",
   },
+  {
+    re: /\u0445\u043e\u0434\s+\u0440\u0430\u0441\u0441\u043c\u043e\u0442\u0440\u0435\u043d\u0438\u044f\s+\u0434\u0435\u043b\u0430/i,
+    type: "procedural_history",
+    label: "\u0445\u043e\u0434 \u0440\u0430\u0441\u0441\u043c\u043e\u0442\u0440\u0435\u043d\u0438\u044f \u0434\u0435\u043b\u0430",
+  },
+
+  // Appellant arguments (RU)
+  {
+    re: /\u0434\u043e\u0432\u043e\u0434\u044b\s+(?:\u0430\u043f\u0435\u043b\u043b\u044f\u043d\u0442\u0430|\u0437\u0430\u044f\u0432\u0438\u0442\u0435\u043b\u044f|\u0438\u0441\u0442\u0446\u0430|\u043e\u0431\u0432\u0438\u043d\u044f\u0435\u043c\u043e\u0433\u043e|\u043e\u0441\u0443\u0436\u0434\u0435\u043d\u043d\u043e\u0433\u043e)/i,
+    type: "appellant_arguments",
+    label: "\u0434\u043e\u0432\u043e\u0434\u044b \u0430\u043f\u0435\u043b\u043b\u044f\u043d\u0442\u0430",
+  },
+
+  // Respondent arguments (RU)
+  {
+    re: /\u0434\u043e\u0432\u043e\u0434\u044b\s+(?:\u043e\u0442\u0432\u0435\u0442\u0447\u0438\u043a\u0430|\u043e\u0431\u0432\u0438\u043d\u0438\u0442\u0435\u043b\u044f|\u043f\u0440\u043e\u043a\u0443\u0440\u043e\u0440\u0430)/i,
+    type: "respondent_arguments",
+    label: "\u0434\u043e\u0432\u043e\u0434\u044b \u043e\u0442\u0432\u0435\u0442\u0447\u0438\u043a\u0430",
+  },
+
+  // Generic arguments (RU fallback)
   {
     re: /\u0434\u043e\u0432\u043e\u0434\u044b\s+\u0441\u0442\u043e\u0440\u043e\u043d/i,
     type: "arguments",
     label: "\u0434\u043e\u0432\u043e\u0434\u044b \u0441\u0442\u043e\u0440\u043e\u043d",
   },
+
+  // Norm interpretation (RU)
+  {
+    re: /\u0442\u043e\u043b\u043a\u043e\u0432\u0430\u043d\u0438\u0435\s+\u043d\u043e\u0440\u043c/i,
+    type: "norm_interpretation",
+    label: "\u0442\u043e\u043b\u043a\u043e\u0432\u0430\u043d\u0438\u0435 \u043d\u043e\u0440\u043c",
+  },
+  {
+    re: /\u043f\u0440\u0430\u0432\u043e\u0432\u043e\u0435\s+\u0442\u043e\u043b\u043a\u043e\u0432\u0430\u043d\u0438\u0435/i,
+    type: "norm_interpretation",
+    label: "\u043f\u0440\u0430\u0432\u043e\u0432\u043e\u0435 \u0442\u043e\u043b\u043a\u043e\u0432\u0430\u043d\u0438\u0435",
+  },
+
+  // Legal position of court (RU)
   {
     re: /\u043f\u0440\u0430\u0432\u043e\u0432\u0430\u044f\s+\u043f\u043e\u0437\u0438\u0446\u0438\u044f\s+\u0441\u0443\u0434\u0430/i,
     type: "legal_position",
@@ -450,6 +568,11 @@ const COURT_SECTION_PATTERNS: SectionPattern[] = [
     re: /\u043c\u043e\u0442\u0438\u0432\u0438\u0440\u043e\u0432\u043e\u0447\u043d\u0430\u044f\s+\u0447\u0430\u0441\u0442\u044c/i,
     type: "reasoning",
     label: "\u043c\u043e\u0442\u0438\u0432\u0438\u0440\u043e\u0432\u043e\u0447\u043d\u0430\u044f \u0447\u0430\u0441\u0442\u044c",
+  },
+  {
+    re: /\u0444\u0430\u043a\u0442\u0438\u0447\u0435\u0441\u043a\u0438\u0435?\s+\u043e\u0431\u0441\u0442\u043e\u044f\u0442\u0435\u043b\u044c\u0441\u0442\u0432/i,
+    type: "facts",
+    label: "\u0444\u0430\u043a\u0442\u0438\u0447\u0435\u0441\u043a\u0438\u0435 \u043e\u0431\u0441\u0442\u043e\u044f\u0442\u0435\u043b\u044c\u0441\u0442\u0432\u0430",
   },
   {
     re: /\u0440\u0435\u0437\u043e\u043b\u044e\u0442\u0438\u0432\u043d\u0430\u044f\s+\u0447\u0430\u0441\u0442\u044c/i,
@@ -474,7 +597,7 @@ const COURT_SECTION_PATTERNS: SectionPattern[] = [
 ];
 
 // Types that get reasoning overlap
-const REASONING_TYPES: Set<ChunkType> = new Set(["reasoning", "legal_position"]);
+const REASONING_TYPES: Set<ChunkType> = new Set(["reasoning", "legal_position", "norm_interpretation"]);
 
 function chunkCourtDecision(text: string, docInput: LegalDocumentInput): LegalChunk[] {
   interface SectionBoundary {
@@ -916,7 +1039,9 @@ export function chunkDocument(document: LegalDocumentInput): ChunkResult {
   } else if (COURT_DOC_TYPES.has(document.doc_type)) {
     chunks = chunkCourtDecision(text, document);
     const hasSections = chunks.some(c =>
-      ["reasoning", "facts", "resolution", "dissent", "arguments", "legal_position"].includes(c.chunk_type)
+      ["reasoning", "facts", "resolution", "dissent", "arguments", "legal_position",
+       "procedural_history", "appellant_arguments", "respondent_arguments", "norm_interpretation",
+      ].includes(c.chunk_type)
     );
     strategy = hasSections ? "sections" : "fixed";
     case_number = extractCaseNumber(text);
