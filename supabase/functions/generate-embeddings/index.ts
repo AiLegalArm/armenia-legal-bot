@@ -120,23 +120,35 @@ serve(async (req) => {
   try {
     const { table, batchLimit = 10 } = await req.json();
 
-    if (!table || !["knowledge_base", "legal_practice_kb"].includes(table)) {
+    const validTables = [
+      "knowledge_base", "legal_practice_kb",
+      "knowledge_base_chunks", "legal_practice_kb_chunks",
+    ];
+    if (!table || !validTables.includes(table)) {
       return new Response(
-        JSON.stringify({ error: "Invalid table. Use 'knowledge_base' or 'legal_practice_kb'" }),
+        JSON.stringify({ error: `Invalid table. Use one of: ${validTables.join(", ")}` }),
         { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } },
       );
     }
+
+    const isChunkTable = table.endsWith("_chunks");
 
     const supabase = createClient(
       Deno.env.get("SUPABASE_URL")!,
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
     );
 
-    // Fetch documents pending embedding
-    const { data: docs, error: fetchError } = await supabase
-      .from(table)
-      .select("id, title, content_text, embedding_attempts")
-      .eq("is_active", true)
+    // Build query based on table type
+    const selectFields = isChunkTable
+      ? "id, chunk_text, chunk_type, embedding_attempts"
+      : "id, title, content_text, embedding_attempts";
+
+    const activeFilter = isChunkTable && table === "legal_practice_kb_chunks"
+      ? supabase.from(table).select(selectFields)
+      : supabase.from(table).select(selectFields).eq("is_active", true);
+
+    // Fetch documents/chunks pending embedding
+    const { data: docs, error: fetchError } = await activeFilter
       .or(
         `embedding_status.eq.pending,and(embedding_status.eq.failed,embedding_attempts.lt.${MAX_ATTEMPTS_BEFORE_DEAD_LETTER})`,
       )
@@ -146,18 +158,20 @@ serve(async (req) => {
     if (fetchError) throw fetchError;
 
     if (!docs || docs.length === 0) {
-      const { count } = await supabase
-        .from(table)
-        .select("id", { count: "exact", head: true })
-        .eq("is_active", true)
+      const countBase = isChunkTable && table === "legal_practice_kb_chunks"
+        ? supabase.from(table).select("id", { count: "exact", head: true })
+        : supabase.from(table).select("id", { count: "exact", head: true }).eq("is_active", true);
+
+      const { count } = await countBase
         .or(
           `embedding_status.eq.pending,and(embedding_status.eq.failed,embedding_attempts.lt.${MAX_ATTEMPTS_BEFORE_DEAD_LETTER})`,
         );
 
-      const { count: deadCount } = await supabase
-        .from(table)
-        .select("id", { count: "exact", head: true })
-        .eq("is_active", true)
+      const deadBase = isChunkTable && table === "legal_practice_kb_chunks"
+        ? supabase.from(table).select("id", { count: "exact", head: true })
+        : supabase.from(table).select("id", { count: "exact", head: true }).eq("is_active", true);
+
+      const { count: deadCount } = await deadBase
         .eq("embedding_status", "failed")
         .gte("embedding_attempts", MAX_ATTEMPTS_BEFORE_DEAD_LETTER);
 
@@ -176,9 +190,16 @@ serve(async (req) => {
     const now = new Date().toISOString();
 
     // Batch all texts together for efficiency
-    const texts = docs.map(
-      (doc) => `${doc.title}\n\n${(doc.content_text || "").substring(0, 8000)}`,
-    );
+    // For chunk tables: use chunk_text directly (already segmented)
+    // For parent tables: use title + content_text
+    const MAX_TEXT_CHARS = isChunkTable ? 3500 : 8000;
+    const texts = docs.map((doc) => {
+      if (isChunkTable) {
+        const prefix = doc.chunk_type ? `[${doc.chunk_type}] ` : "";
+        return `${prefix}${(doc.chunk_text || "").substring(0, MAX_TEXT_CHARS)}`;
+      }
+      return `${doc.title}\n\n${(doc.content_text || "").substring(0, MAX_TEXT_CHARS)}`;
+    });
 
     let vectors: number[][] | null = null;
     try {
@@ -202,9 +223,10 @@ serve(async (req) => {
           embedding = vectors[i];
         } else {
           // Individual fallback
-          const fallback = await getEmbeddings([
-            `${doc.title}\n\n${(doc.content_text || "").substring(0, 8000)}`,
-          ]);
+          const fallbackText = isChunkTable
+            ? `${doc.chunk_type ? `[${doc.chunk_type}] ` : ""}${(doc.chunk_text || "").substring(0, MAX_TEXT_CHARS)}`
+            : `${doc.title}\n\n${(doc.content_text || "").substring(0, MAX_TEXT_CHARS)}`;
+          const fallback = await getEmbeddings([fallbackText]);
           embedding = fallback[0];
         }
 
@@ -243,18 +265,20 @@ serve(async (req) => {
       }
     }
 
-    const { count: remaining } = await supabase
-      .from(table)
-      .select("id", { count: "exact", head: true })
-      .eq("is_active", true)
+    const remainBase = isChunkTable && table === "legal_practice_kb_chunks"
+      ? supabase.from(table).select("id", { count: "exact", head: true })
+      : supabase.from(table).select("id", { count: "exact", head: true }).eq("is_active", true);
+
+    const { count: remaining } = await remainBase
       .or(
         `embedding_status.eq.pending,and(embedding_status.eq.failed,embedding_attempts.lt.${MAX_ATTEMPTS_BEFORE_DEAD_LETTER})`,
       );
 
-    const { count: deadLetterCount } = await supabase
-      .from(table)
-      .select("id", { count: "exact", head: true })
-      .eq("is_active", true)
+    const deadBase2 = isChunkTable && table === "legal_practice_kb_chunks"
+      ? supabase.from(table).select("id", { count: "exact", head: true })
+      : supabase.from(table).select("id", { count: "exact", head: true }).eq("is_active", true);
+
+    const { count: deadLetterCount } = await deadBase2
       .eq("embedding_status", "failed")
       .gte("embedding_attempts", MAX_ATTEMPTS_BEFORE_DEAD_LETTER);
 
