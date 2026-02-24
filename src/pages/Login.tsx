@@ -32,7 +32,7 @@ const loginSchema = z.object({
 type LoginValues = z.infer<typeof loginSchema>;
 
 const Login = () => {
-  const { t } = useTranslation(['auth', 'common', 'disclaimer']);
+  const { t } = useTranslation(['auth', 'common', 'disclaimer', 'errors']);
   const navigate = useNavigate();
   const { toast } = useToast();
   const [isLoading, setIsLoading] = useState(false);
@@ -89,9 +89,14 @@ const Login = () => {
       
       navigate('/dashboard');
     } catch (error) {
+      const message = error instanceof Error ? error.message : '';
+      const isConnectionIssue = /load failed|failed to fetch|network|timeout|connection terminated/i.test(message);
+
       toast({
         title: t('errors:login_failed', 'Login failed'),
-        description: t('invalid_credentials', 'Invalid username or password'),
+        description: isConnectionIssue
+          ? `${t('errors:connection_lost', 'Connection lost')}. ${t('errors:try_again', 'Try again')}`
+          : t('invalid_credentials', 'Invalid username or password'),
         variant: 'destructive',
       });
     } finally {

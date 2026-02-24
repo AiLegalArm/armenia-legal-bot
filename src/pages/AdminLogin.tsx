@@ -27,7 +27,7 @@ const loginSchema = z.object({
 type LoginValues = z.infer<typeof loginSchema>;
 
 const AdminLogin = () => {
-  const { t } = useTranslation(['auth', 'common']);
+  const { t } = useTranslation(['auth', 'common', 'errors']);
   const navigate = useNavigate();
   const { signIn, isAdmin, user, loading: authLoading } = useAuth();
   const { toast } = useToast();
@@ -56,9 +56,13 @@ const AdminLogin = () => {
       // The useEffect will handle the redirect once isAdmin is determined
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Unknown error';
+      const isConnectionIssue = /load failed|failed to fetch|network|timeout|connection terminated/i.test(message);
+
       toast({
         title: t('errors:login_failed', 'Login failed'),
-        description: message,
+        description: isConnectionIssue
+          ? `${t('errors:connection_lost', 'Connection lost')}. ${t('errors:try_again', 'Try again')}`
+          : message,
         variant: 'destructive',
       });
       setIsLoading(false);
