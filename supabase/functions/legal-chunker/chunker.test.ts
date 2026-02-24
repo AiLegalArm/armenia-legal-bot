@@ -34,20 +34,38 @@ const LEGISLATION_FIXTURE =
   "\u0555\u0580\u0565\u0576\u0584\u056b \u057d\u056f\u0566\u0562\u0578\u0582\u0576\u0584\u056b " +
   "\u0574\u0561\u057d\u056b\u0576";
 
-// ─── FIXTURE 2: Court decision with sections ────────────────────────
+// ─── FIXTURE 2: Court decision with 8-section structure ─────────────
 const COURT_DECISION_FIXTURE =
   "\u054e\u0543\u054c\u0531\u0532\u0535\u053f \u0534\u0531\u054f\u0531\u0550\u0531\u0546\n" +
   "\u0563\u0578\u0580\u056e \u0569\u056b\u057e: \u054f\u054f/0012/01/24\n" +
   "20 \u0570\u0578\u0582\u0576\u056b\u057d\u056b 2024 \u0569\u057e\u0561\u056f\u0561\u0576\u056b\n" +
-  "\u0584\u0580\u0565\u0561\u056f\u0561\u0576 \u0563\u0578\u0580\u056e\u0578\u057e\n\n" +
+  "\u0584\u0580\u0565\u0561\u056f\u0561\u0576 \u0563\u0578\u0580\u056e\u0578\u057e\n" +
+  "\u0534\u0561\u057f\u0561\u057e\u0578\u0580\u0576\u0565\u0580\u056b \u056f\u0561\u0566\u0574\u0568\u055d " +
+  "\u0531. \u0531\u0562\u0580\u0561\u0570\u0561\u0574\u0575\u0561\u0576 (\u0576\u0561\u056d\u0561\u0563\u0561\u0570), " +
+  "\u0532. \u0533\u0561\u056c\u057d\u057f\u0575\u0561\u0576, \u0533. \u0544\u0561\u0580\u057f\u056b\u0580\u0578\u057d\u0575\u0561\u0576\n\n" +
+  // Procedural History
+  "\u0564\u0561\u057f\u0561\u057e\u0561\u0580\u0561\u056f\u0561\u0576 \u057a\u0561\u057f\u0574\u0578\u0582\u0569\u0575\u0578\u0582\u0576\n" +
+  "\u0531\u057c\u0561\u057b\u056b\u0576 \u0561\u057f\u0575\u0561\u0576\u056b \u0564\u0561\u057f\u0561\u0580\u0561\u0576\u0568 \u0570\u0561\u0575\u0581\u056b \u0574\u0565\u0580\u056a\u0565\u056c \u0567\n\n" +
+  // Facts
   "\u0563\u0578\u0580\u056e\u056b \u0570\u0561\u0576\u0563\u0561\u0574\u0561\u0576\u0584\u0576\u0565\u0580\u0568\n" +
   "\u0531\u0574\u0562\u0561\u057d\u057f\u0561\u0576\u057e\u0578\u0572\u0568 \u0574\u0565\u0572\u0561\u0564\u0580\u057e\u0565\u056c " +
   "\u0567 \u0570\u0578\u0564\u057e\u0561\u056e 391 \u0574\u0561\u057d 1 \u056f\u0565\u057f 3 " +
   "\u056d\u0561\u056d\u057f\u0574\u0561\u0576 \u0574\u0565\u057b\n\n" +
+  // Appellant arguments
+  "\u0562\u0578\u0572\u0578\u0584\u0561\u0580\u056f\u0578\u0572\u056b \u0583\u0561\u057d\u057f\u0561\u0580\u056f\u0576\u0565\u0580\n" +
+  "\u0532\u0578\u0572\u0578\u0584\u0561\u0580\u056f\u0578\u0572\u0568 \u057a\u0561\u0570\u0561\u0576\u057b\u0578\u0582\u0574 \u0567 \u057e\u0573\u056b\u057c\u0568 \u0562\u0565\u056f\u0561\u0576\u0565\u056c\n\n" +
+  // Respondent arguments
+  "\u057a\u0561\u057f\u0561\u057d\u056d\u0561\u0576\u0578\u0572\u056b \u0583\u0561\u057d\u057f\u0561\u0580\u056f\u0576\u0565\u0580\n" +
+  "\u054a\u0561\u057f\u0561\u057d\u056d\u0561\u0576\u0578\u0572\u0568 \u0570\u0561\u0574\u0561\u0571\u0561\u0575\u0576 \u0567 \u057e\u0573\u057c\u056b\u0576\n\n" +
+  // Legal Reasoning
   "\u057a\u0561\u057f\u0573\u0561\u057c\u0561\u056f\u0561\u0576 \u0574\u0561\u057d\n" +
   "\u0534\u0561\u057f\u0561\u0580\u0561\u0576\u0568 \u0563\u057f\u0576\u0578\u0582\u0574 " +
   "\u0567 \u0578\u0580 \u057e\u0573\u057c\u0561\u056f\u0561\u0576 \u0562\u0578\u0572\u0578\u0584\u0568 " +
   "\u0570\u056b\u0574\u0576\u0561\u057e\u0578\u0580 \u0567\n\n" +
+  // Interpretation of Norms
+  "\u0576\u0578\u0580\u0574\u0565\u0580\u056b \u0574\u0565\u056f\u0576\u0561\u0562\u0561\u0576\u0578\u0582\u0569\u0575\u0578\u0582\u0576\n" +
+  "\u0540\u0578\u0564\u057e\u0561\u056e 391-\u0568 \u0574\u0565\u056f\u0576\u0561\u0562\u0561\u0576\u057e\u0578\u0582\u0574 \u0567 \u0570\u0565\u057f\u0587\u0575\u0561\u056c \u056f\u0565\u0580\u057a\n\n" +
+  // Final Ruling (must be separate chunk)
   "\u057e\u0573\u056b\u057c\u0565\u0581\n" +
   "\u0544\u0565\u0580\u056a\u0565\u056c \u057e\u0573\u057c\u0561\u056f\u0561\u0576 \u0562\u0578\u0572\u0578\u0584\u0568";
 
@@ -132,7 +150,7 @@ Deno.test("chunkDocument: legislation splits by articles", () => {
 
 // ─── TEST: Court decision chunking ──────────────────────────────────
 
-Deno.test("chunkDocument: court decision splits by sections", () => {
+Deno.test("chunkDocument: court decision splits into 8 sections", () => {
   const result = chunkDocument({
     doc_type: "cassation_ruling",
     content_text: COURT_DECISION_FIXTURE,
@@ -140,12 +158,28 @@ Deno.test("chunkDocument: court decision splits by sections", () => {
   const chunks = result.chunks;
   assertEquals(result.strategy, "sections");
 
-  assert(chunks.length >= 3, `Expected >= 3 chunks, got ${chunks.length}`);
-
   const types = new Set(chunks.map((c) => c.chunk_type));
+
+  // All 8 sections must be present
+  assert(types.has("header"), "Should detect header metadata section");
+  assert(types.has("procedural_history"), "Should detect procedural history section");
   assert(types.has("facts"), "Should detect facts section");
-  assert(types.has("reasoning"), "Should detect reasoning section");
-  assert(types.has("resolution") || types.has("operative"), "Should detect resolution/operative section");
+  assert(types.has("appellant_arguments"), "Should detect appellant arguments section");
+  assert(types.has("respondent_arguments"), "Should detect respondent arguments section");
+  assert(types.has("reasoning"), "Should detect legal reasoning section");
+  assert(types.has("norm_interpretation"), "Should detect norm interpretation section");
+  assert(types.has("resolution"), "Should detect final ruling (resolution) section");
+
+  // CRITICAL: Legal Reasoning and Final Ruling must NEVER be merged
+  const reasoningChunks = chunks.filter(c => c.chunk_type === "reasoning");
+  const resolutionChunks = chunks.filter(c => c.chunk_type === "resolution");
+  assert(reasoningChunks.length >= 1, "Must have at least 1 reasoning chunk");
+  assert(resolutionChunks.length >= 1, "Must have at least 1 resolution chunk");
+  for (const rc of resolutionChunks) {
+    for (const rr of reasoningChunks) {
+      assert(rc.chunk_index !== rr.chunk_index, "Resolution and reasoning must be separate chunks");
+    }
+  }
 
   const sectionChunks = chunks.filter((c) => c.chunk_type !== "header");
   for (const sc of sectionChunks) {
