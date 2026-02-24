@@ -188,6 +188,26 @@ Deno.test("isValidInternalCall: no key configured -> false", () => {
   });
 });
 
+Deno.test("isValidInternalCall: empty string INTERNAL_INGEST_KEY -> false even if header is empty", () => {
+  return withEnv({ INTERNAL_INGEST_KEY: "" }, () => {
+    const req = new Request("https://example.com", {
+      method: "POST",
+      headers: { "x-internal-key": "" },
+    });
+    assertEquals(isValidInternalCall(req), false);
+  });
+});
+
+Deno.test("isValidInternalCall: empty string INTERNAL_INGEST_KEY -> false even if header has value", () => {
+  return withEnv({ INTERNAL_INGEST_KEY: "" }, () => {
+    const req = new Request("https://example.com", {
+      method: "POST",
+      headers: { "x-internal-key": "some-key" },
+    });
+    assertEquals(isValidInternalCall(req), false);
+  });
+});
+
 // ─── validateBrowserRequest ────────────────────────────────────────
 
 Deno.test("validateBrowserRequest: no auth header -> 401", async () => {
