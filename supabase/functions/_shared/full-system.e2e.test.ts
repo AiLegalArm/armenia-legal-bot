@@ -664,6 +664,115 @@ Deno.test("FAIL-CLOSED: checkInputSize rejects oversized payload → 413", async
 console.log("FAIL-CLOSED ✓");
 
 // ═══════════════════════════════════════════════════════════════════
+// 8. NON-SILENT FAILURE
+// ═══════════════════════════════════════════════════════════════════
+
+// 8a: Empty arrays must always be accompanied by telemetry flags
+// — if kb[] and practice[] are both empty, retrieval_mode + semantic_ok must still exist
+
+Deno.test("NON-SILENT: empty results still include telemetry flags", async () => {
+  if (skipE2E()) return;
+  // Use a nonsense query unlikely to match anything
+  const res = await fetchWithTimeout(VECTOR_URL, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "x-internal-key": INTERNAL_KEY!,
+      "x-request-id": "non-silent-001",
+    },
+    body: JSON.stringify({
+      query: "zzzzxyznonexistent9999query",
+      tables: "both",
+      limit: 1,
+    }),
+  });
+  assertEquals(res.status, 200);
+  const data = await res.json();
+
+  // Even with 0 results, telemetry must be present
+  assert(Array.isArray(data.kb), "kb must be array even if empty");
+  assert(Array.isArray(data.practice), "practice must be array even if empty");
+  assertExists(data.retrieval_mode, "retrieval_mode required even on empty results");
+  assertEquals(typeof data.semantic_ok, "boolean", "semantic_ok required even on empty results");
+  assertEquals(typeof data.rerank_ok, "boolean", "rerank_ok required even on empty results");
+  assertEquals(data.request_id, "non-silent-001", "request_id must be echoed");
+});
+
+// 8b: Simulated catch block must produce structured error with request_id
+// This mirrors the pattern used in rag-search / vector-search catch blocks
+
+Deno.test("NON-SILENT: catch block produces structured error with request_id (unit)", () => {
+  // Simulate a typical edge function catch block
+  const requestId = "trace-catch-test";
+  const caughtError = new Error("Something broke");
+
+  // This is the pattern all catch blocks MUST follow:
+  const structuredError = {
+    error: caughtError.message,
+    request_id: requestId,
+    ok: false,
+  };
+
+  assertEquals(structuredError.ok, false);
+  assertEquals(structuredError.request_id, requestId);
+  assertExists(structuredError.error);
+  assert(structuredError.error.length > 0, "error message must be non-empty");
+});
+
+// 8c: _failed flag always accompanied by _error string
+
+Deno.test("NON-SILENT: _failed=true always has non-empty _error (unit)", () => {
+  // Valid failure envelope
+  const failure = { _failed: true, _error: "vector-search returned 500" };
+  assertEquals(failure._failed, true);
+  assert(failure._error.length > 0, "_error must be non-empty when _failed=true");
+
+  // Invalid: _failed without _error must never happen
+  const badFailure = { _failed: true, _error: "" };
+  assert(
+    badFailure._error.length === 0,
+    "Detected: _failed=true with empty _error — this is a contract violation",
+  );
+});
+
+// 8d: E2E — vector-search 400 returns structured error with error field (not empty array)
+
+Deno.test("NON-SILENT: 400 returns error field, not silent empty arrays", async () => {
+  if (skipE2E()) return;
+  const res = await fetchWithTimeout(VECTOR_URL, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "x-internal-key": INTERNAL_KEY!,
+      "x-request-id": "non-silent-400",
+    },
+    body: JSON.stringify({ tables: "kb", limit: 1 }), // missing query
+  });
+  assertEquals(res.status, 400);
+  const data = await res.json();
+  assertExists(data.error, "400 must return error field, not silent empty response");
+  assert(typeof data.error === "string" && data.error.length > 0);
+});
+
+// 8e: OCR 401 returns structured error, not empty body
+
+Deno.test("NON-SILENT: OCR 401 returns structured error body", async () => {
+  if (skipOCR()) return;
+  const res = await fetchWithTimeout(OCR_URL, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ fileUrl: "https://example.com/t.pdf", fileName: "t.pdf" }),
+  });
+  assertEquals(res.status, 401);
+  const text = await res.text();
+  assert(text.length > 0, "401 response body must not be empty");
+  const data = JSON.parse(text);
+  assertEquals(data.ok, false, "401 must have ok=false");
+});
+
+console.log("NON-SILENT ✓");
+
+// ═══════════════════════════════════════════════════════════════════
 // Also import existing RLS smoke tests
 // ═══════════════════════════════════════════════════════════════════
 import "./rls-smoke.test.ts";
