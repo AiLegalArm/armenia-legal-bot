@@ -1,5 +1,6 @@
 /**
  * chunk-audit unit tests — pure deterministic checks
+ * Updated for v2.1.0: chunk_text === raw.slice(char_start, char_end) (no trim)
  */
 
 import { assertEquals } from "https://deno.land/std@0.168.0/testing/asserts.ts";

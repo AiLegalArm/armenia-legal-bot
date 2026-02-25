@@ -1,18 +1,18 @@
 /**
- * practice-chunk-worker — Enterprise-safe v3
+ * practice-chunk-worker — v4 (enterprise-hardened)
  *
- * Background worker that processes practice_chunk_jobs:
- * 1. Atomic lease-based claiming via UPDATE ... RETURNING (no double-claim)
- * 2. QA gate: validateChunks() before any mutation
- * 3. Deterministic delete-all → insert-fresh (safe with UNIQUE constraints)
- * 4. Retry with exponential backoff; dead_letter after max_attempts
+ * Changes from v3:
+ * 1. TRUE ATOMIC CLAIM: Uses Postgres RPC claim_chunk_jobs() with FOR UPDATE SKIP LOCKED.
+ *    No SELECT-then-UPDATE pattern. Zero double-claim risk.
+ * 2. DELETE-ALL-then-INSERT: UNIQUE(doc_id/kb_id, chunk_index) proven in schema.
+ *    insert-before-delete would violate constraints. delete-all is the only safe pattern.
+ * 3. Schema-proven inserts: legal_practice_kb_chunks has NO chunk_type, char_start, char_end columns.
+ * 4. Strict internal-only auth via validateInternalRequest.
+ * 5. Raw slice offsets: chunk_text === rawText.slice(char_start, char_end).
  *
  * Supports two source tables:
  *   - legal_practice_kb  → legal_practice_kb_chunks
  *   - knowledge_base     → knowledge_base_chunks
- *
- * Auth: Internal-only (x-internal-key). No partial auth.
- * Idempotent & deterministic. Safe to call repeatedly.
  */
 
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
@@ -26,7 +26,6 @@ import {
 } from "../_shared/chunker.ts";
 
 const MAX_INPUT_CHARS = 200_000;
-const LEASE_DURATION_MS = 5 * 60 * 1000; // 5 minutes
 const PARALLEL_BATCH = 5;
 
 // ─── Map source table to doc_type for chunker ──────────────────────
@@ -149,8 +148,9 @@ async function processJob(
   }
 
   // ── 4. Atomic: DELETE ALL old chunks, then INSERT fresh ──────────
-  // UNIQUE(doc_id/kb_id, chunk_index) exists — insert-before-delete would
-  // cause constraint violations. Delete-all-then-insert is the correct pattern.
+  // PROVEN: UNIQUE(doc_id, chunk_index) on legal_practice_kb_chunks
+  //         UNIQUE(kb_id, chunk_index) on knowledge_base_chunks
+  // insert-before-delete would violate these constraints.
   const isKB = src === "knowledge_base";
   const chunksTable = isKB ? "knowledge_base_chunks" : "legal_practice_kb_chunks";
   const fkColumn = isKB ? "kb_id" : "doc_id";
@@ -165,8 +165,9 @@ async function processJob(
     throw new Error(`Failed to delete old chunks: ${deleteErr.message}`);
   }
 
-  // INSERT new chunks in batches
+  // INSERT new chunks in batches — schema-proven column mapping
   if (isKB) {
+    // knowledge_base_chunks: has chunk_type, char_start, char_end, label, is_active
     const rows = result.chunks.map((c) => ({
       kb_id: job.document_id,
       chunk_index: c.chunk_index,
@@ -187,7 +188,9 @@ async function processJob(
       if (insertErr) throw new Error(`Failed to insert KB chunks: ${insertErr.message}`);
     }
   } else {
-    // legal_practice_kb_chunks — NO chunk_type column exists in schema
+    // legal_practice_kb_chunks — PROVEN schema:
+    // id, doc_id, chunk_index, chunk_text, chunk_hash, title, created_at
+    // NO chunk_type, NO char_start, NO char_end, NO is_active
     const rows = result.chunks.map((c) => ({
       doc_id: job.document_id,
       chunk_index: c.chunk_index,
@@ -245,38 +248,26 @@ serve(async (req) => {
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
     );
 
-    // ── Lease-based recovery: reclaim expired leases ───────────────
-    const leaseExpiry = new Date(Date.now() - LEASE_DURATION_MS).toISOString();
-    let recoverQuery = supabase
-      .from("practice_chunk_jobs")
-      .update({ status: "pending", started_at: null })
-      .eq("status", "processing")
-      .lt("started_at", leaseExpiry);
-    if (sourceFilter) recoverQuery = recoverQuery.eq("source_table", sourceFilter);
-    await recoverQuery;
+    // ── TRUE ATOMIC CLAIM via Postgres RPC ─────────────────────────
+    // claim_chunk_jobs() uses FOR UPDATE SKIP LOCKED — zero double-claim risk.
+    const { data: claimedRows, error: claimErr } = await supabase.rpc("claim_chunk_jobs", {
+      p_source_table: sourceFilter,
+      p_limit: concurrencyDocs,
+      p_lease_minutes: 5,
+    });
 
-    // ── Atomic lease claim via RPC or UPDATE with conditions ───────
-    // Claim jobs atomically: UPDATE ... WHERE status IN (...) AND attempts < 5
-    // This prevents double-claim because Postgres UPDATE locks the rows.
-    const now = new Date().toISOString();
-
-    // Step 1: Find eligible jobs
-    let findQuery = supabase
-      .from("practice_chunk_jobs")
-      .select("id, document_id, source_table, attempts, max_attempts")
-      .in("status", ["pending", "failed"])
-      .lt("attempts", 5)
-      .order("created_at", { ascending: true })
-      .limit(concurrencyDocs);
-
-    if (sourceFilter) {
-      findQuery = findQuery.eq("source_table", sourceFilter);
+    if (claimErr) {
+      console.error(`[practice-chunk-worker] claim error: ${claimErr.message}`);
+      return new Response(JSON.stringify({ error: claimErr.message }), {
+        status: 500,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
     }
 
-    const { data: jobs, error: fetchErr } = await findQuery;
-    if (fetchErr) throw fetchErr;
+    const claimedJobs: JobRecord[] = (claimedRows || []) as JobRecord[];
 
-    if (!jobs || jobs.length === 0) {
+    if (claimedJobs.length === 0) {
+      // Count remaining
       let countQuery = supabase
         .from("practice_chunk_jobs")
         .select("id", { count: "exact", head: true })
@@ -290,35 +281,6 @@ serve(async (req) => {
         remaining: pendingCount || 0,
         duration_ms: Date.now() - startTime,
         chunker_version: CHUNKER_VERSION,
-      }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
-    }
-
-    // Step 2: Atomically claim via status transition
-    // UPDATE ... WHERE id IN (...) AND status IN ('pending','failed')
-    // Postgres row-level locks prevent double-claim within a single UPDATE.
-    const jobIds = jobs.map((j) => j.id);
-    const { data: claimedRows, error: claimErr } = await supabase
-      .from("practice_chunk_jobs")
-      .update({ status: "processing", started_at: now })
-      .in("id", jobIds)
-      .in("status", ["pending", "failed"])
-      .select("id");
-
-    if (claimErr) {
-      console.warn(`[practice-chunk-worker] claim warning: ${claimErr.message}`);
-    }
-
-    // Only process jobs we actually claimed
-    const claimedIds = new Set((claimedRows || []).map((r: { id: string }) => r.id));
-    const claimedJobs = jobs.filter((j) => claimedIds.has(j.id));
-
-    if (claimedJobs.length === 0) {
-      return new Response(JSON.stringify({
-        processed: 0,
-        remaining: 0,
-        duration_ms: Date.now() - startTime,
-        chunker_version: CHUNKER_VERSION,
-        note: "All jobs claimed by another worker",
       }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
     }
 
