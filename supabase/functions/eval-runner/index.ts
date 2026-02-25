@@ -13,7 +13,7 @@
  */
 
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2.91.1";
+import { createClient, type SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2.91.1";
 import { handleCors, validateBrowserRequest, callInternalFunction } from "../_shared/edge-security.ts";
 import { log, err } from "../_shared/safe-logger.ts";
 
@@ -166,7 +166,7 @@ function checkCitationsPresent(
     type: "citations_present",
     passed,
     message: passed
-      ? `Citations found: ${citations.length} structural${hasArmenianFormat ? " + Armenian format (Տdelays)" : ""}${hasTextRef ? " + text references" : ""}`
+      ? `Citations found: ${citations.length} structural${hasArmenianFormat ? " + Armenian format (Տե՛ս՝)" : ""}${hasTextRef ? " + text references" : ""}`
       : "No citations detected in any form",
     details: {
       structural_count: citations.length,
@@ -184,7 +184,7 @@ const MAX_CITED_IDS = 50;
 
 async function checkCitedIdsExist(
   response: Record<string, unknown>,
-  supabase: ReturnType<typeof createClient>,
+  supabase: SupabaseClient,
   targetFunction?: string,
 ): Promise<InvariantResult> {
   const citations = extractCitations(response, targetFunction);
@@ -208,10 +208,18 @@ async function checkCitedIdsExist(
   const missing: Array<{ doc_id: string; source_type: string }> = [];
 
   if (kbIds.length > 0) {
-    const { data: kbDocs } = await supabase
+    const { data: kbDocs, error: kbError } = await supabase
       .from("knowledge_base")
       .select("id")
       .in("id", kbIds);
+    if (kbError) {
+      return {
+        type: "cited_ids_exist",
+        passed: false,
+        message: `DB error checking KB IDs: ${kbError.message}`,
+        details: { error_source: "knowledge_base", error: kbError.message },
+      };
+    }
     const foundKb = new Set((kbDocs || []).map(d => d.id));
     for (const id of kbIds) {
       if (!foundKb.has(id)) missing.push({ doc_id: id, source_type: "kb" });
@@ -219,10 +227,18 @@ async function checkCitedIdsExist(
   }
 
   if (practiceIds.length > 0) {
-    const { data: practiceDocs } = await supabase
+    const { data: practiceDocs, error: practiceError } = await supabase
       .from("legal_practice_kb")
       .select("id")
       .in("id", practiceIds);
+    if (practiceError) {
+      return {
+        type: "cited_ids_exist",
+        passed: false,
+        message: `DB error checking Practice IDs: ${practiceError.message}`,
+        details: { error_source: "legal_practice_kb", error: practiceError.message },
+      };
+    }
     const foundPractice = new Set((practiceDocs || []).map(d => d.id));
     for (const id of practiceIds) {
       if (!foundPractice.has(id)) missing.push({ doc_id: id, source_type: "practice" });
@@ -288,7 +304,7 @@ function checkLanguageMatch(response: Record<string, unknown>, expectedLang?: st
 async function checkTemporalInRange(
   response: Record<string, unknown>,
   referenceDate: string,
-  supabase: ReturnType<typeof createClient>,
+  supabase: SupabaseClient,
   targetFunction?: string,
 ): Promise<InvariantResult & { temporal_metadata_source: "inline" | "db_fallback" | "none" }> {
   if (!referenceDate) {
@@ -307,31 +323,42 @@ async function checkTemporalInRange(
     };
   }
 
-  const hasInlineMetadata = kbCitations.some(c => c.effective_from != null || c.effective_to != null);
+  // Split: citations with inline metadata vs those without
+  const withMeta = kbCitations.filter(c => c.effective_from != null || c.effective_to != null);
+  const withoutMeta = kbCitations.filter(c => c.effective_from == null && c.effective_to == null);
 
+  let metadataSource: "inline" | "db_fallback";
   let citationsToCheck: Array<{
     doc_id: string;
     title: string;
     effective_from: string | null;
     effective_to: string | null;
   }>;
-  let metadataSource: "inline" | "db_fallback";
 
-  if (hasInlineMetadata) {
+  if (withoutMeta.length === 0) {
+    // All have inline metadata — pure inline
     metadataSource = "inline";
-    citationsToCheck = kbCitations.map(c => ({
+    citationsToCheck = withMeta.map(c => ({
       doc_id: c.doc_id,
       title: c.title,
       effective_from: c.effective_from ?? null,
       effective_to: c.effective_to ?? null,
     }));
   } else {
-    metadataSource = "db_fallback";
-    const docIds = [...new Set(kbCitations.map(c => c.doc_id))];
+    // Some or all missing — fetch from DB for the missing ones, use inline for the rest
+    metadataSource = withMeta.length > 0 ? "inline" : "db_fallback";
+    const inlinePart = withMeta.map(c => ({
+      doc_id: c.doc_id,
+      title: c.title,
+      effective_from: c.effective_from ?? null,
+      effective_to: c.effective_to ?? null,
+    }));
+
+    const missingDocIds = [...new Set(withoutMeta.map(c => c.doc_id))];
     const { data: docs, error } = await supabase
       .from("knowledge_base")
       .select("id, title, effective_from, effective_to")
-      .in("id", docIds);
+      .in("id", missingDocIds);
 
     if (error) {
       return {
@@ -342,12 +369,17 @@ async function checkTemporalInRange(
       };
     }
 
-    citationsToCheck = (docs || []).map(d => ({
+    const dbPart = (docs || []).map(d => ({
       doc_id: d.id,
       title: d.title,
       effective_from: d.effective_from,
       effective_to: d.effective_to,
     }));
+
+    citationsToCheck = [...inlinePart, ...dbPart];
+    if (inlinePart.length > 0 && dbPart.length > 0) {
+      metadataSource = "inline"; // hybrid, but predominantly inline
+    }
   }
 
   const refDate = new Date(referenceDate);
@@ -522,6 +554,7 @@ serve(async (req) => {
             invariant_results: result.invariants,
             latency_ms: latencyMs,
             error_message: `HTTP ${response.status}`,
+            temporal_metadata_source: null,
           });
           continue;
         }
@@ -608,6 +641,7 @@ serve(async (req) => {
           status: "skipped",
           error_message: errorMsg,
           latency_ms: latencyMs,
+          temporal_metadata_source: null,
         });
       }
     }
