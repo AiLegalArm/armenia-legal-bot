@@ -1,17 +1,15 @@
 /**
- * eval-runner — Evaluation Framework Runner (v2)
+ * eval-runner — Evaluation Framework Runner (v2.1)
  *
  * Executes eval cases from a suite, calls target edge functions,
- * validates invariants using structured citation contracts:
- *   - citations_present: checks structural citation fields (doc_id, title) + Armenian citation pattern (Տե՛ս՝)
- *   - cited_ids_exist: verifies all cited doc_ids actually exist in knowledge_base / legal_practice_kb
- *   - no_fabricated_sources: checks for fabricated article numbers (>999)
- *   - language_match: script-based language detection
- *   - temporal_in_range: checks effective_from/to from response metadata (no re-query needed)
- *   - agent_schema_valid: validates response shape per target function
+ * validates invariants using structured citation contracts.
  *
- * Input:  { suite_id: string }
- * Output: { run_id, passed, failed, skipped, results: [...] }
+ * v2.1 changes:
+ *   - isEffectiveOn() helper with [effective_from, effective_to) semantics
+ *   - citations_present parameterizable: mode structured_only|hybrid
+ *   - cited_ids_exist: fail-fast on >50 cited IDs (no silent partial)
+ *   - extractCitations: dedupe by (source_type, doc_id), skip sources_used for vector-search
+ *   - temporal_metadata_source persisted in eval_run_results
  */
 
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
@@ -33,7 +31,6 @@ interface InvariantResult {
   details?: unknown;
 }
 
-/** Normalized citation shape expected in vector-search results */
 interface CitedItem {
   id: string;
   doc_id: string;
@@ -43,11 +40,48 @@ interface CitedItem {
   effective_to?: string | null;
 }
 
-// ── Citation extractor ───────────────────────────────────────────────────────
+// ── Temporal helper ──────────────────────────────────────────────────────────
 
-/** Extract all cited items from a vector-search or analysis response */
-function extractCitations(response: Record<string, unknown>): CitedItem[] {
-  const items: CitedItem[] = [];
+/**
+ * Half-open interval: [effective_from, effective_to)
+ * - If effective_from is null, treated as -∞
+ * - If effective_to is null, treated as +∞
+ */
+function isEffectiveOn(
+  effectiveFrom: string | null | undefined,
+  effectiveTo: string | null | undefined,
+  referenceDate: Date,
+): { valid: boolean; reason?: string } {
+  if (effectiveFrom) {
+    const from = new Date(effectiveFrom);
+    if (from > referenceDate) {
+      return { valid: false, reason: `effective_from (${effectiveFrom}) is after reference_date` };
+    }
+  }
+  if (effectiveTo) {
+    const to = new Date(effectiveTo);
+    // Half-open: effective_to is exclusive
+    if (to <= referenceDate) {
+      return { valid: false, reason: `effective_to (${effectiveTo}) is on or before reference_date (exclusive upper bound)` };
+    }
+  }
+  return { valid: true };
+}
+
+// ── Citation extractor (v2.1: dedupe + mode-aware) ───────────────────────────
+
+function extractCitations(
+  response: Record<string, unknown>,
+  targetFunction?: string,
+): CitedItem[] {
+  const seen = new Map<string, CitedItem>(); // key: "source_type:doc_id"
+
+  const addItem = (item: CitedItem) => {
+    const key = `${item.source_type}:${item.doc_id}`;
+    if (!seen.has(key)) {
+      seen.set(key, item);
+    }
+  };
 
   // From vector-search: kb[] and practice[]
   for (const key of ["kb", "practice"] as const) {
@@ -55,7 +89,7 @@ function extractCitations(response: Record<string, unknown>): CitedItem[] {
     if (!Array.isArray(arr)) continue;
     for (const r of arr) {
       if (r && typeof r === "object" && r.id) {
-        items.push({
+        addItem({
           id: r.id,
           doc_id: r.doc_id || r.id,
           title: r.title || "",
@@ -68,103 +102,127 @@ function extractCitations(response: Record<string, unknown>): CitedItem[] {
   }
 
   // From analysis responses: sources_used[]
-  const sourcesUsed = response.sources_used;
-  if (Array.isArray(sourcesUsed)) {
-    for (const s of sourcesUsed) {
-      if (s && typeof s === "object" && (s.id || s.doc_id)) {
-        items.push({
-          id: s.id || s.doc_id,
-          doc_id: s.doc_id || s.id,
-          title: s.title || "",
-          source_type: s.source_type || "kb",
-          effective_from: s.effective_from ?? null,
-          effective_to: s.effective_to ?? null,
-        });
+  // Skip for vector-search to avoid mixing structured results with sources_used
+  if (targetFunction !== "vector-search") {
+    const sourcesUsed = response.sources_used;
+    if (Array.isArray(sourcesUsed)) {
+      for (const s of sourcesUsed) {
+        if (s && typeof s === "object" && (s.id || s.doc_id)) {
+          addItem({
+            id: s.id || s.doc_id,
+            doc_id: s.doc_id || s.id,
+            title: s.title || "",
+            source_type: s.source_type || "kb",
+            effective_from: s.effective_from ?? null,
+            effective_to: s.effective_to ?? null,
+          });
+        }
       }
     }
   }
 
-  return items;
+  return [...seen.values()];
 }
 
 // ── Invariant validators ─────────────────────────────────────────────────────
 
 /**
- * citations_present: checks that the response contains structured citations
- * (items with doc_id/title) AND/OR the Armenian citation format (Տե՛ս՝ ...)
+ * citations_present (v2.1): parameterizable mode
+ *   - structured_only: only checks structural citations (doc_id/title)
+ *   - hybrid (default): also checks Armenian format + text references
  */
-function checkCitationsPresent(response: Record<string, unknown>): InvariantResult {
-  const citations = extractCitations(response);
+function checkCitationsPresent(
+  response: Record<string, unknown>,
+  targetFunction?: string,
+  params?: Record<string, unknown>,
+): InvariantResult {
+  const mode = (params?.mode as string) || "hybrid";
+  const citations = extractCitations(response, targetFunction);
   const hasStructural = citations.length > 0;
 
-  // Also check text for Armenian citation pattern
-  const text = extractText(response);
-  const armenianCitationPattern = /Տե՛ս՝/;
-  const hasArmenianFormat = armenianCitationPattern.test(text);
+  if (mode === "structured_only") {
+    return {
+      type: "citations_present",
+      passed: hasStructural,
+      message: hasStructural
+        ? `${citations.length} structural citation(s) found (structured_only mode)`
+        : "No structural citations found (structured_only mode)",
+      details: { structural_count: citations.length, mode },
+    };
+  }
 
-  // Also check for common reference patterns in text
+  // hybrid mode: also check text patterns
+  const text = extractText(response);
+  const hasArmenianFormat = /Տե՛ս՝/.test(text);
   const refPatterns = [
-    /\b(Article|Art\.?|Հodelays)\s*\.?\s*\d+/i,
+    /\b(Article|Art\.?)\s*\.?\s*\d+/i,
     /\bECHR\b/i,
     /ՀՀ\s*(ՔՕ|ՔԴՕ)/,
   ];
   const hasTextRef = refPatterns.some(p => p.test(text));
-
   const passed = hasStructural || hasArmenianFormat || hasTextRef;
 
   return {
     type: "citations_present",
     passed,
     message: passed
-      ? `Citations found: ${citations.length} structural${hasArmenianFormat ? " + Armenian format (Տե՛ս՝)" : ""}${hasTextRef ? " + text references" : ""}`
-      : "No citations detected: no structural citations, no Տե՛ս՝ pattern, no text references",
+      ? `Citations found: ${citations.length} structural${hasArmenianFormat ? " + Armenian format (Տdelays)" : ""}${hasTextRef ? " + text references" : ""}`
+      : "No citations detected in any form",
     details: {
       structural_count: citations.length,
       has_armenian_format: hasArmenianFormat,
       has_text_references: hasTextRef,
+      mode,
     },
   };
 }
 
 /**
- * cited_ids_exist: verifies all cited doc_ids actually exist in the database
+ * cited_ids_exist (v2.1): fail-fast if >50 unique IDs (no silent partial)
  */
+const MAX_CITED_IDS = 50;
+
 async function checkCitedIdsExist(
   response: Record<string, unknown>,
   supabase: ReturnType<typeof createClient>,
+  targetFunction?: string,
 ): Promise<InvariantResult> {
-  const citations = extractCitations(response);
+  const citations = extractCitations(response, targetFunction);
   if (citations.length === 0) {
-    return {
-      type: "cited_ids_exist",
-      passed: true,
-      message: "No cited IDs to verify",
-    };
+    return { type: "cited_ids_exist", passed: true, message: "No cited IDs to verify" };
   }
 
   const kbIds = [...new Set(citations.filter(c => c.source_type === "kb").map(c => c.doc_id))];
   const practiceIds = [...new Set(citations.filter(c => c.source_type === "practice").map(c => c.doc_id))];
+  const totalUnique = kbIds.length + practiceIds.length;
+
+  if (totalUnique > MAX_CITED_IDS) {
+    return {
+      type: "cited_ids_exist",
+      passed: false,
+      message: `Too many unique cited IDs (${totalUnique} > ${MAX_CITED_IDS}). Fail-fast to prevent silent partial validation.`,
+      details: { total_unique: totalUnique, limit: MAX_CITED_IDS },
+    };
+  }
 
   const missing: Array<{ doc_id: string; source_type: string }> = [];
 
-  // Check KB IDs
   if (kbIds.length > 0) {
     const { data: kbDocs } = await supabase
       .from("knowledge_base")
       .select("id")
-      .in("id", kbIds.slice(0, 50));
+      .in("id", kbIds);
     const foundKb = new Set((kbDocs || []).map(d => d.id));
     for (const id of kbIds) {
       if (!foundKb.has(id)) missing.push({ doc_id: id, source_type: "kb" });
     }
   }
 
-  // Check Practice IDs
   if (practiceIds.length > 0) {
     const { data: practiceDocs } = await supabase
       .from("legal_practice_kb")
       .select("id")
-      .in("id", practiceIds.slice(0, 50));
+      .in("id", practiceIds);
     const foundPractice = new Set((practiceDocs || []).map(d => d.id));
     for (const id of practiceIds) {
       if (!foundPractice.has(id)) missing.push({ doc_id: id, source_type: "practice" });
@@ -175,18 +233,18 @@ async function checkCitedIdsExist(
     type: "cited_ids_exist",
     passed: missing.length === 0,
     message: missing.length === 0
-      ? `All ${kbIds.length + practiceIds.length} cited IDs verified in DB`
+      ? `All ${totalUnique} cited IDs verified in DB`
       : `${missing.length} cited ID(s) not found in DB`,
     details: missing.length > 0 ? { missing } : undefined,
   };
 }
 
 /**
- * no_fabricated_sources: checks for obviously fabricated article numbers
+ * no_fabricated_sources
  */
 function checkNoFabricatedSources(response: Record<string, unknown>): InvariantResult {
   const text = extractText(response);
-  const fabricatedPattern = /(?:Article|Art\.?|Հodelays)\s*\.?\s*(\d{4,})/gi;
+  const fabricatedPattern = /(?:Article|Art\.?)\s*\.?\s*(\d{4,})/gi;
   const matches = [...text.matchAll(fabricatedPattern)];
   const fabricated = matches.filter(m => parseInt(m[1]) > 999);
   return {
@@ -200,7 +258,7 @@ function checkNoFabricatedSources(response: Record<string, unknown>): InvariantR
 }
 
 /**
- * language_match: script-based language detection
+ * language_match
  */
 function checkLanguageMatch(response: Record<string, unknown>, expectedLang?: string): InvariantResult {
   if (!expectedLang) {
@@ -218,42 +276,38 @@ function checkLanguageMatch(response: Record<string, unknown>, expectedLang?: st
   return {
     type: "language_match",
     passed,
-    message: passed
-      ? `Language matches expected: ${expectedLang}`
-      : `Expected ${expectedLang}, detected ${detected}`,
+    message: passed ? `Language matches: ${expectedLang}` : `Expected ${expectedLang}, detected ${detected}`,
     details: { expected: expectedLang, detected },
   };
 }
 
 /**
- * temporal_in_range (v2): uses effective_from/to from the citation contract
- * directly — no re-querying the DB. Falls back to DB lookup only if the
- * response lacks temporal metadata.
+ * temporal_in_range (v2.1): uses isEffectiveOn() with [from, to) semantics.
+ * Returns temporal_metadata_source for analytics.
  */
 async function checkTemporalInRange(
   response: Record<string, unknown>,
   referenceDate: string,
   supabase: ReturnType<typeof createClient>,
-): Promise<InvariantResult> {
+  targetFunction?: string,
+): Promise<InvariantResult & { temporal_metadata_source: "inline" | "db_fallback" | "none" }> {
   if (!referenceDate) {
-    return { type: "temporal_in_range", passed: true, message: "No reference_date, skipped" };
+    return { type: "temporal_in_range", passed: true, message: "No reference_date, skipped", temporal_metadata_source: "none" };
   }
 
-  const citations = extractCitations(response);
+  const citations = extractCitations(response, targetFunction);
   const kbCitations = citations.filter(c => c.source_type === "kb");
 
   if (kbCitations.length === 0) {
     return {
       type: "temporal_in_range",
       passed: true,
-      message: "No KB citations to validate temporally (practice items don't have effective_from/to)",
+      message: "No KB citations to validate temporally",
+      temporal_metadata_source: "none",
     };
   }
 
-  // Check if citations have temporal metadata inline
-  const hasInlineMetadata = kbCitations.some(
-    c => c.effective_from !== null || c.effective_to !== null
-  );
+  const hasInlineMetadata = kbCitations.some(c => c.effective_from != null || c.effective_to != null);
 
   let citationsToCheck: Array<{
     doc_id: string;
@@ -261,9 +315,10 @@ async function checkTemporalInRange(
     effective_from: string | null;
     effective_to: string | null;
   }>;
+  let metadataSource: "inline" | "db_fallback";
 
   if (hasInlineMetadata) {
-    // Use inline metadata from the response (no DB call)
+    metadataSource = "inline";
     citationsToCheck = kbCitations.map(c => ({
       doc_id: c.doc_id,
       title: c.title,
@@ -271,18 +326,19 @@ async function checkTemporalInRange(
       effective_to: c.effective_to ?? null,
     }));
   } else {
-    // Fallback: query DB for temporal metadata
+    metadataSource = "db_fallback";
     const docIds = [...new Set(kbCitations.map(c => c.doc_id))];
     const { data: docs, error } = await supabase
       .from("knowledge_base")
       .select("id, title, effective_from, effective_to")
-      .in("id", docIds.slice(0, 50));
+      .in("id", docIds);
 
     if (error) {
       return {
         type: "temporal_in_range",
         passed: false,
         message: `DB error checking temporal range: ${error.message}`,
+        temporal_metadata_source: "db_fallback",
       };
     }
 
@@ -304,24 +360,9 @@ async function checkTemporalInRange(
   }> = [];
 
   for (const doc of citationsToCheck) {
-    if (doc.effective_from) {
-      const from = new Date(doc.effective_from);
-      if (from > refDate) {
-        violations.push({
-          ...doc,
-          reason: `effective_from (${doc.effective_from}) is after reference_date (${referenceDate})`,
-        });
-        continue;
-      }
-    }
-    if (doc.effective_to) {
-      const to = new Date(doc.effective_to);
-      if (to <= refDate) {
-        violations.push({
-          ...doc,
-          reason: `effective_to (${doc.effective_to}) is on or before reference_date (${referenceDate})`,
-        });
-      }
+    const check = isEffectiveOn(doc.effective_from, doc.effective_to, refDate);
+    if (!check.valid) {
+      violations.push({ ...doc, reason: check.reason! });
     }
   }
 
@@ -329,29 +370,29 @@ async function checkTemporalInRange(
     type: "temporal_in_range",
     passed: violations.length === 0,
     message: violations.length === 0
-      ? `All ${citationsToCheck.length} cited KB docs are temporally valid for ${referenceDate}${hasInlineMetadata ? " (inline metadata)" : " (DB fallback)"}`
-      : `${violations.length} temporal violation(s) found among ${citationsToCheck.length} KB docs`,
+      ? `All ${citationsToCheck.length} KB docs temporally valid for ${referenceDate} (${metadataSource})`
+      : `${violations.length} temporal violation(s) among ${citationsToCheck.length} KB docs`,
     details: violations.length > 0
-      ? { violations, metadata_source: hasInlineMetadata ? "inline" : "db_fallback" }
-      : { metadata_source: hasInlineMetadata ? "inline" : "db_fallback" },
+      ? { violations, metadata_source: metadataSource }
+      : { metadata_source: metadataSource },
+    temporal_metadata_source: metadataSource,
   };
 }
 
 /**
- * agent_schema_valid: validates response shape per target function
+ * agent_schema_valid
  */
 function checkAgentSchemaValid(response: Record<string, unknown>, targetFunction: string): InvariantResult {
   if (targetFunction === "vector-search") {
     const hasKb = Array.isArray(response.kb);
     const hasPractice = Array.isArray(response.practice);
-    // v2: also check that KB items have doc_id
     const kbItems = (response.kb || []) as Array<Record<string, unknown>>;
     const allHaveDocId = kbItems.length === 0 || kbItems.every(r => r.doc_id);
     return {
       type: "agent_schema_valid",
       passed: hasKb && hasPractice,
       message: hasKb && hasPractice
-        ? `Valid schema (kb[${kbItems.length}], practice[${(response.practice as unknown[]).length}])${allHaveDocId ? ", all have doc_id" : ", MISSING doc_id on some items"}`
+        ? `Valid schema (kb[${kbItems.length}], practice[${(response.practice as unknown[]).length}])${allHaveDocId ? ", all have doc_id" : ", MISSING doc_id"}`
         : `Missing fields: ${!hasKb ? "kb" : ""} ${!hasPractice ? "practice" : ""}`.trim(),
       details: { has_kb: hasKb, has_practice: hasPractice, all_have_doc_id: allHaveDocId },
     };
@@ -435,12 +476,18 @@ serve(async (req) => {
 
     if (runErr) return json({ error: `Failed to create run: ${runErr.message}` }, 500);
 
-    log("eval-runner", "Starting eval run v2", { run_id: run.id, total_cases: cases.length });
+    log("eval-runner", "Starting eval run v2.1", { run_id: run.id, total_cases: cases.length });
 
     let passed = 0;
     let failed = 0;
     let skipped = 0;
-    const results: Array<{ case_name: string; status: string; invariants: InvariantResult[]; latency_ms: number }> = [];
+    const results: Array<{
+      case_name: string;
+      status: string;
+      invariants: InvariantResult[];
+      latency_ms: number;
+      temporal_metadata_source?: string;
+    }> = [];
 
     for (const evalCase of cases) {
       const t0 = Date.now();
@@ -454,6 +501,7 @@ serve(async (req) => {
         const responseBody = await response.json() as Record<string, unknown>;
 
         if (!response.ok) {
+          failed++;
           const result = {
             case_name: evalCase.name,
             status: "fail" as const,
@@ -464,7 +512,6 @@ serve(async (req) => {
             }],
             latency_ms: latencyMs,
           };
-          failed++;
           results.push(result);
 
           await supabase.from("eval_run_results").insert({
@@ -482,14 +529,15 @@ serve(async (req) => {
         // Run invariant checks
         const invariants: InvariantResult[] = [];
         const invariantDefs = (evalCase.invariants || []) as InvariantDef[];
+        let temporalMetadataSource: string | undefined;
 
         for (const inv of invariantDefs) {
           switch (inv.type) {
             case "citations_present":
-              invariants.push(checkCitationsPresent(responseBody));
+              invariants.push(checkCitationsPresent(responseBody, evalCase.target_function, inv.params));
               break;
             case "cited_ids_exist":
-              invariants.push(await checkCitedIdsExist(responseBody, supabase));
+              invariants.push(await checkCitedIdsExist(responseBody, supabase, evalCase.target_function));
               break;
             case "no_fabricated_sources":
               invariants.push(checkNoFabricatedSources(responseBody));
@@ -497,9 +545,17 @@ serve(async (req) => {
             case "language_match":
               invariants.push(checkLanguageMatch(responseBody, evalCase.expected_language || undefined));
               break;
-            case "temporal_in_range":
-              invariants.push(await checkTemporalInRange(responseBody, evalCase.reference_date || "", supabase));
+            case "temporal_in_range": {
+              const temporalResult = await checkTemporalInRange(
+                responseBody,
+                evalCase.reference_date || "",
+                supabase,
+                evalCase.target_function,
+              );
+              temporalMetadataSource = temporalResult.temporal_metadata_source;
+              invariants.push(temporalResult);
               break;
+            }
             case "agent_schema_valid":
               invariants.push(checkAgentSchemaValid(responseBody, evalCase.target_function));
               break;
@@ -509,19 +565,20 @@ serve(async (req) => {
         }
 
         const allPassed = invariants.every(i => i.passed);
-        const temporalViolations = invariants
-          .filter(i => i.type === "temporal_in_range" && !i.passed)
-          .map(i => i.details);
-
         const caseStatus = allPassed ? "pass" : "fail";
         if (allPassed) passed++;
         else failed++;
+
+        const temporalViolations = invariants
+          .filter(i => i.type === "temporal_in_range" && !i.passed)
+          .map(i => i.details);
 
         results.push({
           case_name: evalCase.name,
           status: caseStatus,
           invariants,
           latency_ms: latencyMs,
+          temporal_metadata_source: temporalMetadataSource,
         });
 
         await supabase.from("eval_run_results").insert({
@@ -531,6 +588,7 @@ serve(async (req) => {
           raw_response: responseBody,
           invariant_results: invariants,
           temporal_violations: temporalViolations.length > 0 ? temporalViolations : null,
+          temporal_metadata_source: temporalMetadataSource || null,
           latency_ms: latencyMs,
         });
       } catch (caseErr) {
@@ -562,7 +620,7 @@ serve(async (req) => {
       completed_at: new Date().toISOString(),
     }).eq("id", run.id);
 
-    log("eval-runner", "Eval run v2 complete", { run_id: run.id, passed, failed, skipped });
+    log("eval-runner", "Eval run v2.1 complete", { run_id: run.id, passed, failed, skipped });
 
     return json({ run_id: run.id, passed, failed, skipped, total: cases.length, results });
   } catch (error) {
