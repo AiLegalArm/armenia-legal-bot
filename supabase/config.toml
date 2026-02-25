@@ -75,4 +75,13 @@ verify_jwt = false
 [functions.practice-chunk-enqueue]
 verify_jwt = false
 
+[functions.practice-pipeline-orchestrator]
+verify_jwt = false
+
+[functions.practice-embed-worker]
+verify_jwt = false
+
+[functions.practice-ai-enrich-worker]
+verify_jwt = false
+
 [functions.dictionary-import-run]

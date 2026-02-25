@@ -1713,11 +1713,14 @@ export type Database = {
           id: string
           job_type: string
           last_error: string | null
+          lease_expires_at: string | null
           max_attempts: number
+          next_run_at: string | null
           source_table: string
           started_at: string | null
           status: string
           updated_at: string
+          worker_id: string | null
         }
         Insert: {
           attempts?: number
@@ -1727,11 +1730,14 @@ export type Database = {
           id?: string
           job_type?: string
           last_error?: string | null
+          lease_expires_at?: string | null
           max_attempts?: number
+          next_run_at?: string | null
           source_table?: string
           started_at?: string | null
           status?: string
           updated_at?: string
+          worker_id?: string | null
         }
         Update: {
           attempts?: number
@@ -1741,11 +1747,14 @@ export type Database = {
           id?: string
           job_type?: string
           last_error?: string | null
+          lease_expires_at?: string | null
           max_attempts?: number
+          next_run_at?: string | null
           source_table?: string
           started_at?: string | null
           status?: string
           updated_at?: string
+          worker_id?: string | null
         }
         Relationships: []
       }
@@ -2120,6 +2129,37 @@ export type Database = {
           max_attempts: number
           source_table: string
         }[]
+      }
+      claim_pipeline_jobs: {
+        Args: {
+          p_job_type: string
+          p_lease_minutes?: number
+          p_limit?: number
+          p_source_table?: string
+        }
+        Returns: {
+          attempts: number
+          completed_at: string | null
+          created_at: string
+          document_id: string
+          id: string
+          job_type: string
+          last_error: string | null
+          lease_expires_at: string | null
+          max_attempts: number
+          next_run_at: string | null
+          source_table: string
+          started_at: string | null
+          status: string
+          updated_at: string
+          worker_id: string | null
+        }[]
+        SetofOptions: {
+          from: "*"
+          to: "practice_chunk_jobs"
+          isOneToOne: false
+          isSetofReturn: true
+        }
       }
       decrypt_pii: {
         Args: { _field_name: string; _user_id: string }

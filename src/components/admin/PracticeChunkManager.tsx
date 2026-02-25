@@ -6,7 +6,7 @@ import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { toast } from "sonner";
 import {
-  Loader2, Layers, RotateCcw, BarChart3, AlertTriangle, Database,
+  Loader2, Layers, RotateCcw, BarChart3, AlertTriangle, Database, Zap,
 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 
@@ -26,7 +26,75 @@ interface Diagnostics {
   };
 }
 
+interface PipelineStats {
+  chunk_pending: number;
+  embed_pending: number;
+  enrich_pending: number;
+}
+
 type SourceTable = "legal_practice_kb" | "knowledge_base";
+
+function PipelineStatus() {
+  const { t } = useTranslation("admin");
+  const [stats, setStats] = useState<PipelineStats | null>(null);
+  const [loading, setLoading] = useState(false);
+
+  const loadStats = async () => {
+    setLoading(true);
+    try {
+      // Use the orchestrator diagnostics via invoke
+      const { data, error } = await supabase.functions.invoke("practice-chunk-enqueue", {
+        body: { action: "diagnostics", source_table: "knowledge_base" },
+      });
+      const { data: data2 } = await supabase.functions.invoke("practice-chunk-enqueue", {
+        body: { action: "diagnostics", source_table: "legal_practice_kb" },
+      });
+      // Combine job stats from both sources
+      const jobs1 = data?.jobs || {};
+      const jobs2 = data2?.jobs || {};
+      setStats({
+        chunk_pending: (jobs1.pending || 0) + (jobs2.pending || 0),
+        embed_pending: (data?.embedding_pending || 0) + (data2?.embedding_pending || 0),
+        enrich_pending: 0, // Will show from pipeline
+      });
+    } catch {
+      // Silently fail
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => { loadStats(); }, []);
+
+  const isIdle = stats && stats.chunk_pending === 0 && stats.embed_pending === 0 && stats.enrich_pending === 0;
+  const activeStage = stats
+    ? stats.chunk_pending > 0 ? "Chunking" : stats.embed_pending > 0 ? "Embedding" : stats.enrich_pending > 0 ? "Enrichment" : "Idle"
+    : "...";
+
+  return (
+    <div className="flex items-center gap-3 mb-4 p-3 rounded-lg bg-muted/50 border">
+      <Zap className={`h-4 w-4 ${isIdle ? 'text-muted-foreground' : 'text-green-500 animate-pulse'}`} />
+      <div className="flex-1">
+        <div className="text-sm font-medium">
+          Pipeline: {activeStage}
+        </div>
+        {stats && !isIdle && (
+          <div className="flex gap-2 text-xs text-muted-foreground mt-1">
+            {stats.chunk_pending > 0 && <span>Chunk: {stats.chunk_pending}</span>}
+            {stats.embed_pending > 0 && <span>Embed: {stats.embed_pending}</span>}
+            {stats.enrich_pending > 0 && <span>Enrich: {stats.enrich_pending}</span>}
+          </div>
+        )}
+        <p className="text-xs text-muted-foreground mt-1">
+          ⚡ Pipeline runs automatically every minute. No manual intervention needed.
+        </p>
+      </div>
+      <Button size="sm" variant="ghost" onClick={loadStats} disabled={loading}>
+        {loading ? <Loader2 className="h-3 w-3 animate-spin" /> : <BarChart3 className="h-3 w-3" />}
+      </Button>
+    </div>
+  );
+}
 
 function PipelineSection({ source }: { source: SourceTable }) {
   const { t } = useTranslation("admin");
@@ -60,8 +128,7 @@ function PipelineSection({ source }: { source: SourceTable }) {
         body: { action: "enqueue_missing_chunks", source_table: source },
       });
       if (error) throw error;
-      toast.success(`${t("enqueue_missing_chunks")}: ${data.enqueued}`);
-      // Worker is kicked automatically by enqueue + cron runs every 2 min
+      toast.success(`Enqueued ${data.enqueued} docs for full pipeline (chunk → embed → enrich)`);
       loadDiagnostics();
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Enqueue failed");
@@ -74,7 +141,7 @@ function PipelineSection({ source }: { source: SourceTable }) {
         body: { action: "enqueue_missing_embeddings", source_table: source },
       });
       if (error) throw error;
-      toast.success(`${t("enqueue_missing_embeddings")}: ${data.reset}`);
+      toast.success(`Reset ${data.reset} docs for re-embedding`);
       loadDiagnostics();
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Enqueue failed");
@@ -150,7 +217,7 @@ function PipelineSection({ source }: { source: SourceTable }) {
         <Button size="sm" onClick={enqueueChunks}>
           {t("enqueue_missing_chunks")}
         </Button>
-        <Button size="sm" onClick={enqueueEmbeddings}>
+        <Button size="sm" variant="outline" onClick={enqueueEmbeddings}>
           {t("enqueue_missing_embeddings")}
         </Button>
         {(diag?.jobs.dead_letter ?? 0) > 0 && (
@@ -159,10 +226,6 @@ function PipelineSection({ source }: { source: SourceTable }) {
           </Button>
         )}
       </div>
-
-      <p className="text-xs text-muted-foreground">
-        ⚡ Worker runs automatically every 2 minutes via cron. After enqueue, processing starts immediately.
-      </p>
     </div>
   );
 }
@@ -180,6 +243,7 @@ export function PracticeChunkManager() {
         <p className="text-sm text-muted-foreground">{t("chunk_pipeline_desc")}</p>
       </CardHeader>
       <CardContent>
+        <PipelineStatus />
         <Tabs defaultValue="knowledge_base">
           <TabsList className="mb-4">
             <TabsTrigger value="knowledge_base" className="gap-1">

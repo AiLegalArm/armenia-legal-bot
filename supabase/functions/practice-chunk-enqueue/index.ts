@@ -219,18 +219,43 @@ serve(async (req) => {
 
       console.log(`[practice-chunk-enqueue] enqueued ${enqueued} chunk jobs for ${source}`);
 
-      // Best-effort kick: trigger worker immediately (don't await result)
-      const workerUrl = `${Deno.env.get("SUPABASE_URL")}/functions/v1/practice-chunk-worker`;
+      // Also create embed jobs for these docs (they'll need embeddings after chunking)
+      const embedBatch = docIds.map((id) => ({
+        document_id: id,
+        source_table: source,
+        job_type: "embed",
+        status: "pending",
+        attempts: 0,
+      }));
+      for (let i = 0; i < embedBatch.length; i += 500) {
+        await supabase.from("practice_chunk_jobs")
+          .upsert(embedBatch.slice(i, i + 500), { onConflict: "document_id,source_table,job_type", ignoreDuplicates: true });
+      }
+
+      // Create enrich jobs for legal_practice_kb docs
+      if (source === "legal_practice_kb") {
+        const enrichBatch = docIds.map((id) => ({
+          document_id: id,
+          source_table: source,
+          job_type: "enrich",
+          status: "pending",
+          attempts: 0,
+        }));
+        for (let i = 0; i < enrichBatch.length; i += 500) {
+          await supabase.from("practice_chunk_jobs")
+            .upsert(enrichBatch.slice(i, i + 500), { onConflict: "document_id,source_table,job_type", ignoreDuplicates: true });
+        }
+      }
+
+      // Fire-and-forget: trigger orchestrator immediately
+      const orchUrl = `${Deno.env.get("SUPABASE_URL")}/functions/v1/practice-pipeline-orchestrator`;
       const internalKeyVal = Deno.env.get("INTERNAL_INGEST_KEY");
       if (internalKeyVal) {
-        fetch(workerUrl, {
+        fetch(orchUrl, {
           method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            "x-internal-key": internalKeyVal,
-          },
-          body: JSON.stringify({ source_table: source, concurrency_docs: 10 }),
-        }).catch((e) => console.warn("[practice-chunk-enqueue] best-effort kick failed:", e.message));
+          headers: { "Content-Type": "application/json", "x-internal-key": internalKeyVal },
+          body: JSON.stringify({}),
+        }).catch((e) => console.warn("[practice-chunk-enqueue] orchestrator kick failed:", e.message));
       }
 
       return new Response(JSON.stringify({ enqueued, total_missing: docIds.length }), {
