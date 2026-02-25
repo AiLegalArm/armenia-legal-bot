@@ -249,13 +249,16 @@ serve(async (req) => {
 
       // Fire-and-forget: trigger orchestrator immediately
       const orchUrl = `${Deno.env.get("SUPABASE_URL")}/functions/v1/practice-pipeline-orchestrator`;
-      const internalKeyVal = Deno.env.get("INTERNAL_INGEST_KEY");
-      if (internalKeyVal) {
+      try {
+        const { buildInternalHeaders } = await import("../_shared/edge-security.ts");
+        const intHeaders = buildInternalHeaders();
         fetch(orchUrl, {
           method: "POST",
-          headers: { "Content-Type": "application/json", "x-internal-key": internalKeyVal },
+          headers: intHeaders,
           body: JSON.stringify({}),
         }).catch((e) => console.warn("[practice-chunk-enqueue] orchestrator kick failed:", e.message));
+      } catch {
+        console.warn("[practice-chunk-enqueue] could not build internal headers for orchestrator kick");
       }
 
       return new Response(JSON.stringify({ enqueued, total_missing: docIds.length }), {

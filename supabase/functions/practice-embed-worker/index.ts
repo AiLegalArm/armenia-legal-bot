@@ -9,15 +9,9 @@
 
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.91.1";
+import { handleCors, validateInternalRequest } from "../_shared/edge-security.ts";
 
-const corsHeaders = {
-  "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers":
-    "authorization, x-client-info, apikey, content-type, x-internal-key, " +
-    "x-supabase-client-platform, x-supabase-client-platform-version, " +
-    "x-supabase-client-runtime, x-supabase-client-runtime-version",
-  "Access-Control-Allow-Methods": "POST, OPTIONS",
-};
+const corsHeaders: Record<string, string> = {};
 
 const OPENROUTER_BASE_URL = "https://openrouter.ai/api/v1";
 const EMBEDDING_MODEL = "openai/text-embedding-3-large";
@@ -69,20 +63,12 @@ async function getEmbeddings(texts: string[]): Promise<number[][]> {
 }
 
 serve(async (req) => {
-  if (req.method === "OPTIONS") {
-    return new Response(null, { headers: corsHeaders });
-  }
+  const cors = handleCors(req);
+  if (cors.errorResponse) return cors.errorResponse;
+  Object.assign(corsHeaders, cors.corsHeaders!);
 
-  // Auth: x-internal-key
-  const internalKey = req.headers.get("x-internal-key");
-  const expectedKey = Deno.env.get("INTERNAL_INGEST_KEY");
-  const cronKey = Deno.env.get("CRON_WORKER_KEY");
-  const isAuth = internalKey && ((expectedKey && internalKey === expectedKey) || (cronKey && internalKey === cronKey));
-  if (!isAuth) {
-    return new Response(JSON.stringify({ error: "Unauthorized" }), {
-      status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" },
-    });
-  }
+  const authErr = validateInternalRequest(req, corsHeaders);
+  if (authErr) return authErr;
 
   const startTime = Date.now();
 
