@@ -3,7 +3,7 @@
  *
  * Matches TXT and PDF versions of the same Arlis document, then merges:
  *   - TXT  \u2192 primary text chunks
- *   - PDF  \u2192 table-type chunks only (attached separately)
+ *   - PDF  \u2192 all chunks (no special table handling)
  *   - Both sources recorded in metadata
  *
  * Matching rules (deterministic, no guessing):
@@ -51,10 +51,10 @@ export interface MergedDocument {
   primaryText: string;
   /** Title from TXT source */
   title: string;
-  /** All text-based chunks (from TXT) */
+  /** All chunks from TXT source */
   textChunks: LegalChunk[];
-  /** Table chunks extracted from PDF */
-  tableChunks: LegalChunk[];
+  /** Chunks from PDF source (re-indexed) */
+  pdfChunks: LegalChunk[];
   /** Combined chunk list in final order */
   allChunks: LegalChunk[];
   /** Both sources for metadata */
@@ -189,16 +189,9 @@ function classifySources(
 }
 
 /**
- * Extract only table-type chunks from a chunk list.
- * A chunk is a "table" if chunk_type === "table".
- */
-function extractTableChunks(chunks: LegalChunk[]): LegalChunk[] {
-  return chunks.filter((c) => c.chunk_type === "table");
-}
-
-/**
  * Merge two matched source records into a single merged document.
- * TXT provides primary text; PDF provides table chunks only.
+ * TXT provides primary text; PDF chunks are appended (re-indexed).
+ * All chunks are treated uniformly — no special table handling.
  *
  * @throws Error if sources don't match or can't be classified
  */
@@ -224,18 +217,16 @@ export async function mergeSources(
   }
 
   const [txtSource, pdfSource] = classified;
-  const tableChunks = extractTableChunks(pdfSource.chunks);
 
-  // Re-index table chunks to continue after text chunks
+  // Re-index PDF chunks to continue after text chunks
   const textChunkCount = txtSource.chunks.length;
-  const reindexedTables: LegalChunk[] = tableChunks.map((tc, i) => ({
-    ...tc,
+  const reindexedPdf: LegalChunk[] = pdfSource.chunks.map((c, i) => ({
+    ...c,
     chunk_index: textChunkCount + i,
-    // Override label to indicate PDF-extracted table
-    label: tc.label ? `[PDF table] ${tc.label}` : "[PDF table]",
+    label: c.label ? `[PDF] ${c.label}` : "[PDF]",
   }));
 
-  const allChunks = [...txtSource.chunks, ...reindexedTables];
+  const allChunks = [...txtSource.chunks, ...reindexedPdf];
 
   const txtHash = await sha256Hex(txtSource.contentText);
   const pdfHash = await sha256Hex(pdfSource.contentText);
@@ -244,7 +235,7 @@ export async function mergeSources(
     primaryText: txtSource.contentText,
     title: txtSource.title,
     textChunks: txtSource.chunks,
-    tableChunks: reindexedTables,
+    pdfChunks: reindexedPdf,
     allChunks,
     sources: {
       txt: {

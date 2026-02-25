@@ -369,7 +369,7 @@ export function buildJsonl(
       collection,
       doc_type: meta.doc_type || null,
       title: meta.title || null,
-      block_type: chunk.chunk_type === "table" ? "table" : "text",
+      block_type: "text",
       source: {
         type: meta.source_url ? "url" : "file",
         uri: meta.source_url || null,
@@ -400,15 +400,6 @@ export function buildJsonl(
       },
     };
 
-    // Add table-specific fields for table chunks
-    if (chunk.chunk_type === "table") {
-      record.table = {
-        format: "markdown",
-        content: chunk.chunk_text,
-        quality: "medium", // default; source-merger or extractor can override
-      };
-    }
-
     const json = JSON.stringify(record);
     return { line: i + 1, json, data: record };
   });
@@ -420,7 +411,7 @@ const MAX_CHUNK_TEXT_LENGTH = 50_000;
 const VALID_COLLECTIONS: JsonlCollection[] = ["knowledge_base", "legal_practice_kb"];
 const VALID_CHUNK_TYPES = [
   "header", "operative", "resolution", "reasoning", "facts", "dissent",
-  "article", "preamble", "table", "reference_list", "full_text", "other",
+  "article", "preamble", "reference_list", "full_text", "other",
 ];
 
 /**
