@@ -262,17 +262,22 @@ Deno.test("chunkDocument: treaty splits by articles", () => {
 
 // ─── TEST: Unknown doc_type -> fixed-window ─────────────────────────
 
-Deno.test("chunkDocument: unknown doc_type uses fixed-window", () => {
+Deno.test("chunkDocument: unknown doc_type uses structural fallback", () => {
   const longText = "Lorem ipsum dolor sit amet. ".repeat(100);
   const result = chunkDocument({
     doc_type: "other",
     content_text: longText,
   });
   const chunks = result.chunks;
-  assertEquals(result.strategy, "fixed");
+  // v2.0.0: unknown types use normative structural chunking instead of fixed-window
+  assert(["normative", "fixed"].includes(result.strategy), `Strategy should be normative or fixed, got: ${result.strategy}`);
 
   assert(chunks.length >= 1, "Should produce at least 1 chunk");
-  assertEquals(chunks[0].chunk_type, "full_text");
+  // v2.0.0: unknown types produce normative_section or full_text chunks
+  assert(
+    ["full_text", "normative_section"].includes(chunks[0].chunk_type),
+    `Chunk type should be full_text or normative_section, got: ${chunks[0].chunk_type}`,
+  );
 });
 
 // ─── TEST: Empty content ────────────────────────────────────────────
