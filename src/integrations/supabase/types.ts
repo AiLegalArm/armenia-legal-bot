@@ -910,6 +910,199 @@ export type Database = {
           },
         ]
       }
+      eval_cases: {
+        Row: {
+          created_at: string
+          description: string | null
+          expected_language: string | null
+          id: string
+          input_payload: Json
+          invariants: Json
+          is_active: boolean
+          name: string
+          reference_date: string | null
+          suite_id: string
+          tags: string[]
+          target_function: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          description?: string | null
+          expected_language?: string | null
+          id?: string
+          input_payload?: Json
+          invariants?: Json
+          is_active?: boolean
+          name: string
+          reference_date?: string | null
+          suite_id: string
+          tags?: string[]
+          target_function: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          description?: string | null
+          expected_language?: string | null
+          id?: string
+          input_payload?: Json
+          invariants?: Json
+          is_active?: boolean
+          name?: string
+          reference_date?: string | null
+          suite_id?: string
+          tags?: string[]
+          target_function?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "eval_cases_suite_id_fkey"
+            columns: ["suite_id"]
+            isOneToOne: false
+            referencedRelation: "eval_suites"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      eval_run_results: {
+        Row: {
+          case_id: string
+          created_at: string
+          error_message: string | null
+          id: string
+          invariant_results: Json
+          latency_ms: number | null
+          raw_response: Json | null
+          run_id: string
+          status: string
+          temporal_violations: Json | null
+        }
+        Insert: {
+          case_id: string
+          created_at?: string
+          error_message?: string | null
+          id?: string
+          invariant_results?: Json
+          latency_ms?: number | null
+          raw_response?: Json | null
+          run_id: string
+          status?: string
+          temporal_violations?: Json | null
+        }
+        Update: {
+          case_id?: string
+          created_at?: string
+          error_message?: string | null
+          id?: string
+          invariant_results?: Json
+          latency_ms?: number | null
+          raw_response?: Json | null
+          run_id?: string
+          status?: string
+          temporal_violations?: Json | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "eval_run_results_case_id_fkey"
+            columns: ["case_id"]
+            isOneToOne: false
+            referencedRelation: "eval_cases"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "eval_run_results_run_id_fkey"
+            columns: ["run_id"]
+            isOneToOne: false
+            referencedRelation: "eval_runs"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      eval_runs: {
+        Row: {
+          completed_at: string | null
+          created_at: string
+          failed: number
+          id: string
+          metadata: Json
+          passed: number
+          skipped: number
+          started_at: string | null
+          status: string
+          suite_id: string
+          total_cases: number
+          triggered_by: string | null
+        }
+        Insert: {
+          completed_at?: string | null
+          created_at?: string
+          failed?: number
+          id?: string
+          metadata?: Json
+          passed?: number
+          skipped?: number
+          started_at?: string | null
+          status?: string
+          suite_id: string
+          total_cases?: number
+          triggered_by?: string | null
+        }
+        Update: {
+          completed_at?: string | null
+          created_at?: string
+          failed?: number
+          id?: string
+          metadata?: Json
+          passed?: number
+          skipped?: number
+          started_at?: string | null
+          status?: string
+          suite_id?: string
+          total_cases?: number
+          triggered_by?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "eval_runs_suite_id_fkey"
+            columns: ["suite_id"]
+            isOneToOne: false
+            referencedRelation: "eval_suites"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      eval_suites: {
+        Row: {
+          created_at: string
+          description: string | null
+          id: string
+          is_active: boolean
+          name: string
+          updated_at: string
+          version: number
+        }
+        Insert: {
+          created_at?: string
+          description?: string | null
+          id?: string
+          is_active?: boolean
+          name: string
+          updated_at?: string
+          version?: number
+        }
+        Update: {
+          created_at?: string
+          description?: string | null
+          id?: string
+          is_active?: boolean
+          name?: string
+          updated_at?: string
+          version?: number
+        }
+        Relationships: []
+      }
       evidence_registry: {
         Row: {
           admissibility_notes: string | null

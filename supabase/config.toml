@@ -84,4 +84,6 @@ verify_jwt = false
 [functions.practice-ai-enrich-worker]
 verify_jwt = false
 
+[functions.eval-runner]
+
 [functions.dictionary-import-run]
