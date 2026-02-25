@@ -43,10 +43,18 @@ const INTERNAL_CORS_HEADERS: Record<string, string> = {
  * Returns true if x-internal-key matches INTERNAL_INGEST_KEY.
  */
 export function isValidInternalCall(req: Request): boolean {
-  const secret = Deno.env.get("INTERNAL_INGEST_KEY");
-  if (!secret) return false;  // missing or empty → never valid
   const provided = req.headers.get("x-internal-key");
-  return !!provided && provided === secret;
+  if (!provided) return false;
+
+  // Check primary internal key
+  const secret = Deno.env.get("INTERNAL_INGEST_KEY");
+  if (secret && provided === secret) return true;
+
+  // Check cron worker key (stored in vault, passed by pg_cron)
+  const cronKey = Deno.env.get("CRON_WORKER_KEY");
+  if (cronKey && provided === cronKey) return true;
+
+  return false;
 }
 
 /**
