@@ -1,12 +1,14 @@
 /**
- * kb-backfill-chunks — v3 (enterprise-hardened)
+ * kb-backfill-chunks — v4 (enterprise-hardened)
  *
- * Changes from v2:
- * 1. Delete-all-then-insert (UNIQUE constraints on both tables make insert-before-delete unsafe)
- * 2. legal_practice_kb_chunks: removed chunk_type from inserts (column doesn't exist)
- * 3. Removed N+1 chunk-count queries — batch check via single query
- * 4. Proper SQL quoting for hash values (prevented injection)
- * 5. Strict admin JWT validation
+ * Changes from v3:
+ * 1. Uses chunker v2.2.0: SHA-256 hashes, no table chunks, strict slice invariant.
+ * 2. Renamed resolveDocType → resolveDocTypeFromRow (no collision with chunker export).
+ * 3. DELETE-ALL-then-INSERT: proven UNIQUE constraints on both tables.
+ * 4. legal_practice_kb_chunks: NO chunk_type, char_start, char_end columns (proven).
+ * 5. Strict admin JWT validation via getClaims.
+ * 6. N+1 eliminated: batch check for existing chunks.
+ * 7. No trimming of content before chunkDocument (except "is empty" check).
  */
 
 import { serve } from "https://deno.land/std@0.224.0/http/server.ts";
@@ -85,7 +87,7 @@ async function requireAdmin(req: Request) {
   throw { status: 403, code: "FORBIDDEN", message: "Admin only" };
 }
 
-// ─── Map category/court_type → doc_type for structural chunker ─────
+// ─── Row-based doc type resolver (NOT text inference) ──────────────
 
 const CATEGORY_TO_DOC_TYPE: Record<string, string> = {
   constitution: "law",
@@ -110,7 +112,7 @@ const CATEGORY_TO_DOC_TYPE: Record<string, string> = {
   echr_judgments: "echr_judgment",
 };
 
-function resolveDocType(doc: KbDoc, isKB: boolean): string {
+function resolveDocTypeFromRow(doc: KbDoc, isKB: boolean): string {
   if (isKB) {
     const cat = doc.category ?? "";
     return CATEGORY_TO_DOC_TYPE[cat] || "law";
@@ -134,12 +136,13 @@ interface ChunkPlan {
 }
 
 function chunkDoc(doc: KbDoc, isKB: boolean): ChunkPlan {
-  const text = (doc.content_text ?? "").trim();
-  if (!text || text.length < 50) {
+  const text = doc.content_text ?? "";
+  // Only skip if truly empty — do NOT trim before passing to chunker
+  if (text.length < 50) {
     return { chunks: [], strategy: "skip", qaOk: true, qaErrors: [] };
   }
 
-  const docType = resolveDocType(doc, isKB);
+  const docType = resolveDocTypeFromRow(doc, isKB);
   const input: LegalDocumentInput = {
     doc_type: docType,
     content_text: text,
@@ -208,7 +211,7 @@ serve(async (req) => {
       if (error) throw { status: 500, code: "DB_ERROR", message: error.message };
       docs = (data ?? []) as KbDoc[];
     } else {
-      // Auto-discover: docs without chunks — single batch query instead of N+1
+      // Auto-discover: docs without chunks — batch query (no N+1)
       const { data: candidates, error: e1 } = await supabase
         .from(sourceTable)
         .select(selectCols)
@@ -220,7 +223,6 @@ serve(async (req) => {
       const allCandidates = (candidates ?? []) as KbDoc[];
 
       if (allCandidates.length > 0) {
-        // Batch check: get all doc IDs that already have chunks
         const candidateIds = allCandidates.map(d => d.id);
         const { data: existingChunks, error: chunkErr } = await supabase
           .from(chunksTable)
@@ -251,7 +253,6 @@ serve(async (req) => {
         .select("id", { count: "exact", head: true })
         .eq("is_active", true);
 
-      // Single query for distinct doc IDs with chunks
       const { data: chunkDocs } = await supabase
         .from(chunksTable)
         .select(fkColumn)
@@ -279,8 +280,8 @@ serve(async (req) => {
     let totalChunks = 0;
 
     for (const d of docs) {
-      const text = (d.content_text ?? "").trim();
-      if (!text) {
+      const text = d.content_text ?? "";
+      if (text.length < 50) {
         plan.push({ docId: d.id, title: d.title, action: "skip_empty_content", chunks: 0 });
         continue;
       }
@@ -321,8 +322,8 @@ serve(async (req) => {
     }> = [];
 
     for (const d of docs) {
-      const text = (d.content_text ?? "").trim();
-      if (!text) {
+      const text = d.content_text ?? "";
+      if (text.length < 50) {
         writeResults.push({ docId: d.id, status: "skipped_empty" });
         continue;
       }
@@ -348,7 +349,6 @@ serve(async (req) => {
       }
 
       // DELETE ALL existing chunks for this document first
-      // Safe: UNIQUE(fk, chunk_index) would cause insert-before-delete to fail
       const { error: delErr } = await supabase
         .from(chunksTable)
         .delete()
@@ -364,6 +364,7 @@ serve(async (req) => {
       let rows: Record<string, unknown>[];
 
       if (isKB) {
+        // knowledge_base_chunks: has chunk_type, char_start, char_end, label, is_active
         rows = cp.chunks.map((c) => ({
           kb_id: d.id,
           chunk_index: c.chunk_index,
@@ -376,7 +377,9 @@ serve(async (req) => {
           is_active: true,
         }));
       } else {
-        // legal_practice_kb_chunks — NO chunk_type column in schema
+        // legal_practice_kb_chunks — PROVEN schema:
+        // id, doc_id, chunk_index, chunk_text, chunk_hash, title, created_at
+        // NO chunk_type, NO char_start, NO char_end, NO is_active
         rows = cp.chunks.map((c) => ({
           doc_id: d.id,
           chunk_index: c.chunk_index,
