@@ -1,4 +1,4 @@
-import { assertEquals, assertThrows } from "https://deno.land/std@0.168.0/testing/asserts.ts";
+import { assertEquals } from "https://deno.land/std@0.168.0/testing/asserts.ts";
 import {
   extractArlisId,
   matchSources,
@@ -107,8 +107,8 @@ Deno.test("mergeSources: merges TXT + PDF correctly", async () => {
   ];
 
   const pdfChunks = [
-    { chunk_index: 0, chunk_type: "table" as const, chunk_text: "| Col1 | Col2 |", char_start: 0, char_end: 16, label: "Table 1", locator: null, chunk_hash: "ht1", metadata: null },
-    { chunk_index: 1, chunk_type: "header" as const, chunk_text: "Header text", char_start: 17, char_end: 28, label: null, locator: null, chunk_hash: "hh1", metadata: null },
+    { chunk_index: 0, chunk_type: "full_text" as const, chunk_text: "PDF content block", char_start: 0, char_end: 17, label: "Block 1", locator: null, chunk_hash: "hp1", metadata: null },
+    { chunk_index: 1, chunk_type: "header" as const, chunk_text: "Header text", char_start: 18, char_end: 29, label: null, locator: null, chunk_hash: "hh1", metadata: null },
   ];
 
   const txt = makeSource({
@@ -127,7 +127,7 @@ Deno.test("mergeSources: merges TXT + PDF correctly", async () => {
     mimeType: "application/pdf",
     title: "Test Law",
     sourceUrl: "https://arlis.am/DocumentView.aspx?docid=100",
-    contentText: "| Col1 | Col2 | Header text",
+    contentText: "PDF content block Header text",
     chunks: pdfChunks,
   });
 
@@ -135,10 +135,10 @@ Deno.test("mergeSources: merges TXT + PDF correctly", async () => {
 
   assertEquals(merged.title, "Test Law");
   assertEquals(merged.textChunks.length, 2);
-  assertEquals(merged.tableChunks.length, 1); // Only table chunks from PDF
-  assertEquals(merged.allChunks.length, 3); // 2 text + 1 table
-  assertEquals(merged.tableChunks[0].chunk_index, 2); // Re-indexed
-  assertEquals(merged.tableChunks[0].label, "[PDF table] Table 1");
+  assertEquals(merged.pdfChunks.length, 2); // All PDF chunks included
+  assertEquals(merged.allChunks.length, 4); // 2 text + 2 pdf
+  assertEquals(merged.pdfChunks[0].chunk_index, 2); // Re-indexed
+  assertEquals(merged.pdfChunks[0].label, "[PDF] Block 1");
   assertEquals(merged.match.rule, "arlis_id");
   assertEquals(merged.sources.txt.fileName, "law.txt");
   assertEquals(merged.sources.pdf.fileName, "law.pdf");
@@ -201,7 +201,6 @@ Deno.test("findMatchingPairs: arlis ID takes priority over title+date", () => {
   ];
 
   const pairs = findMatchingPairs(sources);
-  // Should be grouped under arlis key only, not duplicated under title_date
   assertEquals(pairs.size, 1);
   assertEquals(pairs.has("arlis:999"), true);
 });
