@@ -3,11 +3,10 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2.91.1";
 import { buildEmbeddingText, buildChunkEmbeddingText, type EmbeddingDoc } from "../_shared/build-embedding-text.ts";
 
 // ─── Config ────────────────────────────────────────────────────────────────
-const OPENROUTER_BASE_URL = "https://openrouter.ai/api/v1";
-const EMBEDDING_MODEL = "openai/text-embedding-3-large";
+const EMBEDDING_MODEL = "text-embedding-3-large";
 const EMBEDDING_DIMENSIONS = 3072;
 const MAX_ATTEMPTS_BEFORE_DEAD_LETTER = 5;
-const MAX_CHARS_PER_TEXT = 32_000;
+const MAX_CHARS_PER_TEXT = 12_000;
 const MAX_RETRIES = 3;
 
 // ─── CORS ──────────────────────────────────────────────────────────────────
@@ -40,22 +39,19 @@ async function withRetry<T>(
   throw lastError;
 }
 
-// ─── OpenRouter embedding call ─────────────────────────────────────────────
+// ─── OpenAI embedding call ─────────────────────────────────────────────────
 async function getEmbeddings(texts: string[]): Promise<number[][]> {
-  const apiKey = Deno.env.get("OPENROUTER_API_KEY");
-  if (!apiKey) throw new Error("OPENROUTER_API_KEY not configured");
+  const apiKey = Deno.env.get("OPENAI_API_KEY");
+  if (!apiKey) throw new Error("OPENAI_API_KEY not configured");
 
-  // Truncate texts to max chars
   const truncated = texts.map((t) => t.substring(0, MAX_CHARS_PER_TEXT));
 
   const response = await withRetry(async () => {
-    const res = await fetch(`${OPENROUTER_BASE_URL}/embeddings`, {
+    const res = await fetch("https://api.openai.com/v1/embeddings", {
       method: "POST",
       headers: {
         Authorization: `Bearer ${apiKey}`,
         "Content-Type": "application/json",
-        "HTTP-Referer": "https://ailegalarmenia.lovable.app",
-        "X-Title": "AI Legal Armenia",
       },
       body: JSON.stringify({
         model: EMBEDDING_MODEL,
@@ -66,7 +62,7 @@ async function getEmbeddings(texts: string[]): Promise<number[][]> {
 
     if (!res.ok) {
       const errText = await res.text();
-      throw new Error(`OpenRouter embeddings error ${res.status}: ${errText}`);
+      throw new Error(`OpenAI embeddings error ${res.status}: ${errText}`);
     }
 
     return res;
@@ -75,7 +71,7 @@ async function getEmbeddings(texts: string[]): Promise<number[][]> {
   const json = await response.json();
 
   if (!json.data || !Array.isArray(json.data)) {
-    throw new Error("Unexpected response format from OpenRouter embeddings");
+    throw new Error("Unexpected response format from OpenAI embeddings");
   }
 
   const sorted = [...json.data].sort(
