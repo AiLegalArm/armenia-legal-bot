@@ -1,5 +1,6 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.91.1";
+import { buildEmbeddingText, buildChunkEmbeddingText, type EmbeddingDoc } from "../_shared/build-embedding-text.ts";
 
 // ─── Config ────────────────────────────────────────────────────────────────
 const OPENROUTER_BASE_URL = "https://openrouter.ai/api/v1";
@@ -140,8 +141,10 @@ serve(async (req) => {
 
     // Build query based on table type
     const selectFields = isChunkTable
-      ? "id, chunk_text, chunk_type, embedding_attempts"
-      : "id, title, content_text, embedding_attempts";
+      ? "id, chunk_text, chunk_type, label, embedding_attempts"
+      : table === "legal_practice_kb"
+        ? "id, title, content_text, description, court_type, court_name, source_name, decision_date, case_number_anonymized, echr_case_id, practice_category, keywords, key_violations, violation_type, applied_articles, interpreted_norms, decision_map, key_paragraphs, ratio_decidendi, legal_principle, echr_principle_formula, legal_reasoning_summary, outcome, echr_article, facts_hy, judgment_hy, procedural_aspect, application_scope, limitations_of_application, embedding_attempts"
+        : "id, title, content_text, category, article_number, source_name, version_date, embedding_attempts";
 
     const activeFilter = isChunkTable && table === "legal_practice_kb_chunks"
       ? supabase.from(table).select(selectFields)
@@ -189,16 +192,15 @@ serve(async (req) => {
     const errors: string[] = [];
     const now = new Date().toISOString();
 
-    // Batch all texts together for efficiency
-    // For chunk tables: use chunk_text directly (already segmented)
-    // For parent tables: use title + content_text
-    const MAX_TEXT_CHARS = isChunkTable ? 3500 : 8000;
+    // Build embedding texts using the unified builder
     const texts = docs.map((doc) => {
       if (isChunkTable) {
-        const prefix = doc.chunk_type ? `[${doc.chunk_type}] ` : "";
-        return `${prefix}${(doc.chunk_text || "").substring(0, MAX_TEXT_CHARS)}`;
+        return buildChunkEmbeddingText(
+          { chunk_text: doc.chunk_text || "", chunk_type: doc.chunk_type, label: doc.label },
+          doc.title,
+        );
       }
-      return `${doc.title}\n\n${(doc.content_text || "").substring(0, MAX_TEXT_CHARS)}`;
+      return buildEmbeddingText(doc as EmbeddingDoc);
     });
 
     let vectors: number[][] | null = null;
@@ -208,7 +210,6 @@ serve(async (req) => {
         `[generate-embeddings] Got ${vectors.length} vectors (dim=${vectors[0]?.length}) for table=${table}`,
       );
     } catch (batchErr) {
-      // If batch fails, fall back to one-by-one
       console.error("[generate-embeddings] Batch embedding failed, falling back to individual:", batchErr);
     }
 
@@ -222,10 +223,8 @@ serve(async (req) => {
         if (vectors && vectors[i]) {
           embedding = vectors[i];
         } else {
-          // Individual fallback
-          const fallbackText = isChunkTable
-            ? `${doc.chunk_type ? `[${doc.chunk_type}] ` : ""}${(doc.chunk_text || "").substring(0, MAX_TEXT_CHARS)}`
-            : `${doc.title}\n\n${(doc.content_text || "").substring(0, MAX_TEXT_CHARS)}`;
+          // Individual fallback using the same unified builder
+          const fallbackText = texts[i];
           const fallback = await getEmbeddings([fallbackText]);
           embedding = fallback[0];
         }

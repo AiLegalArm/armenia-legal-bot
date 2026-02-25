@@ -10,10 +10,11 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.91.1";
 import { handleCors, validateInternalRequest } from "../_shared/edge-security.ts";
+import { buildEmbeddingText, type EmbeddingDoc } from "../_shared/build-embedding-text.ts";
 
 const EMBEDDING_MODEL = "text-embedding-3-large";
 const EMBEDDING_DIMENSIONS = 3072;
-const MAX_CHARS_PER_TEXT = 8000;
+const MAX_CHARS_PER_TEXT = 12000;
 const MAX_RETRIES = 3;
 const DEFAULT_BATCH = 25;
 
@@ -60,6 +61,25 @@ async function getEmbeddings(texts: string[]): Promise<number[][]> {
   return [...json.data].sort((a: { index: number }, b: { index: number }) => a.index - b.index)
     .map((d: { embedding: number[] }) => d.embedding);
 }
+
+/** Select fields needed for buildEmbeddingText */
+const DOC_SELECT_FIELDS = [
+  "id", "title", "content_text", "description",
+  "court_type", "court_name", "source_name",
+  "decision_date", "case_number_anonymized", "echr_case_id",
+  "practice_category", "keywords", "key_violations", "violation_type",
+  "applied_articles", "interpreted_norms", "decision_map", "key_paragraphs",
+  "ratio_decidendi", "legal_principle", "echr_principle_formula",
+  "legal_reasoning_summary", "outcome", "echr_article",
+  "facts_hy", "judgment_hy", "procedural_aspect",
+  "application_scope", "limitations_of_application",
+].join(", ");
+
+/** Minimal select for knowledge_base (fewer fields) */
+const KB_SELECT_FIELDS = [
+  "id", "title", "content_text", "category", "article_number",
+  "source_name", "version_date",
+].join(", ");
 
 serve(async (req) => {
   const cors = handleCors(req);
@@ -114,16 +134,20 @@ serve(async (req) => {
       const attempt = (job.attempts || 0) + 1;
       try {
         const src = job.source_table || "knowledge_base";
+        const isKB = src === "knowledge_base";
+        const selectFields = isKB ? KB_SELECT_FIELDS : DOC_SELECT_FIELDS;
+
         const { data: doc, error: docErr } = await supabase
           .from(src)
-          .select("id, title, content_text")
+          .select(selectFields)
           .eq("id", job.document_id)
           .single();
 
         if (docErr || !doc) throw new Error(docErr?.message || "Document not found");
 
-        const text = `${doc.title}\n\n${(doc.content_text || "").substring(0, MAX_CHARS_PER_TEXT)}`;
-        const [embedding] = await getEmbeddings([text]);
+        // Use unified embedding text builder
+        const embeddingText = buildEmbeddingText(doc as EmbeddingDoc);
+        const [embedding] = await getEmbeddings([embeddingText]);
         const vectorStr = `[${embedding.join(",")}]`;
 
         const { error: updateErr } = await supabase
