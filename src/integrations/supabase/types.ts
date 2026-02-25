@@ -2234,7 +2234,6 @@ export type Database = {
         Returns: boolean
       }
       immutable_unaccent: { Args: { "": string }; Returns: string }
-      invoke_chunk_worker: { Args: never; Returns: undefined }
       invoke_pipeline_orchestrator: { Args: never; Returns: undefined }
       is_team_leader: {
         Args: { _team_id: string; _user_id: string }
