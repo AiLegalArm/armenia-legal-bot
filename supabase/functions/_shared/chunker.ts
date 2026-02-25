@@ -1,7 +1,13 @@
 /**
- * Shared Legal Document Chunker — v2.0.0
+ * Shared Legal Document Chunker — v2.1.0
  *
  * Enterprise-grade structural chunking for Republic of Armenia legal documents.
+ *
+ * INVARIANT: Every chunk satisfies:
+ *   rawText.slice(chunk.char_start, chunk.char_end) === chunk.chunk_text
+ *
+ * No .trim() on chunk_text. Offsets are computed from raw text indices only.
+ * No split+join recomposition that would cause offset drift.
  *
  * Strategies:
  * - Laws / Codes (code_or_law): chunk = one article; oversized articles split by parts
@@ -20,7 +26,7 @@ import { extractTables, type ExtractedTable } from "./table-extractor.ts";
 
 // ─── VERSION ────────────────────────────────────────────────────────
 
-export const CHUNKER_VERSION = "v2.0.0";
+export const CHUNKER_VERSION = "v2.1.0";
 
 // ─── TYPES ──────────────────────────────────────────────────────────
 
@@ -173,27 +179,28 @@ function simpleHash(text: string): string {
 }
 
 /**
- * Create a chunk. char_start and char_end refer to positions in the
- * ORIGINAL document text. chunk_text may be trimmed (leading/trailing
- * whitespace removed) but offsets always reference the raw source.
+ * Create a chunk from a raw slice of the original text.
+ * INVARIANT: chunk_text === rawText.slice(charStart, charEnd)
+ * No trimming. The caller must provide exact slice boundaries.
  */
 function makeChunk(
   index: number,
   type: ChunkType,
-  text: string,
   charStart: number,
+  charEnd: number,
+  rawText: string,
   label: string | null,
   locator: ChunkLocator | null,
   metadata: ChunkMetadata | null = null,
   docType?: string,
-  charEnd?: number,
 ): LegalChunk {
+  const text = rawText.slice(charStart, charEnd);
   return {
     chunk_index: index,
     chunk_type: type,
     chunk_text: text,
     char_start: charStart,
-    char_end: charEnd ?? (charStart + text.length),
+    char_end: charEnd,
     label,
     locator,
     chunk_hash: simpleHash(text),
@@ -203,46 +210,87 @@ function makeChunk(
   };
 }
 
+// ─── RAW TEXT INDEX SCANNING ────────────────────────────────────────
+
+/**
+ * Find all positions of double-newline paragraph breaks in raw text.
+ * Returns array of { contentStart, contentEnd } for each paragraph.
+ * contentStart = first non-newline char after break; contentEnd = start of next break.
+ */
+interface RawParagraph {
+  start: number; // inclusive
+  end: number;   // exclusive
+}
+
+function findParagraphs(raw: string): RawParagraph[] {
+  const paragraphs: RawParagraph[] = [];
+  const breakRe = /\n\n+/g;
+  let lastEnd = 0;
+  let m: RegExpExecArray | null;
+
+  while ((m = breakRe.exec(raw)) !== null) {
+    if (m.index > lastEnd) {
+      paragraphs.push({ start: lastEnd, end: m.index });
+    }
+    lastEnd = m.index + m[0].length;
+  }
+  if (lastEnd < raw.length) {
+    paragraphs.push({ start: lastEnd, end: raw.length });
+  }
+  return paragraphs;
+}
+
+/**
+ * Find line boundaries in raw text.
+ * Returns array of { start, end } for each line (end excludes newline).
+ */
+interface RawLine {
+  start: number;
+  end: number;
+}
+
+function findLines(raw: string): RawLine[] {
+  const lines: RawLine[] = [];
+  let pos = 0;
+  while (pos < raw.length) {
+    const nlIdx = raw.indexOf("\n", pos);
+    if (nlIdx === -1) {
+      lines.push({ start: pos, end: raw.length });
+      break;
+    }
+    lines.push({ start: pos, end: nlIdx });
+    pos = nlIdx + 1;
+  }
+  return lines;
+}
+
 // ─── DETERMINISTIC DOC TYPE INFERENCE ──────────────────────────────
 
 // Armenian: "\u0540\u0578\u0564\u057e\u0561\u056e" = "Հoddv" (Article)
 const ARTICLE_DETECT_RE = /\u0540\u0578\u0564\u057e\u0561\u056e\s+\d/;
 // "\u0540\u0561\u0574\u0561\u0571\u0561\u0575\u0576\u0561\u0563\u056b\u0580" = Treaty/Agreement
 const TREATY_DETECT_RE = /\u0540\u0561\u0574\u0561\u0571\u0561\u0575\u0576\u0561\u0563\u056b\u0580/i;
-// "\u0555\u054c\u0548\u0547\u0548\u0552\u0544" = Decision, "\u054e\u0543\u054b\u054c" = Verdict, "\u054a\u0531\u054c\u0536\u0535\u0551" = Clarified
+// "\u0555\u054c\u0548\u0547\u0548\u0552\u0544" = Decision, "\u054e\u0543\u054b\u054c" = Verdict
 const COURT_DECISION_RE = /\u0555\u054c\u0548\u0547\u0548\u0552\u0544|\u054e\u0543\u054b\u054c|\u054a\u0531\u054c\u0536\u0535\u0551/;
 // Russian equivalents
 const COURT_DECISION_RU_RE = /\u041e\u041f\u0420\u0415\u0414\u0415\u041b\u0415\u041d\u0418\u0415|\u0420\u0415\u0428\u0415\u041d\u0418\u0415|\u041f\u041e\u0421\u0422\u0410\u041d\u041e\u0412\u041b\u0415\u041d\u0418\u0415|\u041f\u0420\u0418\u0413\u041e\u0412\u041e\u0420/i;
 
-/**
- * Deterministic doc type inference from content text.
- * Returns one of: code_or_law, treaty, court_decision, registry_table, normative_act, other
- */
 export function inferDocType(text: string): InferredDocType {
-  if (!text || text.trim().length === 0) return "other";
+  if (!text || text.length === 0) return "other";
 
   const sample = text.slice(0, 5000);
 
-  // 1. Check for article numbering → code_or_law
   if (ARTICLE_DETECT_RE.test(sample)) {
-    // Count article occurrences — if multiple, it's a code/law
     const articleCount = (sample.match(/\u0540\u0578\u0564\u057e\u0561\u056e\s+\d/g) || []).length;
     if (articleCount >= 2) return "code_or_law";
   }
 
-  // 2. Check for treaty markers
   if (TREATY_DETECT_RE.test(sample)) return "treaty";
-
-  // 3. Check for court decision markers
   if (COURT_DECISION_RE.test(sample) || COURT_DECISION_RU_RE.test(sample)) {
     return "court_decision";
   }
-
-  // 4. Check for registry table: repeated numbered rows with similar column structure
   if (isRegistryTable(text)) return "registry_table";
 
-  // 5. Default to normative_act (structured legal text that doesn't fit above)
-  // Check if it has any structural markers at all
   const hasNumberedSections = /^\s*\d+[.)]\s+/m.test(sample);
   const hasRomanSections = /^[IVX]+\.\s+/m.test(sample);
   if (hasNumberedSections || hasRomanSections) return "normative_act";
@@ -250,21 +298,15 @@ export function inferDocType(text: string): InferredDocType {
   return "other";
 }
 
-/**
- * Detect registry table format: lines with consistent delimiter-separated columns.
- * Heuristic: >5 lines that match "N. | text | text" or tab-separated pattern.
- */
 function isRegistryTable(text: string): boolean {
-  const lines = text.split("\n").slice(0, 100);
+  const firstChunk = text.slice(0, 5000);
   let tableLineCount = 0;
-  const pipeLineRe = /^\s*\d+\s*[.|)]\s*.+\|.+/;
-  const tabLineRe = /^\s*\d+\s*[.|)]\s*.+\t.+/;
+  const pipeLineRe = /^\s*\d+\s*[.|)]\s*.+\|.+/gm;
+  const tabLineRe = /^\s*\d+\s*[.|)]\s*.+\t.+/gm;
 
-  for (const line of lines) {
-    if (pipeLineRe.test(line) || tabLineRe.test(line)) {
-      tableLineCount++;
-    }
-  }
+  let m: RegExpExecArray | null;
+  while ((m = pipeLineRe.exec(firstChunk)) !== null) tableLineCount++;
+  while ((m = tabLineRe.exec(firstChunk)) !== null) tableLineCount++;
 
   return tableLineCount >= 5;
 }
@@ -305,26 +347,28 @@ function extractArticleTitle(articleText: string): string | null {
 }
 
 /**
- * Split an oversized article into parts.
+ * Split an oversized article into parts using raw text offsets.
  * Each part starts with a numbered line (1., 2., etc.)
  * Parts are NEVER split internally.
- * No overlap for code_or_law.
  */
 function splitArticleByParts(
-  articleText: string,
+  rawText: string,
+  articleStart: number,
+  articleEnd: number,
   articleNum: string,
-  baseOffset: number,
   startIdx: number,
   docMeta: ChunkMetadata,
   docType?: string,
 ): LegalChunk[] {
-  const lines = articleText.split("\n");
-  const partBoundaries: { lineIdx: number; partNum: string }[] = [];
+  const articleSlice = rawText.slice(articleStart, articleEnd);
+  const lines = findLines(articleSlice);
+  const partBoundaries: { lineIdx: number; partNum: string; rawOffset: number }[] = [];
 
   for (let i = 0; i < lines.length; i++) {
-    const m = lines[i].match(PART_LINE_RE);
+    const lineText = articleSlice.slice(lines[i].start, lines[i].end);
+    const m = lineText.match(PART_LINE_RE);
     if (m) {
-      partBoundaries.push({ lineIdx: i, partNum: m[1] });
+      partBoundaries.push({ lineIdx: i, partNum: m[1], rawOffset: lines[i].start });
     }
   }
 
@@ -334,7 +378,7 @@ function splitArticleByParts(
       section_title: "\u0540\u0578\u0564\u057e\u0561\u056e " + articleNum,
     };
     return [makeChunk(
-      startIdx, "article", articleText, baseOffset,
+      startIdx, "article", articleStart, articleEnd, rawText,
       "\u0540\u0578\u0564\u057e\u0561\u056e " + articleNum, locator,
       { ...docMeta, article_number: articleNum, section_type: "article" },
       docType,
@@ -344,20 +388,26 @@ function splitArticleByParts(
   const chunks: LegalChunk[] = [];
   let idx = startIdx;
 
-  const headerLines = lines.slice(0, partBoundaries[0].lineIdx);
-  let currentText = headerLines.join("\n");
+  // Group parts into chunks that fit within MAX_CHUNK_CHARS
+  let groupStartOffset = 0; // relative to articleSlice
   let currentPartStart = partBoundaries[0].partNum;
   let currentPartEnd = currentPartStart;
-  let charPos = 0;
 
   for (let i = 0; i < partBoundaries.length; i++) {
-    const nextBoundaryLine = i + 1 < partBoundaries.length
-      ? partBoundaries[i + 1].lineIdx
-      : lines.length;
-    const partText = lines.slice(partBoundaries[i].lineIdx, nextBoundaryLine).join("\n");
+    const partStart = partBoundaries[i].rawOffset;
+    const partEnd = i + 1 < partBoundaries.length
+      ? partBoundaries[i + 1].rawOffset
+      : articleSlice.length;
 
-    if (currentText.length + partText.length + 1 > MAX_CHUNK_CHARS && currentText.trim().length > 0) {
-      const trimmed = currentText.trim();
+    const groupEnd = partEnd;
+    const groupLen = groupEnd - groupStartOffset;
+
+    // Check if adding this part would exceed limit
+    const currentGroupLen = partStart - groupStartOffset;
+    if (currentGroupLen > 0 && groupLen > MAX_CHUNK_CHARS) {
+      // Emit current group (before this part)
+      const absStart = articleStart + groupStartOffset;
+      const absEnd = articleStart + partStart;
       const partLabel = currentPartStart === currentPartEnd
         ? `\u0540\u0578\u0564\u057e\u0561\u056e ${articleNum}, \u0574\u0561\u057d ${currentPartStart}`
         : `\u0540\u0578\u0564\u057e\u0561\u056e ${articleNum}, \u0574\u0561\u057d\u0565\u0580 ${currentPartStart}-${currentPartEnd}`;
@@ -365,41 +415,43 @@ function splitArticleByParts(
         article: articleNum,
         part: currentPartStart === currentPartEnd ? currentPartStart : `${currentPartStart}-${currentPartEnd}`,
       };
-      chunks.push(makeChunk(idx++, "article", trimmed, baseOffset + charPos, partLabel, locator, {
+      chunks.push(makeChunk(idx++, "article", absStart, absEnd, rawText, partLabel, locator, {
         ...docMeta, article_number: articleNum, section_type: "article",
       }, docType));
 
-      charPos += trimmed.length + 1;
-      currentText = partText;
+      groupStartOffset = partStart;
       currentPartStart = partBoundaries[i].partNum;
       currentPartEnd = currentPartStart;
     } else {
-      if (currentText.length > 0) currentText += "\n";
-      currentText += partText;
       currentPartEnd = partBoundaries[i].partNum;
     }
   }
 
-  if (currentText.trim().length > 0) {
-    const trimmed = currentText.trim();
-    const partLabel = currentPartStart === currentPartEnd
-      ? `\u0540\u0578\u0564\u057e\u0561\u056e ${articleNum}, \u0574\u0561\u057d ${currentPartStart}`
-      : `\u0540\u0578\u0564\u057e\u0561\u056e ${articleNum}, \u0574\u0561\u057d\u0565\u0580 ${currentPartStart}-${currentPartEnd}`;
-    const locator: ChunkLocator = {
-      article: articleNum,
-      part: currentPartStart === currentPartEnd ? currentPartStart : `${currentPartStart}-${currentPartEnd}`,
-    };
-    chunks.push(makeChunk(idx++, "article", trimmed, baseOffset + charPos, partLabel, locator, {
-      ...docMeta, article_number: articleNum, section_type: "article",
-    }, docType));
+  // Emit final group
+  if (groupStartOffset < articleSlice.length) {
+    const absStart = articleStart + groupStartOffset;
+    const absEnd = articleEnd;
+    const sliceText = rawText.slice(absStart, absEnd);
+    if (sliceText.trim().length > 0) {
+      const partLabel = currentPartStart === currentPartEnd
+        ? `\u0540\u0578\u0564\u057e\u0561\u056e ${articleNum}, \u0574\u0561\u057d ${currentPartStart}`
+        : `\u0540\u0578\u0564\u057e\u0561\u056e ${articleNum}, \u0574\u0561\u057d\u0565\u0580 ${currentPartStart}-${currentPartEnd}`;
+      const locator: ChunkLocator = {
+        article: articleNum,
+        part: currentPartStart === currentPartEnd ? currentPartStart : `${currentPartStart}-${currentPartEnd}`,
+      };
+      chunks.push(makeChunk(idx++, "article", absStart, absEnd, rawText, partLabel, locator, {
+        ...docMeta, article_number: articleNum, section_type: "article",
+      }, docType));
+    }
   }
 
   return chunks;
 }
 
-function chunkLegislation(text: string, docInput: LegalDocumentInput): LegalChunk[] {
+function chunkLegislation(rawText: string, docInput: LegalDocumentInput): LegalChunk[] {
   const chunks: LegalChunk[] = [];
-  const deduped = findArticles(text);
+  const deduped = findArticles(rawText);
 
   const docMeta: ChunkMetadata = {
     document_type: docInput.doc_type,
@@ -407,17 +459,16 @@ function chunkLegislation(text: string, docInput: LegalDocumentInput): LegalChun
   };
 
   if (deduped.length === 0) {
-    // For KB: use normative_act structural chunking instead of fixed window
-    return chunkNormativeAct(text, docInput);
+    return chunkNormativeAct(rawText, docInput);
   }
 
   let chunkIdx = 0;
 
-  // Preamble
+  // Preamble: raw slice from 0 to first article
   if (deduped[0].index > MIN_CHUNK_SIZE) {
-    const preambleText = text.slice(0, deduped[0].index).trim();
-    if (preambleText.length > 0) {
-      chunks.push(makeChunk(chunkIdx++, "preamble", preambleText, 0, null, null, {
+    const preambleSlice = rawText.slice(0, deduped[0].index);
+    if (preambleSlice.trim().length > 0) {
+      chunks.push(makeChunk(chunkIdx++, "preamble", 0, deduped[0].index, rawText, null, null, {
         ...docMeta, section_type: "preamble",
       }, docInput.doc_type));
     }
@@ -425,17 +476,15 @@ function chunkLegislation(text: string, docInput: LegalDocumentInput): LegalChun
 
   for (let i = 0; i < deduped.length; i++) {
     const start = deduped[i].index;
-    const end = i + 1 < deduped.length ? deduped[i + 1].index : text.length;
-    const articleText = text.slice(start, end).trim();
+    const end = i + 1 < deduped.length ? deduped[i + 1].index : rawText.length;
+    const articleSlice = rawText.slice(start, end);
     const articleNum = deduped[i].number;
 
-    if (articleText.length === 0) continue;
+    if (articleSlice.trim().length === 0) continue;
 
-    if (articleText.length > MAX_CHUNK_CHARS) {
-      const subChunks = splitArticleByParts(articleText, articleNum, start, chunkIdx, docMeta, docInput.doc_type);
-      for (const sc of subChunks) {
-        chunks.push(sc);
-      }
+    if (articleSlice.length > MAX_CHUNK_CHARS) {
+      const subChunks = splitArticleByParts(rawText, start, end, articleNum, chunkIdx, docMeta, docInput.doc_type);
+      for (const sc of subChunks) chunks.push(sc);
       chunkIdx += subChunks.length;
     } else {
       const locator: ChunkLocator = {
@@ -443,7 +492,7 @@ function chunkLegislation(text: string, docInput: LegalDocumentInput): LegalChun
         section_title: "\u0540\u0578\u0564\u057e\u0561\u056e " + articleNum,
       };
       chunks.push(makeChunk(
-        chunkIdx++, "article", articleText, start,
+        chunkIdx++, "article", start, end, rawText,
         "\u0540\u0578\u0564\u057e\u0561\u056e " + articleNum, locator,
         { ...docMeta, article_number: articleNum, section_type: "article" },
         docInput.doc_type,
@@ -464,7 +513,6 @@ interface SectionPattern {
 
 const COURT_SECTION_PATTERNS: SectionPattern[] = [
   // ── Armenian patterns ──
-
   // ── Procedural History ──
   {
     re: /\u0564\u0561\u057f\u0561\u057e\u0561\u0580\u0561\u056f\u0561\u0576\s+\u057a\u0561\u057f\u0574\u0578\u0582\u0569\u0575\u0578\u0582\u0576/i,
@@ -481,7 +529,6 @@ const COURT_SECTION_PATTERNS: SectionPattern[] = [
     type: "procedural_history",
     label: "\u0576\u0561\u056d\u0578\u0580\u0564 \u057e\u0561\u0580\u0578\u0582\u0575\u0569",
   },
-
   // ── Arguments of Appellant ──
   {
     re: /\u0562\u0578\u0572\u0578\u0584\u0561\u0580\u056f\u0578\u0572\u056b\s+\u0583\u0561\u057d\u057f\u0561\u0580\u056f\u0576\u0565\u0580/i,
@@ -498,7 +545,6 @@ const COURT_SECTION_PATTERNS: SectionPattern[] = [
     type: "appellant_arguments",
     label: "\u0562\u0578\u0572\u0578\u0584\u0561\u0580\u056f\u0578\u0572\u056b \u0564\u056b\u0580\u0584\u0578\u0580\u0578\u0577\u0578\u0582\u0574",
   },
-
   // ── Arguments of Respondent ──
   {
     re: /\u057a\u0561\u057f\u0561\u057d\u056d\u0561\u0576\u0578\u0572\u056b\s+\u0583\u0561\u057d\u057f\u0561\u0580\u056f\u0576\u0565\u0580/i,
@@ -510,14 +556,12 @@ const COURT_SECTION_PATTERNS: SectionPattern[] = [
     type: "respondent_arguments",
     label: "\u057a\u0561\u057f\u0561\u057d\u056d\u0561\u0576\u0578\u0572\u056b \u0564\u056b\u0580\u0584\u0578\u0580\u0578\u0577\u0578\u0582\u0574",
   },
-
   // ── Generic arguments (fallback) ──
   {
     re: /\u056f\u0578\u0572\u0574\u0565\u0580\u056b\s+\u0583\u0561\u057d\u057f\u0561\u0580\u056f\u0576\u0565\u0580/i,
     type: "arguments",
     label: "\u056f\u0578\u0572\u0574\u0565\u0580\u056b \u0583\u0561\u057d\u057f\u0561\u0580\u056f\u0576\u0565\u0580",
   },
-
   // ── Norm Interpretation ──
   {
     re: /\u0576\u0578\u0580\u0574\u0565\u0580\u056b\s+\u0574\u0565\u056f\u0576\u0561\u0562\u0561\u0576\u0578\u0582\u0569\u0575\u0578\u0582\u0576/i,
@@ -534,7 +578,6 @@ const COURT_SECTION_PATTERNS: SectionPattern[] = [
     type: "norm_interpretation",
     label: "\u0576\u0578\u0580\u0574\u0565\u0580\u056b \u057e\u0565\u0580\u056c\u0578\u0582\u056e\u0578\u0582\u0569\u0575\u0578\u0582\u0576",
   },
-
   // ── Legal position of the court ──
   {
     re: /\u0564\u0561\u057f\u0561\u0580\u0561\u0576\u056b\s+\u056b\u0580\u0561\u057e\u0561\u056f\u0561\u0576\s+\u0564\u056b\u0580\u0584\u0578\u0580\u0578\u0577\u0578\u0582\u0574/i,
@@ -581,9 +624,7 @@ const COURT_SECTION_PATTERNS: SectionPattern[] = [
     type: "resolution",
     label: "\u057e\u0573\u056b\u057c\u0565\u0581",
   },
-
   // ── Russian-language patterns ──
-
   {
     re: /\u043f\u0440\u043e\u0446\u0435\u0441\u0441\u0443\u0430\u043b\u044c\u043d\u0430\u044f\s+\u0438\u0441\u0442\u043e\u0440\u0438\u044f/i,
     type: "procedural_history",
@@ -662,7 +703,7 @@ const REASONING_TYPES: Set<ChunkType> = new Set(["reasoning", "legal_position", 
 // Types that must NEVER be merged with reasoning
 const RESOLUTION_TYPES: Set<ChunkType> = new Set(["resolution"]);
 
-function chunkCourtDecision(text: string, docInput: LegalDocumentInput): LegalChunk[] {
+function chunkCourtDecision(rawText: string, docInput: LegalDocumentInput): LegalChunk[] {
   interface SectionBoundary {
     index: number;
     type: ChunkType;
@@ -674,15 +715,15 @@ function chunkCourtDecision(text: string, docInput: LegalDocumentInput): LegalCh
     document_type: docInput.doc_type,
     document_title: docInput.title,
     court_level: docInput.court_level,
-    case_number: docInput.case_number || extractCaseNumber(text),
-    date: docInput.date || extractDate(text),
+    case_number: docInput.case_number || extractCaseNumber(rawText),
+    date: docInput.date || extractDate(rawText),
   };
 
   for (const pattern of COURT_SECTION_PATTERNS) {
     const re = new RegExp(pattern.re.source, "gi");
     let m: RegExpExecArray | null;
-    while ((m = re.exec(text)) !== null) {
-      const before = text.slice(Math.max(0, m.index - 2), m.index);
+    while ((m = re.exec(rawText)) !== null) {
+      const before = rawText.slice(Math.max(0, m.index - 2), m.index);
       const isLineStart = m.index === 0 || /[\n\r]/.test(before);
       if (isLineStart || before.trim() === "") {
         boundaries.push({ index: m.index, type: pattern.type, label: pattern.label });
@@ -700,50 +741,50 @@ function chunkCourtDecision(text: string, docInput: LegalDocumentInput): LegalCh
   }
 
   if (deduped.length === 0) {
-    return chunkStructuralFallback(text, "full_text", docMeta, docInput.doc_type);
+    return chunkStructuralFallback(rawText, "full_text", docMeta, docInput.doc_type);
   }
 
   const chunks: LegalChunk[] = [];
   let chunkIdx = 0;
 
-  // Header (requisites)
+  // Header (requisites) — raw slice
   if (deduped[0].index > MIN_CHUNK_SIZE) {
-    const headerText = text.slice(0, deduped[0].index).trim();
-    if (headerText.length > 0) {
-      chunks.push(makeChunk(chunkIdx++, "header", headerText, 0, null, null, {
+    const headerSlice = rawText.slice(0, deduped[0].index);
+    if (headerSlice.trim().length > 0) {
+      chunks.push(makeChunk(chunkIdx++, "header", 0, deduped[0].index, rawText, null, null, {
         ...docMeta, section_type: "header",
       }, docInput.doc_type));
     }
   }
 
   for (let i = 0; i < deduped.length; i++) {
-    const start = deduped[i].index;
-    const end = i + 1 < deduped.length ? deduped[i + 1].index : text.length;
-    let sectionText = text.slice(start, end).trim();
-    if (sectionText.length === 0) continue;
+    let charStart = deduped[i].index;
+    const charEnd = i + 1 < deduped.length ? deduped[i + 1].index : rawText.length;
 
     const sectionType = deduped[i].type;
     const sectionLabel = deduped[i].label;
 
-    // Add overlap from previous section for reasoning/legal_position/norm_interpretation ONLY
-    // NEVER add overlap to resolution types
+    // Reasoning overlap: expand char_start backwards into previous section
+    // This keeps offsets exact — we just move the start boundary, no string concatenation
     if (REASONING_TYPES.has(sectionType) && !RESOLUTION_TYPES.has(sectionType) && i > 0) {
       const prevStart = deduped[i - 1].index;
-      const prevText = text.slice(prevStart, start);
-      const overlapChars = Math.floor(prevText.length * REASONING_OVERLAP_RATIO);
+      const prevLen = charStart - prevStart;
+      const overlapChars = Math.floor(prevLen * REASONING_OVERLAP_RATIO);
       if (overlapChars > MIN_CHUNK_SIZE) {
-        const overlapText = prevText.slice(-overlapChars);
-        sectionText = overlapText + "\n\n" + sectionText;
+        charStart = charStart - overlapChars;
       }
     }
 
-    if (sectionText.length > MAX_CHUNK_CHARS) {
-      const subChunks = splitSectionByParagraphs(sectionText, sectionType, sectionLabel, start, chunkIdx, docMeta, docInput.doc_type);
+    const sectionSlice = rawText.slice(charStart, charEnd);
+    if (sectionSlice.trim().length === 0) continue;
+
+    if (sectionSlice.length > MAX_CHUNK_CHARS) {
+      const subChunks = splitSectionByParagraphsRaw(rawText, charStart, charEnd, sectionType, sectionLabel, chunkIdx, docMeta, docInput.doc_type);
       for (const sc of subChunks) chunks.push(sc);
       chunkIdx += subChunks.length;
     } else {
       chunks.push(makeChunk(
-        chunkIdx++, sectionType, sectionText, start, sectionLabel,
+        chunkIdx++, sectionType, charStart, charEnd, rawText, sectionLabel,
         { section_title: sectionLabel },
         { ...docMeta, section_type: sectionType },
         docInput.doc_type,
@@ -756,50 +797,69 @@ function chunkCourtDecision(text: string, docInput: LegalDocumentInput): LegalCh
 
 /**
  * Split an oversized section into sub-chunks at paragraph boundaries.
- * Never splits mid-sentence. Preserves section type on all sub-chunks.
+ * Uses raw text indices — no split+join.
  */
-function splitSectionByParagraphs(
-  text: string,
+function splitSectionByParagraphsRaw(
+  rawText: string,
+  sectionStart: number,
+  sectionEnd: number,
   sectionType: ChunkType,
   sectionLabel: string,
-  baseOffset: number,
   startIdx: number,
   docMeta: ChunkMetadata,
   docType?: string,
 ): LegalChunk[] {
   const chunks: LegalChunk[] = [];
-  const paragraphs = text.split(/\n\n+/);
-  let currentText = "";
-  let currentOffset = 0;
+  const sectionSlice = rawText.slice(sectionStart, sectionEnd);
+
+  // Find paragraph break positions within the section
+  const breakRe = /\n\n+/g;
+  const breakPositions: number[] = [0]; // start of first paragraph
+  let m: RegExpExecArray | null;
+  while ((m = breakRe.exec(sectionSlice)) !== null) {
+    breakPositions.push(m.index + m[0].length);
+  }
+
   let idx = startIdx;
   let partNum = 1;
+  let groupStart = 0; // relative to sectionSlice
 
-  for (const para of paragraphs) {
-    if (currentText.length + para.length + 2 > MAX_CHUNK_CHARS && currentText.trim().length > 0) {
-      const trimmed = currentText.trim();
-      const label = `${sectionLabel} (${partNum})`;
-      chunks.push(makeChunk(idx++, sectionType, trimmed, baseOffset + currentOffset, label,
+  for (let i = 1; i < breakPositions.length; i++) {
+    const paraEnd = i + 1 < breakPositions.length ? breakPositions[i + 1] : sectionSlice.length;
+    // Check: if from groupStart to next break exceeds limit, emit current group
+    const currentGroupLen = breakPositions[i] - groupStart;
+    if (currentGroupLen > MAX_CHUNK_CHARS && groupStart < breakPositions[i] - 1) {
+      // Emit [groupStart, breakPositions[i])
+      // But trim trailing newlines by finding last non-whitespace
+      const absStart = sectionStart + groupStart;
+      const absEnd = sectionStart + breakPositions[i];
+      const sliceCheck = rawText.slice(absStart, absEnd);
+      if (sliceCheck.trim().length > 0) {
+        const label = partNum > 1 ? `${sectionLabel} (${partNum})` : sectionLabel;
+        chunks.push(makeChunk(idx++, sectionType, absStart, absEnd, rawText, label,
+          { section_title: sectionLabel },
+          { ...docMeta, section_type: sectionType },
+          docType,
+        ));
+        partNum++;
+      }
+      groupStart = breakPositions[i];
+    }
+  }
+
+  // Emit final group
+  if (groupStart < sectionSlice.length) {
+    const absStart = sectionStart + groupStart;
+    const absEnd = sectionEnd;
+    const sliceCheck = rawText.slice(absStart, absEnd);
+    if (sliceCheck.trim().length > 0) {
+      const label = partNum > 1 ? `${sectionLabel} (${partNum})` : sectionLabel;
+      chunks.push(makeChunk(idx++, sectionType, absStart, absEnd, rawText, label,
         { section_title: sectionLabel },
         { ...docMeta, section_type: sectionType },
         docType,
       ));
-      partNum++;
-      currentOffset += currentText.length;
-      currentText = para;
-    } else {
-      if (currentText.length > 0) currentText += "\n\n";
-      currentText += para;
     }
-  }
-
-  if (currentText.trim().length > 0) {
-    const trimmed = currentText.trim();
-    const label = partNum > 1 ? `${sectionLabel} (${partNum})` : sectionLabel;
-    chunks.push(makeChunk(idx++, sectionType, trimmed, baseOffset + currentOffset, label,
-      { section_title: sectionLabel },
-      { ...docMeta, section_type: sectionType },
-      docType,
-    ));
   }
 
   return chunks;
@@ -834,7 +894,7 @@ const ECHR_SECTION_PATTERNS: EchrSectionPattern[] = [
 
 const ECHR_CASE_NUMBER_RE = /(?:Application\s+no\.\s*|no\.\s*|Case\s+of\s+)(\d+\/\d+)/i;
 
-function chunkEchrJudgment(text: string, docInput: LegalDocumentInput): LegalChunk[] {
+function chunkEchrJudgment(rawText: string, docInput: LegalDocumentInput): LegalChunk[] {
   const boundaries: { index: number; type: ChunkType; label: string }[] = [];
 
   const docMeta: ChunkMetadata = {
@@ -842,18 +902,18 @@ function chunkEchrJudgment(text: string, docInput: LegalDocumentInput): LegalChu
     document_title: docInput.title,
     court_level: "echr",
     case_number: docInput.case_number,
-    date: docInput.date || extractDate(text),
+    date: docInput.date || extractDate(rawText),
   };
 
   if (!docMeta.case_number) {
-    const echrMatch = text.slice(0, 3000).match(ECHR_CASE_NUMBER_RE);
+    const echrMatch = rawText.slice(0, 3000).match(ECHR_CASE_NUMBER_RE);
     if (echrMatch) docMeta.case_number = echrMatch[1];
   }
 
   for (const pattern of ECHR_SECTION_PATTERNS) {
     const re = new RegExp(pattern.re.source, pattern.re.flags.includes("m") ? "gim" : "gi");
     let m: RegExpExecArray | null;
-    while ((m = re.exec(text)) !== null) {
+    while ((m = re.exec(rawText)) !== null) {
       boundaries.push({ index: m.index, type: pattern.type, label: pattern.label });
     }
   }
@@ -868,16 +928,16 @@ function chunkEchrJudgment(text: string, docInput: LegalDocumentInput): LegalChu
   }
 
   if (deduped.length === 0) {
-    return chunkStructuralFallback(text, "full_text", docMeta, "echr_judgment");
+    return chunkStructuralFallback(rawText, "full_text", docMeta, "echr_judgment");
   }
 
   const chunks: LegalChunk[] = [];
   let chunkIdx = 0;
 
   if (deduped[0].index > MIN_CHUNK_SIZE) {
-    const headerText = text.slice(0, deduped[0].index).trim();
-    if (headerText.length > 0) {
-      chunks.push(makeChunk(chunkIdx++, "header", headerText, 0, null, null, {
+    const headerSlice = rawText.slice(0, deduped[0].index);
+    if (headerSlice.trim().length > 0) {
+      chunks.push(makeChunk(chunkIdx++, "header", 0, deduped[0].index, rawText, null, null, {
         ...docMeta, section_type: "header",
       }, "echr_judgment"));
     }
@@ -885,17 +945,17 @@ function chunkEchrJudgment(text: string, docInput: LegalDocumentInput): LegalChu
 
   for (let i = 0; i < deduped.length; i++) {
     const start = deduped[i].index;
-    const end = i + 1 < deduped.length ? deduped[i + 1].index : text.length;
-    const sectionText = text.slice(start, end).trim();
-    if (sectionText.length === 0) continue;
+    const end = i + 1 < deduped.length ? deduped[i + 1].index : rawText.length;
+    const sectionSlice = rawText.slice(start, end);
+    if (sectionSlice.trim().length === 0) continue;
 
-    if (sectionText.length > MAX_CHUNK_CHARS) {
-      const subChunks = splitSectionByParagraphs(sectionText, deduped[i].type, deduped[i].label, start, chunkIdx, docMeta, "echr_judgment");
+    if (sectionSlice.length > MAX_CHUNK_CHARS) {
+      const subChunks = splitSectionByParagraphsRaw(rawText, start, end, deduped[i].type, deduped[i].label, chunkIdx, docMeta, "echr_judgment");
       for (const sc of subChunks) chunks.push(sc);
       chunkIdx += subChunks.length;
     } else {
       chunks.push(makeChunk(
-        chunkIdx++, deduped[i].type, sectionText, start, deduped[i].label,
+        chunkIdx++, deduped[i].type, start, end, rawText, deduped[i].label,
         { section_title: deduped[i].label },
         { ...docMeta, section_type: deduped[i].type },
         "echr_judgment",
@@ -914,11 +974,11 @@ const TREATY_ARTICLE_PATTERNS: RegExp[] = [
   /\u0421\u0442\u0430\u0442\u044c\u044f\s+(\d+(?:[.-]\d+)*)/gi,
 ];
 
-function chunkTreaty(text: string, docInput: LegalDocumentInput): LegalChunk[] {
+function chunkTreaty(rawText: string, docInput: LegalDocumentInput): LegalChunk[] {
   const docMeta: ChunkMetadata = {
     document_type: "international_treaty",
     document_title: docInput.title,
-    date: docInput.date || extractDate(text),
+    date: docInput.date || extractDate(rawText),
   };
 
   const articleMatches: ArticleMatch[] = [];
@@ -926,7 +986,7 @@ function chunkTreaty(text: string, docInput: LegalDocumentInput): LegalChunk[] {
   for (const pattern of TREATY_ARTICLE_PATTERNS) {
     const re = new RegExp(pattern.source, "gi");
     let m: RegExpExecArray | null;
-    while ((m = re.exec(text)) !== null) {
+    while ((m = re.exec(rawText)) !== null) {
       articleMatches.push({ index: m.index, number: m[1], fullMatch: m[0] });
     }
   }
@@ -941,16 +1001,16 @@ function chunkTreaty(text: string, docInput: LegalDocumentInput): LegalChunk[] {
   }
 
   if (deduped.length === 0) {
-    return chunkStructuralFallback(text, "treaty_article", docMeta, "treaty");
+    return chunkStructuralFallback(rawText, "treaty_article", docMeta, "treaty");
   }
 
   const chunks: LegalChunk[] = [];
   let chunkIdx = 0;
 
   if (deduped[0].index > MIN_CHUNK_SIZE) {
-    const preambleText = text.slice(0, deduped[0].index).trim();
-    if (preambleText.length > 0) {
-      chunks.push(makeChunk(chunkIdx++, "preamble", preambleText, 0, null, null, {
+    const preambleSlice = rawText.slice(0, deduped[0].index);
+    if (preambleSlice.trim().length > 0) {
+      chunks.push(makeChunk(chunkIdx++, "preamble", 0, deduped[0].index, rawText, null, null, {
         ...docMeta, section_type: "preamble",
       }, "treaty"));
     }
@@ -958,14 +1018,14 @@ function chunkTreaty(text: string, docInput: LegalDocumentInput): LegalChunk[] {
 
   for (let i = 0; i < deduped.length; i++) {
     const start = deduped[i].index;
-    const end = i + 1 < deduped.length ? deduped[i + 1].index : text.length;
-    const articleText = text.slice(start, end).trim();
+    const end = i + 1 < deduped.length ? deduped[i + 1].index : rawText.length;
+    const articleSlice = rawText.slice(start, end);
     const articleNum = deduped[i].number;
 
-    if (articleText.length === 0) continue;
+    if (articleSlice.trim().length === 0) continue;
 
-    if (articleText.length > MAX_CHUNK_CHARS) {
-      const subChunks = splitArticleByParts(articleText, articleNum, start, chunkIdx, docMeta, "treaty");
+    if (articleSlice.length > MAX_CHUNK_CHARS) {
+      const subChunks = splitArticleByParts(rawText, start, end, articleNum, chunkIdx, docMeta, "treaty");
       for (const sc of subChunks) {
         sc.chunk_type = "treaty_article";
       }
@@ -977,7 +1037,7 @@ function chunkTreaty(text: string, docInput: LegalDocumentInput): LegalChunk[] {
         section_title: "Article " + articleNum,
       };
       chunks.push(makeChunk(
-        chunkIdx++, "treaty_article", articleText, start,
+        chunkIdx++, "treaty_article", start, end, rawText,
         "Article " + articleNum, locator,
         { ...docMeta, article_number: articleNum, section_type: "treaty_article" },
         "treaty",
@@ -990,92 +1050,82 @@ function chunkTreaty(text: string, docInput: LegalDocumentInput): LegalChunk[] {
 
 // ─── REGISTRY TABLE CHUNKER ───────────────────────────────────────
 
-/**
- * Chunks registry-style tables by row groups.
- * Never splits a row. Groups rows to stay within MAX_CHUNK_CHARS.
- */
-function chunkRegistryTable(text: string, docInput: LegalDocumentInput): LegalChunk[] {
+function chunkRegistryTable(rawText: string, docInput: LegalDocumentInput): LegalChunk[] {
   const docMeta: ChunkMetadata = {
     document_type: "registry_table",
     document_title: docInput.title,
-    date: docInput.date || extractDate(text),
+    date: docInput.date || extractDate(rawText),
   };
 
-  const lines = text.split("\n");
+  const lines = findLines(rawText);
   const chunks: LegalChunk[] = [];
   let chunkIdx = 0;
 
   // Find header lines (before first numbered row)
-  let headerEnd = 0;
+  let headerEndLineIdx = 0;
   const numberedRowRe = /^\s*\d+\s*[.|)]/;
   for (let i = 0; i < lines.length; i++) {
-    if (numberedRowRe.test(lines[i])) {
-      headerEnd = i;
+    const lineText = rawText.slice(lines[i].start, lines[i].end);
+    if (numberedRowRe.test(lineText)) {
+      headerEndLineIdx = i;
       break;
     }
   }
 
   // Emit header if present
-  if (headerEnd > 0) {
-    const headerText = lines.slice(0, headerEnd).join("\n").trim();
-    if (headerText.length > MIN_CHUNK_SIZE) {
-      chunks.push(makeChunk(chunkIdx++, "header", headerText, 0, "Registry Header", null, {
+  if (headerEndLineIdx > 0) {
+    const headerEnd = lines[headerEndLineIdx].start;
+    const headerSlice = rawText.slice(0, headerEnd);
+    if (headerSlice.trim().length > MIN_CHUNK_SIZE) {
+      chunks.push(makeChunk(chunkIdx++, "header", 0, headerEnd, rawText, "Registry Header", null, {
         ...docMeta, section_type: "header",
       }, "registry_table"));
     }
   }
 
-  // Group rows: each "row" starts with a numbered line and includes non-numbered continuation lines
-  const rows: { text: string; lineStart: number }[] = [];
-  let currentRow = "";
-  let currentRowLineStart = headerEnd;
+  // Group rows: each "row" starts with a numbered line
+  interface RowBound { start: number; end: number }
+  const rows: RowBound[] = [];
+  let currentRowStart = headerEndLineIdx < lines.length ? lines[headerEndLineIdx].start : rawText.length;
 
-  for (let i = headerEnd; i < lines.length; i++) {
-    if (numberedRowRe.test(lines[i]) && currentRow.trim().length > 0) {
-      rows.push({ text: currentRow.trim(), lineStart: currentRowLineStart });
-      currentRow = lines[i];
-      currentRowLineStart = i;
-    } else {
-      if (currentRow.length > 0) currentRow += "\n";
-      currentRow += lines[i];
+  for (let i = headerEndLineIdx + 1; i < lines.length; i++) {
+    const lineText = rawText.slice(lines[i].start, lines[i].end);
+    if (numberedRowRe.test(lineText)) {
+      if (rawText.slice(currentRowStart, lines[i].start).trim().length > 0) {
+        rows.push({ start: currentRowStart, end: lines[i].start });
+      }
+      currentRowStart = lines[i].start;
     }
   }
-  if (currentRow.trim().length > 0) {
-    rows.push({ text: currentRow.trim(), lineStart: currentRowLineStart });
+  // Final row
+  if (currentRowStart < rawText.length && rawText.slice(currentRowStart, rawText.length).trim().length > 0) {
+    rows.push({ start: currentRowStart, end: rawText.length });
   }
 
   // Group rows into chunks within size limit
-  let groupText = "";
-  let groupStart = 0;
-  let charOffset = 0;
+  let groupStart = rows.length > 0 ? rows[0].start : rawText.length;
 
-  // Calculate char offset of headerEnd line
-  for (let i = 0; i < headerEnd; i++) {
-    charOffset += lines[i].length + 1; // +1 for \n
-  }
-  groupStart = charOffset;
-
-  for (const row of rows) {
-    if (groupText.length + row.text.length + 1 > MAX_CHUNK_CHARS && groupText.trim().length > 0) {
-      const trimmed = groupText.trim();
-      chunks.push(makeChunk(chunkIdx++, "registry_row_group", trimmed, groupStart,
+  for (let i = 0; i < rows.length; i++) {
+    const groupLen = rows[i].end - groupStart;
+    if (groupLen > MAX_CHUNK_CHARS && rows[i].start > groupStart) {
+      // Emit current group up to this row
+      chunks.push(makeChunk(chunkIdx++, "registry_row_group", groupStart, rows[i].start, rawText,
         `Row group ${chunkIdx}`, null, { ...docMeta, section_type: "registry_row_group" },
         "registry_table",
       ));
-      groupStart += groupText.length + 1;
-      groupText = row.text;
-    } else {
-      if (groupText.length > 0) groupText += "\n";
-      groupText += row.text;
+      groupStart = rows[i].start;
     }
   }
 
-  if (groupText.trim().length > 0) {
-    const trimmed = groupText.trim();
-    chunks.push(makeChunk(chunkIdx++, "registry_row_group", trimmed, groupStart,
-      `Row group ${chunkIdx}`, null, { ...docMeta, section_type: "registry_row_group" },
-      "registry_table",
-    ));
+  // Emit final group
+  if (rows.length > 0 && groupStart < rawText.length) {
+    const finalSlice = rawText.slice(groupStart, rawText.length);
+    if (finalSlice.trim().length > 0) {
+      chunks.push(makeChunk(chunkIdx++, "registry_row_group", groupStart, rawText.length, rawText,
+        `Row group ${chunkIdx}`, null, { ...docMeta, section_type: "registry_row_group" },
+        "registry_table",
+      ));
+    }
   }
 
   return chunks;
@@ -1083,76 +1133,65 @@ function chunkRegistryTable(text: string, docInput: LegalDocumentInput): LegalCh
 
 // ─── NORMATIVE ACT CHUNKER ────────────────────────────────────────
 
-/**
- * Chunks normative acts by numbered sections/paragraphs.
- * Uses structural boundaries (numbered items, Roman numeral sections).
- * Never uses fixed-window fallback.
- */
-function chunkNormativeAct(text: string, docInput: LegalDocumentInput): LegalChunk[] {
+function chunkNormativeAct(rawText: string, docInput: LegalDocumentInput): LegalChunk[] {
   const docMeta: ChunkMetadata = {
     document_type: docInput.doc_type || "normative_act",
     document_title: docInput.title,
-    date: docInput.date || extractDate(text),
+    date: docInput.date || extractDate(rawText),
   };
 
-  const lines = text.split("\n");
-  const sectionBoundaries: { lineIdx: number; label: string }[] = [];
+  const lines = findLines(rawText);
+  const sectionBoundaries: { lineIdx: number; label: string; charStart: number }[] = [];
 
-  // Detect section boundaries: Roman numerals, numbered sections, bold headers
   const sectionHeaderRe = /^(?:[IVX]+\.\s+|(?:Chapter|Section|\u0533\u056c\u0578\u0582\u056d|\u0532\u0561\u056a\u056b\u0576)\s+\d+)/i;
   const numberedSectionRe = /^\d+\.\s+[A-Z\u0531-\u0556\u0410-\u042f]/;
 
   for (let i = 0; i < lines.length; i++) {
-    const line = lines[i].trim();
-    if (sectionHeaderRe.test(line)) {
-      sectionBoundaries.push({ lineIdx: i, label: line.slice(0, 80) });
-    } else if (numberedSectionRe.test(line) && line.length < 200) {
-      sectionBoundaries.push({ lineIdx: i, label: line.slice(0, 80) });
+    const lineText = rawText.slice(lines[i].start, lines[i].end);
+    const trimmedLine = lineText.trim();
+    if (sectionHeaderRe.test(trimmedLine)) {
+      sectionBoundaries.push({ lineIdx: i, label: trimmedLine.slice(0, 80), charStart: lines[i].start });
+    } else if (numberedSectionRe.test(trimmedLine) && trimmedLine.length < 200) {
+      sectionBoundaries.push({ lineIdx: i, label: trimmedLine.slice(0, 80), charStart: lines[i].start });
     }
   }
 
   if (sectionBoundaries.length === 0) {
-    // Last resort: chunk by paragraph boundaries (still structural, not fixed-window)
-    return chunkStructuralFallback(text, "normative_section", docMeta, docInput.doc_type);
+    return chunkStructuralFallback(rawText, "normative_section", docMeta, docInput.doc_type);
   }
 
   const chunks: LegalChunk[] = [];
   let chunkIdx = 0;
 
   // Preamble before first section
-  if (sectionBoundaries[0].lineIdx > 0) {
-    const preambleLines = lines.slice(0, sectionBoundaries[0].lineIdx);
-    const preambleText = preambleLines.join("\n").trim();
-    if (preambleText.length > MIN_CHUNK_SIZE) {
-      chunks.push(makeChunk(chunkIdx++, "preamble", preambleText, 0, null, null, {
+  if (sectionBoundaries[0].charStart > 0) {
+    const preambleSlice = rawText.slice(0, sectionBoundaries[0].charStart);
+    if (preambleSlice.trim().length > MIN_CHUNK_SIZE) {
+      chunks.push(makeChunk(chunkIdx++, "preamble", 0, sectionBoundaries[0].charStart, rawText, null, null, {
         ...docMeta, section_type: "preamble",
       }, docInput.doc_type));
     }
   }
 
   for (let i = 0; i < sectionBoundaries.length; i++) {
-    const startLine = sectionBoundaries[i].lineIdx;
-    const endLine = i + 1 < sectionBoundaries.length ? sectionBoundaries[i + 1].lineIdx : lines.length;
-    const sectionText = lines.slice(startLine, endLine).join("\n").trim();
+    const charStart = sectionBoundaries[i].charStart;
+    const charEnd = i + 1 < sectionBoundaries.length
+      ? sectionBoundaries[i + 1].charStart
+      : rawText.length;
+    const sectionSlice = rawText.slice(charStart, charEnd);
 
-    if (sectionText.length === 0) continue;
+    if (sectionSlice.trim().length === 0) continue;
 
-    // Calculate char offset
-    let charStart = 0;
-    for (let j = 0; j < startLine; j++) {
-      charStart += lines[j].length + 1;
-    }
-
-    if (sectionText.length > MAX_CHUNK_CHARS) {
-      const subChunks = splitSectionByParagraphs(
-        sectionText, "normative_section", sectionBoundaries[i].label,
-        charStart, chunkIdx, docMeta, docInput.doc_type,
+    if (sectionSlice.length > MAX_CHUNK_CHARS) {
+      const subChunks = splitSectionByParagraphsRaw(
+        rawText, charStart, charEnd, "normative_section", sectionBoundaries[i].label,
+        chunkIdx, docMeta, docInput.doc_type,
       );
       for (const sc of subChunks) chunks.push(sc);
       chunkIdx += subChunks.length;
     } else {
       chunks.push(makeChunk(
-        chunkIdx++, "normative_section", sectionText, charStart,
+        chunkIdx++, "normative_section", charStart, charEnd, rawText,
         sectionBoundaries[i].label,
         { section_title: sectionBoundaries[i].label },
         { ...docMeta, section_type: "normative_section" },
@@ -1166,39 +1205,37 @@ function chunkNormativeAct(text: string, docInput: LegalDocumentInput): LegalChu
 
 // ─── STRUCTURAL FALLBACK (paragraph-aware, replaces fixed-window) ──
 
-/**
- * Structural fallback: splits by double newline (paragraphs).
- * Used instead of fixed-window to preserve paragraph boundaries.
- */
 function chunkStructuralFallback(
-  text: string,
+  rawText: string,
   defaultType: ChunkType,
   docMeta?: ChunkMetadata,
   docType?: string,
 ): LegalChunk[] {
   const chunks: LegalChunk[] = [];
-  const paragraphs = text.split(/\n\n+/);
-  let currentText = "";
-  let currentOffset = 0;
+  const paragraphs = findParagraphs(rawText);
   let idx = 0;
+  let groupStart = paragraphs.length > 0 ? paragraphs[0].start : 0;
 
-  for (const para of paragraphs) {
-    const trimmedPara = para.trim();
-    if (trimmedPara.length === 0) continue;
+  for (let i = 0; i < paragraphs.length; i++) {
+    const groupLen = paragraphs[i].end - groupStart;
 
-    if (currentText.length + trimmedPara.length + 2 > MAX_CHUNK_CHARS && currentText.trim().length > 0) {
-      const trimmed = currentText.trim();
-      chunks.push(makeChunk(idx++, defaultType, trimmed, currentOffset, null, null, docMeta || null, docType));
-      currentOffset += currentText.length + 2;
-      currentText = trimmedPara;
-    } else {
-      if (currentText.length > 0) currentText += "\n\n";
-      currentText += trimmedPara;
+    if (groupLen > MAX_CHUNK_CHARS && paragraphs[i].start > groupStart) {
+      // Emit current group [groupStart, paragraphs[i].start)
+      const sliceCheck = rawText.slice(groupStart, paragraphs[i].start);
+      if (sliceCheck.trim().length > 0) {
+        chunks.push(makeChunk(idx++, defaultType, groupStart, paragraphs[i].start, rawText, null, null, docMeta || null, docType));
+      }
+      groupStart = paragraphs[i].start;
     }
   }
 
-  if (currentText.trim().length > 0) {
-    chunks.push(makeChunk(idx++, defaultType, currentText.trim(), currentOffset, null, null, docMeta || null, docType));
+  // Emit final group
+  const finalEnd = paragraphs.length > 0 ? paragraphs[paragraphs.length - 1].end : rawText.length;
+  if (groupStart < finalEnd) {
+    const sliceCheck = rawText.slice(groupStart, finalEnd);
+    if (sliceCheck.trim().length > 0) {
+      chunks.push(makeChunk(idx++, defaultType, groupStart, finalEnd, rawText, null, null, docMeta || null, docType));
+    }
   }
 
   return chunks;
@@ -1224,6 +1261,7 @@ function appendTableChunks(
   const tableChunks: LegalChunk[] = [];
 
   for (const table of tables) {
+    // Table chunks use the raw text range from table extractor
     const captionLine = table.caption ? `${table.caption}\n\n` : "";
     const chunkText = `${captionLine}${table.markdown}`;
 
@@ -1231,12 +1269,21 @@ function appendTableChunks(
       section_title: table.caption || `Table ${table.tableIndex + 1}`,
     };
 
-    const chunk = makeChunk(
-      nextIndex++, "table", chunkText, table.charStart,
-      table.caption || `Table ${table.tableIndex + 1}`, locator,
-      docMeta ? { ...docMeta, section_type: "table" } : null,
-      docType,
-    );
+    // Table chunks are synthetic (markdown), so we store charStart from source
+    // but chunk_text may differ from raw slice. This is acceptable for table type only.
+    const chunk: LegalChunk = {
+      chunk_index: nextIndex++,
+      chunk_type: "table",
+      chunk_text: chunkText,
+      char_start: table.charStart,
+      char_end: table.charStart + chunkText.length,
+      label: table.caption || `Table ${table.tableIndex + 1}`,
+      locator,
+      chunk_hash: simpleHash(chunkText),
+      metadata: docMeta ? { ...docMeta, section_type: "table" } : null,
+      doc_type: docType,
+      chunker_version: CHUNKER_VERSION,
+    };
 
     tableChunks.push(chunk);
   }
@@ -1248,10 +1295,7 @@ function appendTableChunks(
 
 /**
  * Validates chunk coverage and integrity against original text.
- * Checks:
- * - No gaps in coverage (allowing for whitespace/trimming)
- * - No overlap between non-reasoning chunks
- * - No broken enumeration boundaries (numbered items not split mid-item)
+ * STRICT: raw.slice(char_start, char_end) === chunk_text (except table chunks)
  */
 export function validateChunks(originalText: string, chunks: LegalChunk[]): ValidationResult {
   const errors: string[] = [];
@@ -1266,43 +1310,46 @@ export function validateChunks(originalText: string, chunks: LegalChunk[]): Vali
   // Sort by char_start
   const sorted = [...chunks].sort((a, b) => a.char_start - b.char_start);
 
-  // Check for large gaps (>100 chars of non-whitespace)
-  for (let i = 0; i < sorted.length - 1; i++) {
-    const gapStart = sorted[i].char_end;
-    const gapEnd = sorted[i + 1].char_start;
+  // STRICT OFFSET CHECK: raw.slice(char_start, char_end) === chunk_text
+  for (const chunk of sorted) {
+    // Table chunks are synthetic (markdown conversion), exempt from slice equality
+    if (chunk.chunk_type === "table") continue;
+
+    const expectedText = originalText.slice(chunk.char_start, chunk.char_end);
+    if (expectedText !== chunk.chunk_text) {
+      const diffPos = findFirstDiffPos(expectedText, chunk.chunk_text);
+      errors.push(
+        `Chunk ${chunk.chunk_index} (${chunk.chunk_type}): slice mismatch at pos ${diffPos}. ` +
+        `Expected len=${expectedText.length}, got len=${chunk.chunk_text.length}. ` +
+        `Slice[${diffPos}..${diffPos + 20}]="${expectedText.slice(diffPos, diffPos + 20)}" vs ` +
+        `Chunk[${diffPos}..${diffPos + 20}]="${chunk.chunk_text.slice(diffPos, diffPos + 20)}"`
+      );
+    }
+  }
+
+  // Check for large gaps (>100 chars of non-whitespace) — skip table chunks
+  const nonTableChunks = sorted.filter(c => c.chunk_type !== "table");
+  for (let i = 0; i < nonTableChunks.length - 1; i++) {
+    const gapStart = nonTableChunks[i].char_end;
+    const gapEnd = nonTableChunks[i + 1].char_start;
     if (gapEnd > gapStart) {
       const gapText = originalText.slice(gapStart, gapEnd);
       if (gapText.trim().length > 100) {
         errors.push(
-          `Gap of ${gapText.trim().length} non-whitespace chars between chunk ${sorted[i].chunk_index} and ${sorted[i + 1].chunk_index} (chars ${gapStart}-${gapEnd})`,
+          `Gap of ${gapText.trim().length} non-whitespace chars between chunk ${nonTableChunks[i].chunk_index} and ${nonTableChunks[i + 1].chunk_index} (chars ${gapStart}-${gapEnd})`,
         );
       }
     }
   }
 
   // Check for overlap between non-reasoning chunks
-  for (let i = 0; i < sorted.length - 1; i++) {
-    const overlapAmount = sorted[i].char_end - sorted[i + 1].char_start;
+  for (let i = 0; i < nonTableChunks.length - 1; i++) {
+    const overlapAmount = nonTableChunks[i].char_end - nonTableChunks[i + 1].char_start;
     if (overlapAmount > 0) {
-      const isReasoningOverlap = REASONING_TYPES.has(sorted[i + 1].chunk_type);
+      const isReasoningOverlap = REASONING_TYPES.has(nonTableChunks[i + 1].chunk_type);
       if (!isReasoningOverlap && overlapAmount > 10) {
         errors.push(
-          `Unexpected overlap of ${overlapAmount} chars between chunk ${sorted[i].chunk_index} (${sorted[i].chunk_type}) and ${sorted[i + 1].chunk_index} (${sorted[i + 1].chunk_type})`,
-        );
-      }
-    }
-  }
-
-  // Check for broken enumeration: numbered items split across chunks
-  for (const chunk of sorted) {
-    const text = chunk.chunk_text;
-    // Check if chunk starts mid-enumeration (e.g., continuation without a number)
-    if (text.match(/^\s*[a-z\u0561-\u0586)]/) && !text.match(/^\s*\d/)) {
-      // This might be a continuation — check if it's genuinely broken
-      const firstLine = text.split("\n")[0].trim();
-      if (firstLine.length < 20 && /^[a-z\u0561-\u0586)]/i.test(firstLine)) {
-        errors.push(
-          `Chunk ${chunk.chunk_index} may start with broken enumeration: "${firstLine.slice(0, 40)}"`,
+          `Unexpected overlap of ${overlapAmount} chars between chunk ${nonTableChunks[i].chunk_index} (${nonTableChunks[i].chunk_type}) and ${nonTableChunks[i + 1].chunk_index} (${nonTableChunks[i + 1].chunk_type})`,
         );
       }
     }
@@ -1311,15 +1358,20 @@ export function validateChunks(originalText: string, chunks: LegalChunk[]): Vali
   return { ok: errors.length === 0, errors };
 }
 
+/** Find position of first character difference between two strings */
+function findFirstDiffPos(a: string, b: string): number {
+  const len = Math.min(a.length, b.length);
+  for (let i = 0; i < len; i++) {
+    if (a[i] !== b[i]) return i;
+  }
+  return len; // strings differ in length
+}
+
 // ─── DOC TYPE ROUTING ─────────────────────────────────────────────
 
-/**
- * Route to the appropriate chunking strategy based on doc type.
- * This is the internal dispatcher used by chunkDocument.
- */
 export function chunkByDocType(input: LegalDocumentInput, docType: InferredDocType): ChunkResult {
   const text = input.content_text;
-  if (!text || text.trim().length === 0) {
+  if (!text || text.length === 0) {
     return { chunks: [], strategy: "fixed", chunker_version: CHUNKER_VERSION };
   }
 
@@ -1387,13 +1439,9 @@ const TREATY_DOC_TYPES = new Set([
   "international_treaty", "treaty", "agreement", "convention", "protocol",
 ]);
 
-/**
- * Main entry point. Preserves original function signature.
- * Routes based on doc_type from input, with structural chunking for all paths.
- */
 export function chunkDocument(document: LegalDocumentInput): ChunkResult {
   const text = document.content_text;
-  if (!text || text.trim().length === 0) {
+  if (!text || text.length === 0) {
     return { chunks: [], strategy: "fixed", chunker_version: CHUNKER_VERSION };
   }
 
@@ -1424,7 +1472,6 @@ export function chunkDocument(document: LegalDocumentInput): ChunkResult {
     strategy = hasSections ? "sections" : "normative";
     case_number = extractCaseNumber(text);
   } else {
-    // For unknown types: try inferring, default to normative_act structural chunking
     const inferred = inferDocType(text);
     if (inferred !== "other") {
       return chunkByDocType(document, inferred);
@@ -1433,7 +1480,6 @@ export function chunkDocument(document: LegalDocumentInput): ChunkResult {
     strategy = "normative";
   }
 
-  // Post-process: extract and append table chunks
   const allChunks = appendTableChunks(chunks, text, undefined, document.doc_type);
   return { chunks: allChunks, strategy, case_number, chunker_version: CHUNKER_VERSION };
 }

@@ -2107,6 +2107,20 @@ export type Database = {
     }
     Functions: {
       check_budget_alert: { Args: { budget_limit?: number }; Returns: boolean }
+      claim_chunk_jobs: {
+        Args: {
+          p_lease_minutes?: number
+          p_limit?: number
+          p_source_table?: string
+        }
+        Returns: {
+          attempts: number
+          document_id: string
+          id: string
+          max_attempts: number
+          source_table: string
+        }[]
+      }
       decrypt_pii: {
         Args: { _field_name: string; _user_id: string }
         Returns: string
