@@ -189,12 +189,21 @@ async function processJob(
 
 // ─── Main handler ──────────────────────────────────────────────────
 serve(async (req) => {
+  // Auto-sync: write INTERNAL_INGEST_KEY to app_settings for cron on first successful call
+  const internalKey = req.headers.get("x-internal-key");
+  
   const cors = handleCors(req);
   if (cors.errorResponse) return cors.errorResponse;
   const corsHeaders = cors.corsHeaders!;
 
   const authErr = validateInternalRequest(req, corsHeaders);
   if (authErr) return authErr;
+
+  // If we got here, the key is valid. Sync it to app_settings for cron to use.
+  if (internalKey) {
+    const syncSupa = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
+    await syncSupa.from("app_settings").upsert({ key: "internal_ingest_key", value: internalKey }, { onConflict: "key" }).then(() => {});
+  }
 
   const startTime = Date.now();
 
