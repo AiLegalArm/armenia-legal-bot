@@ -2,7 +2,7 @@
  * practice-embed-worker — Lease-based embedding worker
  * 
  * Claims up to 25 "embed" jobs from practice_chunk_jobs,
- * generates embeddings via OpenRouter, updates the source table.
+ * generates embeddings via OpenAI API directly, updates the source table.
  * 
  * Auth: x-internal-key only (called by orchestrator).
  */
@@ -11,10 +11,7 @@ import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.91.1";
 import { handleCors, validateInternalRequest } from "../_shared/edge-security.ts";
 
-const corsHeaders: Record<string, string> = {};
-
-const OPENROUTER_BASE_URL = "https://openrouter.ai/api/v1";
-const EMBEDDING_MODEL = "openai/text-embedding-3-large";
+const EMBEDDING_MODEL = "text-embedding-3-large";
 const EMBEDDING_DIMENSIONS = 3072;
 const MAX_CHARS_PER_TEXT = 8000;
 const MAX_RETRIES = 3;
@@ -32,25 +29,27 @@ async function withRetry<T>(fn: () => Promise<T>, retries = MAX_RETRIES, delayMs
 }
 
 async function getEmbeddings(texts: string[]): Promise<number[][]> {
-  const apiKey = Deno.env.get("OPENROUTER_API_KEY");
-  if (!apiKey) throw new Error("OPENROUTER_API_KEY not configured");
+  const apiKey = Deno.env.get("OPENAI_API_KEY");
+  if (!apiKey) throw new Error("OPENAI_API_KEY not configured");
 
   const truncated = texts.map(t => t.substring(0, MAX_CHARS_PER_TEXT));
 
   const response = await withRetry(async () => {
-    const res = await fetch(`${OPENROUTER_BASE_URL}/embeddings`, {
+    const res = await fetch("https://api.openai.com/v1/embeddings", {
       method: "POST",
       headers: {
         Authorization: `Bearer ${apiKey}`,
         "Content-Type": "application/json",
-        "HTTP-Referer": "https://ailegalarmenia.lovable.app",
-        "X-Title": "AI Legal Armenia",
       },
-      body: JSON.stringify({ model: EMBEDDING_MODEL, input: truncated, dimensions: EMBEDDING_DIMENSIONS }),
+      body: JSON.stringify({
+        model: EMBEDDING_MODEL,
+        input: truncated,
+        dimensions: EMBEDDING_DIMENSIONS,
+      }),
     });
     if (!res.ok) {
       const errText = await res.text();
-      throw new Error(`Embeddings error ${res.status}: ${errText}`);
+      throw new Error(`OpenAI embeddings error ${res.status}: ${errText}`);
     }
     return res;
   });
@@ -65,7 +64,9 @@ async function getEmbeddings(texts: string[]): Promise<number[][]> {
 serve(async (req) => {
   const cors = handleCors(req);
   if (cors.errorResponse) return cors.errorResponse;
-  Object.assign(corsHeaders, cors.corsHeaders!);
+  const corsHeaders = cors.corsHeaders!;
+
+  if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
   const authErr = validateInternalRequest(req, corsHeaders);
   if (authErr) return authErr;
@@ -109,7 +110,6 @@ serve(async (req) => {
     let processedFailed = 0;
     const errors: string[] = [];
 
-    // Group by source_table for efficiency
     for (const job of jobs) {
       const attempt = (job.attempts || 0) + 1;
       try {
@@ -156,7 +156,6 @@ serve(async (req) => {
             lease_expires_at: null,
           }).eq("id", job.id);
         } else {
-          // Exponential backoff
           const backoffMinutes = attempt * 2;
           await supabase.from("practice_chunk_jobs").update({
             status: "pending", attempts: attempt, started_at: null, lease_expires_at: null,
