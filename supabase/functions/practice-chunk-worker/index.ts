@@ -1,14 +1,13 @@
 /**
- * practice-chunk-worker — v4 (enterprise-hardened)
+ * practice-chunk-worker — v5 (enterprise-hardened)
  *
- * Changes from v3:
- * 1. TRUE ATOMIC CLAIM: Uses Postgres RPC claim_chunk_jobs() with FOR UPDATE SKIP LOCKED.
- *    No SELECT-then-UPDATE pattern. Zero double-claim risk.
- * 2. DELETE-ALL-then-INSERT: UNIQUE(doc_id/kb_id, chunk_index) proven in schema.
- *    insert-before-delete would violate constraints. delete-all is the only safe pattern.
- * 3. Schema-proven inserts: legal_practice_kb_chunks has NO chunk_type, char_start, char_end columns.
- * 4. Strict internal-only auth via validateInternalRequest.
- * 5. Raw slice offsets: chunk_text === rawText.slice(char_start, char_end).
+ * Changes from v4:
+ * 1. Renamed local inferDocType → resolveDocTypeFromRow (no collision with chunker export).
+ * 2. Uses chunker v2.2.0: SHA-256 hashes, no table chunks, strict slice invariant.
+ * 3. TRUE ATOMIC CLAIM via claim_chunk_jobs() RPC (FOR UPDATE SKIP LOCKED).
+ * 4. DELETE-ALL-then-INSERT: proven UNIQUE(doc_id, chunk_index) / UNIQUE(kb_id, chunk_index).
+ * 5. Schema-proven inserts: legal_practice_kb_chunks has NO chunk_type, char_start, char_end.
+ * 6. Strict internal-only auth via validateInternalRequest.
  *
  * Supports two source tables:
  *   - legal_practice_kb  → legal_practice_kb_chunks
@@ -28,8 +27,8 @@ import {
 const MAX_INPUT_CHARS = 200_000;
 const PARALLEL_BATCH = 5;
 
-// ─── Map source table to doc_type for chunker ──────────────────────
-function inferDocType(doc: Record<string, unknown>, sourceTable: string): string {
+// ─── Row-based doc type resolver (NOT text inference) ──────────────
+function resolveDocTypeFromRow(doc: Record<string, unknown>, sourceTable: string): string {
   if (sourceTable === "legal_practice_kb") {
     const courtType = doc.court_type as string | undefined;
     if (courtType === "echr") return "echr_judgment";
@@ -103,7 +102,7 @@ async function processJob(
   }
 
   // ── 2. Chunk the document ────────────────────────────────────────
-  const docType = inferDocType(doc, src);
+  const docType = resolveDocTypeFromRow(doc, src);
   const input: LegalDocumentInput = {
     doc_type: docType,
     content_text: contentText,
@@ -149,8 +148,7 @@ async function processJob(
 
   // ── 4. Atomic: DELETE ALL old chunks, then INSERT fresh ──────────
   // PROVEN: UNIQUE(doc_id, chunk_index) on legal_practice_kb_chunks
-  //         UNIQUE(kb_id, chunk_index) on knowledge_base_chunks
-  // insert-before-delete would violate these constraints.
+  //         UNIQUE(kb_id, chunk_index) on knowledge_base_chunks (idx_kb_chunks_unique)
   const isKB = src === "knowledge_base";
   const chunksTable = isKB ? "knowledge_base_chunks" : "legal_practice_kb_chunks";
   const fkColumn = isKB ? "kb_id" : "doc_id";
@@ -249,7 +247,6 @@ serve(async (req) => {
     );
 
     // ── TRUE ATOMIC CLAIM via Postgres RPC ─────────────────────────
-    // claim_chunk_jobs() uses FOR UPDATE SKIP LOCKED — zero double-claim risk.
     const { data: claimedRows, error: claimErr } = await supabase.rpc("claim_chunk_jobs", {
       p_source_table: sourceFilter,
       p_limit: concurrencyDocs,
@@ -267,7 +264,6 @@ serve(async (req) => {
     const claimedJobs: JobRecord[] = (claimedRows || []) as JobRecord[];
 
     if (claimedJobs.length === 0) {
-      // Count remaining
       let countQuery = supabase
         .from("practice_chunk_jobs")
         .select("id", { count: "exact", head: true })

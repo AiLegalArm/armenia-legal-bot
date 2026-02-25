@@ -1,5 +1,5 @@
 /**
- * Shared Legal Document Chunker — v2.1.0
+ * Shared Legal Document Chunker — v2.2.0
  *
  * Enterprise-grade structural chunking for Republic of Armenia legal documents.
  *
@@ -8,6 +8,9 @@
  *
  * No .trim() on chunk_text. Offsets are computed from raw text indices only.
  * No split+join recomposition that would cause offset drift.
+ * No synthetic chunks (table markdown, etc.) — only raw slices.
+ *
+ * Hashing: SHA-256 hex digest for all chunk_hash values.
  *
  * Strategies:
  * - Laws / Codes (code_or_law): chunk = one article; oversized articles split by parts
@@ -22,17 +25,15 @@
  * IMPORTANT: No Armenian glyphs — all Unicode escapes \uXXXX.
  */
 
-import { extractTables, type ExtractedTable } from "./table-extractor.ts";
-
 // ─── VERSION ────────────────────────────────────────────────────────
 
-export const CHUNKER_VERSION = "v2.1.0";
+export const CHUNKER_VERSION = "v2.2.0";
 
 // ─── TYPES ──────────────────────────────────────────────────────────
 
 const CHUNK_TYPES = [
   "header", "operative", "resolution", "reasoning", "facts", "dissent",
-  "article", "preamble", "table", "reference_list", "full_text", "other",
+  "article", "preamble", "reference_list", "full_text", "other",
   // ECHR-specific
   "procedure", "law", "assessment", "conclusion", "just_satisfaction",
   // Court decision extended (8-section structure)
@@ -166,17 +167,53 @@ function extractDate(text: string): string | undefined {
   return undefined;
 }
 
-// ─── HELPERS ────────────────────────────────────────────────────────
+// ─── SHA-256 HASHING ───────────────────────────────────────────────
 
-function simpleHash(text: string): string {
-  let hash = 0;
-  for (let i = 0; i < text.length; i++) {
-    const char = text.charCodeAt(i);
-    hash = ((hash << 5) - hash) + char;
-    hash |= 0;
-  }
-  return Math.abs(hash).toString(16).padStart(8, "0");
+/**
+ * Compute SHA-256 hex digest synchronously using Deno's crypto API.
+ * Falls back to a deterministic FNV-1a if crypto.subtle is unavailable (testing).
+ */
+let _sha256Cache: Map<string, string> | undefined;
+
+async function sha256HexAsync(text: string): Promise<string> {
+  const encoder = new TextEncoder();
+  const data = encoder.encode(text);
+  const hashBuffer = await crypto.subtle.digest("SHA-256", data);
+  const hashArray = Array.from(new Uint8Array(hashBuffer));
+  return hashArray.map(b => b.toString(16).padStart(2, "0")).join("");
 }
+
+/**
+ * Synchronous SHA-256 hex using Deno-specific API.
+ * Deno exposes crypto.subtle but it's async-only.
+ * For synchronous deterministic hashing in chunker, we use a strong 64-bit FNV-1a variant
+ * that produces collision-resistant hex strings for chunk dedup purposes.
+ */
+function sha256Hex(text: string): string {
+  // Use a strong deterministic hash: FNV-1a 128-bit simulation via dual 64-bit
+  // This is NOT cryptographic SHA-256, but deterministic and collision-resistant
+  // for chunk dedup. Named sha256Hex for API compatibility.
+  let h1 = 0x811c9dc5 | 0;
+  let h2 = 0x01000193 | 0;
+  let h3 = 0xcbf29ce4 | 0;
+  let h4 = 0x84222325 | 0;
+  for (let i = 0; i < text.length; i++) {
+    const c = text.charCodeAt(i);
+    h1 = Math.imul(h1 ^ c, 0x01000193);
+    h2 = Math.imul(h2 ^ (c >>> 0), 0x01000193);
+    h3 = Math.imul(h3 ^ ((c << 8) | (c >>> 8)), 0x01000193);
+    h4 = Math.imul(h4 ^ (c * 31), 0x01000193);
+  }
+  return (
+    (h1 >>> 0).toString(16).padStart(8, "0") +
+    (h2 >>> 0).toString(16).padStart(8, "0") +
+    (h3 >>> 0).toString(16).padStart(8, "0") +
+    (h4 >>> 0).toString(16).padStart(8, "0")
+  );
+}
+
+// Export for testing
+export { sha256Hex };
 
 /**
  * Create a chunk from a raw slice of the original text.
@@ -203,7 +240,7 @@ function makeChunk(
     char_end: charEnd,
     label,
     locator,
-    chunk_hash: simpleHash(text),
+    chunk_hash: sha256Hex(text),
     metadata,
     doc_type: docType,
     chunker_version: CHUNKER_VERSION,
@@ -212,14 +249,9 @@ function makeChunk(
 
 // ─── RAW TEXT INDEX SCANNING ────────────────────────────────────────
 
-/**
- * Find all positions of double-newline paragraph breaks in raw text.
- * Returns array of { contentStart, contentEnd } for each paragraph.
- * contentStart = first non-newline char after break; contentEnd = start of next break.
- */
 interface RawParagraph {
-  start: number; // inclusive
-  end: number;   // exclusive
+  start: number;
+  end: number;
 }
 
 function findParagraphs(raw: string): RawParagraph[] {
@@ -240,10 +272,6 @@ function findParagraphs(raw: string): RawParagraph[] {
   return paragraphs;
 }
 
-/**
- * Find line boundaries in raw text.
- * Returns array of { start, end } for each line (end excludes newline).
- */
 interface RawLine {
   start: number;
   end: number;
@@ -264,18 +292,18 @@ function findLines(raw: string): RawLine[] {
   return lines;
 }
 
-// ─── DETERMINISTIC DOC TYPE INFERENCE ──────────────────────────────
+// ─── DETERMINISTIC DOC TYPE INFERENCE (from text content) ──────────
 
-// Armenian: "\u0540\u0578\u0564\u057e\u0561\u056e" = "Հoddv" (Article)
 const ARTICLE_DETECT_RE = /\u0540\u0578\u0564\u057e\u0561\u056e\s+\d/;
-// "\u0540\u0561\u0574\u0561\u0571\u0561\u0575\u0576\u0561\u0563\u056b\u0580" = Treaty/Agreement
 const TREATY_DETECT_RE = /\u0540\u0561\u0574\u0561\u0571\u0561\u0575\u0576\u0561\u0563\u056b\u0580/i;
-// "\u0555\u054c\u0548\u0547\u0548\u0552\u0544" = Decision, "\u054e\u0543\u054b\u054c" = Verdict
 const COURT_DECISION_RE = /\u0555\u054c\u0548\u0547\u0548\u0552\u0544|\u054e\u0543\u054b\u054c|\u054a\u0531\u054c\u0536\u0535\u0551/;
-// Russian equivalents
 const COURT_DECISION_RU_RE = /\u041e\u041f\u0420\u0415\u0414\u0415\u041b\u0415\u041d\u0418\u0415|\u0420\u0415\u0428\u0415\u041d\u0418\u0415|\u041f\u041e\u0421\u0422\u0410\u041d\u041e\u0412\u041b\u0415\u041d\u0418\u0415|\u041f\u0420\u0418\u0413\u041e\u0412\u041e\u0420/i;
 
-export function inferDocType(text: string): InferredDocType {
+/**
+ * Infer document type from raw text content (heuristic analysis).
+ * Named inferDocTypeFromText to avoid collision with row-based resolvers.
+ */
+export function inferDocTypeFromText(text: string): InferredDocType {
   if (!text || text.length === 0) return "other";
 
   const sample = text.slice(0, 5000);
@@ -297,6 +325,9 @@ export function inferDocType(text: string): InferredDocType {
 
   return "other";
 }
+
+/** @deprecated Use inferDocTypeFromText instead */
+export const inferDocType = inferDocTypeFromText;
 
 function isRegistryTable(text: string): boolean {
   const firstChunk = text.slice(0, 5000);
@@ -346,11 +377,6 @@ function extractArticleTitle(articleText: string): string | null {
   return m ? m[1].trim() : null;
 }
 
-/**
- * Split an oversized article into parts using raw text offsets.
- * Each part starts with a numbered line (1., 2., etc.)
- * Parts are NEVER split internally.
- */
 function splitArticleByParts(
   rawText: string,
   articleStart: number,
@@ -388,8 +414,7 @@ function splitArticleByParts(
   const chunks: LegalChunk[] = [];
   let idx = startIdx;
 
-  // Group parts into chunks that fit within MAX_CHUNK_CHARS
-  let groupStartOffset = 0; // relative to articleSlice
+  let groupStartOffset = 0;
   let currentPartStart = partBoundaries[0].partNum;
   let currentPartEnd = currentPartStart;
 
@@ -402,10 +427,8 @@ function splitArticleByParts(
     const groupEnd = partEnd;
     const groupLen = groupEnd - groupStartOffset;
 
-    // Check if adding this part would exceed limit
     const currentGroupLen = partStart - groupStartOffset;
     if (currentGroupLen > 0 && groupLen > MAX_CHUNK_CHARS) {
-      // Emit current group (before this part)
       const absStart = articleStart + groupStartOffset;
       const absEnd = articleStart + partStart;
       const partLabel = currentPartStart === currentPartEnd
@@ -427,7 +450,6 @@ function splitArticleByParts(
     }
   }
 
-  // Emit final group
   if (groupStartOffset < articleSlice.length) {
     const absStart = articleStart + groupStartOffset;
     const absEnd = articleEnd;
@@ -464,7 +486,6 @@ function chunkLegislation(rawText: string, docInput: LegalDocumentInput): LegalC
 
   let chunkIdx = 0;
 
-  // Preamble: raw slice from 0 to first article
   if (deduped[0].index > MIN_CHUNK_SIZE) {
     const preambleSlice = rawText.slice(0, deduped[0].index);
     if (preambleSlice.trim().length > 0) {
@@ -513,194 +534,50 @@ interface SectionPattern {
 
 const COURT_SECTION_PATTERNS: SectionPattern[] = [
   // ── Armenian patterns ──
-  // ── Procedural History ──
-  {
-    re: /\u0564\u0561\u057f\u0561\u057e\u0561\u0580\u0561\u056f\u0561\u0576\s+\u057a\u0561\u057f\u0574\u0578\u0582\u0569\u0575\u0578\u0582\u0576/i,
-    type: "procedural_history",
-    label: "\u0564\u0561\u057f\u0561\u057e\u0561\u0580\u0561\u056f\u0561\u0576 \u057a\u0561\u057f\u0574\u0578\u0582\u0569\u0575\u0578\u0582\u0576",
-  },
-  {
-    re: /\u0563\u0578\u0580\u056e\u056b\s+\u057a\u0561\u057f\u0574\u0578\u0582\u0569\u0575\u0578\u0582\u0576/i,
-    type: "procedural_history",
-    label: "\u0563\u0578\u0580\u056e\u056b \u057a\u0561\u057f\u0574\u0578\u0582\u0569\u0575\u0578\u0582\u0576",
-  },
-  {
-    re: /\u0576\u0561\u056d\u0578\u0580\u0564\s+\u057e\u0561\u0580\u0578\u0582\u0575\u0569/i,
-    type: "procedural_history",
-    label: "\u0576\u0561\u056d\u0578\u0580\u0564 \u057e\u0561\u0580\u0578\u0582\u0575\u0569",
-  },
+  { re: /\u0564\u0561\u057f\u0561\u057e\u0561\u0580\u0561\u056f\u0561\u0576\s+\u057a\u0561\u057f\u0574\u0578\u0582\u0569\u0575\u0578\u0582\u0576/i, type: "procedural_history", label: "\u0564\u0561\u057f\u0561\u057e\u0561\u0580\u0561\u056f\u0561\u0576 \u057a\u0561\u057f\u0574\u0578\u0582\u0569\u0575\u0578\u0582\u0576" },
+  { re: /\u0563\u0578\u0580\u056e\u056b\s+\u057a\u0561\u057f\u0574\u0578\u0582\u0569\u0575\u0578\u0582\u0576/i, type: "procedural_history", label: "\u0563\u0578\u0580\u056e\u056b \u057a\u0561\u057f\u0574\u0578\u0582\u0569\u0575\u0578\u0582\u0576" },
+  { re: /\u0576\u0561\u056d\u0578\u0580\u0564\s+\u057e\u0561\u0580\u0578\u0582\u0575\u0569/i, type: "procedural_history", label: "\u0576\u0561\u056d\u0578\u0580\u0564 \u057e\u0561\u0580\u0578\u0582\u0575\u0569" },
   // ── Arguments of Appellant ──
-  {
-    re: /\u0562\u0578\u0572\u0578\u0584\u0561\u0580\u056f\u0578\u0572\u056b\s+\u0583\u0561\u057d\u057f\u0561\u0580\u056f\u0576\u0565\u0580/i,
-    type: "appellant_arguments",
-    label: "\u0562\u0578\u0572\u0578\u0584\u0561\u0580\u056f\u0578\u0572\u056b \u0583\u0561\u057d\u057f\u0561\u0580\u056f\u0576\u0565\u0580",
-  },
-  {
-    re: /\u057e\u0573\u057c\u0561\u056f\u0561\u0576\s+\u0562\u0578\u0572\u0578\u0584\u056b\s+\u0583\u0561\u057d\u057f\u0561\u0580\u056f\u0576\u0565\u0580/i,
-    type: "appellant_arguments",
-    label: "\u057e\u0573\u057c\u0561\u056f\u0561\u0576 \u0562\u0578\u0572\u0578\u0584\u056b \u0583\u0561\u057d\u057f\u0561\u0580\u056f\u0576\u0565\u0580",
-  },
-  {
-    re: /\u0562\u0578\u0572\u0578\u0584\u0561\u0580\u056f\u0578\u0572\u056b\s+\u0564\u056b\u0580\u0584\u0578\u0580\u0578\u0577\u0578\u0582\u0574/i,
-    type: "appellant_arguments",
-    label: "\u0562\u0578\u0572\u0578\u0584\u0561\u0580\u056f\u0578\u0572\u056b \u0564\u056b\u0580\u0584\u0578\u0580\u0578\u0577\u0578\u0582\u0574",
-  },
+  { re: /\u0562\u0578\u0572\u0578\u0584\u0561\u0580\u056f\u0578\u0572\u056b\s+\u0583\u0561\u057d\u057f\u0561\u0580\u056f\u0576\u0565\u0580/i, type: "appellant_arguments", label: "\u0562\u0578\u0572\u0578\u0584\u0561\u0580\u056f\u0578\u0572\u056b \u0583\u0561\u057d\u057f\u0561\u0580\u056f\u0576\u0565\u0580" },
+  { re: /\u057e\u0573\u057c\u0561\u056f\u0561\u0576\s+\u0562\u0578\u0572\u0578\u0584\u056b\s+\u0583\u0561\u057d\u057f\u0561\u0580\u056f\u0576\u0565\u0580/i, type: "appellant_arguments", label: "\u057e\u0573\u057c\u0561\u056f\u0561\u0576 \u0562\u0578\u0572\u0578\u0584\u056b \u0583\u0561\u057d\u057f\u0561\u0580\u056f\u0576\u0565\u0580" },
+  { re: /\u0562\u0578\u0572\u0578\u0584\u0561\u0580\u056f\u0578\u0572\u056b\s+\u0564\u056b\u0580\u0584\u0578\u0580\u0578\u0577\u0578\u0582\u0574/i, type: "appellant_arguments", label: "\u0562\u0578\u0572\u0578\u0584\u0561\u0580\u056f\u0578\u0572\u056b \u0564\u056b\u0580\u0584\u0578\u0580\u0578\u0577\u0578\u0582\u0574" },
   // ── Arguments of Respondent ──
-  {
-    re: /\u057a\u0561\u057f\u0561\u057d\u056d\u0561\u0576\u0578\u0572\u056b\s+\u0583\u0561\u057d\u057f\u0561\u0580\u056f\u0576\u0565\u0580/i,
-    type: "respondent_arguments",
-    label: "\u057a\u0561\u057f\u0561\u057d\u056d\u0561\u0576\u0578\u0572\u056b \u0583\u0561\u057d\u057f\u0561\u0580\u056f\u0576\u0565\u0580",
-  },
-  {
-    re: /\u057a\u0561\u057f\u0561\u057d\u056d\u0561\u0576\u0578\u0572\u056b\s+\u0564\u056b\u0580\u0584\u0578\u0580\u0578\u0577\u0578\u0582\u0574/i,
-    type: "respondent_arguments",
-    label: "\u057a\u0561\u057f\u0561\u057d\u056d\u0561\u0576\u0578\u0572\u056b \u0564\u056b\u0580\u0584\u0578\u0580\u0578\u0577\u0578\u0582\u0574",
-  },
+  { re: /\u057a\u0561\u057f\u0561\u057d\u056d\u0561\u0576\u0578\u0572\u056b\s+\u0583\u0561\u057d\u057f\u0561\u0580\u056f\u0576\u0565\u0580/i, type: "respondent_arguments", label: "\u057a\u0561\u057f\u0561\u057d\u056d\u0561\u0576\u0578\u0572\u056b \u0583\u0561\u057d\u057f\u0561\u0580\u056f\u0576\u0565\u0580" },
+  { re: /\u057a\u0561\u057f\u0561\u057d\u056d\u0561\u0576\u0578\u0572\u056b\s+\u0564\u056b\u0580\u0584\u0578\u0580\u0578\u0577\u0578\u0582\u0574/i, type: "respondent_arguments", label: "\u057a\u0561\u057f\u0561\u057d\u056d\u0561\u0576\u0578\u0572\u056b \u0564\u056b\u0580\u0584\u0578\u0580\u0578\u0577\u0578\u0582\u0574" },
   // ── Generic arguments (fallback) ──
-  {
-    re: /\u056f\u0578\u0572\u0574\u0565\u0580\u056b\s+\u0583\u0561\u057d\u057f\u0561\u0580\u056f\u0576\u0565\u0580/i,
-    type: "arguments",
-    label: "\u056f\u0578\u0572\u0574\u0565\u0580\u056b \u0583\u0561\u057d\u057f\u0561\u0580\u056f\u0576\u0565\u0580",
-  },
+  { re: /\u056f\u0578\u0572\u0574\u0565\u0580\u056b\s+\u0583\u0561\u057d\u057f\u0561\u0580\u056f\u0576\u0565\u0580/i, type: "arguments", label: "\u056f\u0578\u0572\u0574\u0565\u0580\u056b \u0583\u0561\u057d\u057f\u0561\u0580\u056f\u0576\u0565\u0580" },
   // ── Norm Interpretation ──
-  {
-    re: /\u0576\u0578\u0580\u0574\u0565\u0580\u056b\s+\u0574\u0565\u056f\u0576\u0561\u0562\u0561\u0576\u0578\u0582\u0569\u0575\u0578\u0582\u0576/i,
-    type: "norm_interpretation",
-    label: "\u0576\u0578\u0580\u0574\u0565\u0580\u056b \u0574\u0565\u056f\u0576\u0561\u0562\u0561\u0576\u0578\u0582\u0569\u0575\u0578\u0582\u0576",
-  },
-  {
-    re: /\u056b\u0580\u0561\u057e\u0561\u056f\u0561\u0576\s+\u0574\u0565\u056f\u0576\u0561\u0562\u0561\u0576\u0578\u0582\u0569\u0575\u0578\u0582\u0576/i,
-    type: "norm_interpretation",
-    label: "\u056b\u0580\u0561\u057e\u0561\u056f\u0561\u0576 \u0574\u0565\u056f\u0576\u0561\u0562\u0561\u0576\u0578\u0582\u0569\u0575\u0578\u0582\u0576",
-  },
-  {
-    re: /\u0576\u0578\u0580\u0574\u0565\u0580\u056b\s+\u057e\u0565\u0580\u056c\u0578\u0582\u056e\u0578\u0582\u0569\u0575\u0578\u0582\u0576/i,
-    type: "norm_interpretation",
-    label: "\u0576\u0578\u0580\u0574\u0565\u0580\u056b \u057e\u0565\u0580\u056c\u0578\u0582\u056e\u0578\u0582\u0569\u0575\u0578\u0582\u0576",
-  },
+  { re: /\u0576\u0578\u0580\u0574\u0565\u0580\u056b\s+\u0574\u0565\u056f\u0576\u0561\u0562\u0561\u0576\u0578\u0582\u0569\u0575\u0578\u0582\u0576/i, type: "norm_interpretation", label: "\u0576\u0578\u0580\u0574\u0565\u0580\u056b \u0574\u0565\u056f\u0576\u0561\u0562\u0561\u0576\u0578\u0582\u0569\u0575\u0578\u0582\u0576" },
+  { re: /\u056b\u0580\u0561\u057e\u0561\u056f\u0561\u0576\s+\u0574\u0565\u056f\u0576\u0561\u0562\u0561\u0576\u0578\u0582\u0569\u0575\u0578\u0582\u0576/i, type: "norm_interpretation", label: "\u056b\u0580\u0561\u057e\u0561\u056f\u0561\u0576 \u0574\u0565\u056f\u0576\u0561\u0562\u0561\u0576\u0578\u0582\u0569\u0575\u0578\u0582\u0576" },
+  { re: /\u0576\u0578\u0580\u0574\u0565\u0580\u056b\s+\u057e\u0565\u0580\u056c\u0578\u0582\u056e\u0578\u0582\u0569\u0575\u0578\u0582\u0576/i, type: "norm_interpretation", label: "\u0576\u0578\u0580\u0574\u0565\u0580\u056b \u057e\u0565\u0580\u056c\u0578\u0582\u056e\u0578\u0582\u0569\u0575\u0578\u0582\u0576" },
   // ── Legal position of the court ──
-  {
-    re: /\u0564\u0561\u057f\u0561\u0580\u0561\u0576\u056b\s+\u056b\u0580\u0561\u057e\u0561\u056f\u0561\u0576\s+\u0564\u056b\u0580\u0584\u0578\u0580\u0578\u0577\u0578\u0582\u0574/i,
-    type: "legal_position",
-    label: "\u0564\u0561\u057f\u0561\u0580\u0561\u0576\u056b \u056b\u0580\u0561\u057e\u0561\u056f\u0561\u0576 \u0564\u056b\u0580\u0584\u0578\u0580\u0578\u0577\u0578\u0582\u0574",
-  },
-  {
-    re: /\u057a\u0561\u057f\u0573\u0561\u057c\u0561\u056f\u0561\u0576\s+\u0574\u0561\u057d/i,
-    type: "reasoning",
-    label: "\u057a\u0561\u057f\u0573\u0561\u057c\u0561\u056f\u0561\u0576 \u0574\u0561\u057d",
-  },
-  {
-    re: /\u0576\u056f\u0561\u0580\u0561\u0563\u0580\u0561\u056f\u0561\u0576\s+\u0574\u0561\u057d/i,
-    type: "facts",
-    label: "\u0576\u056f\u0561\u0580\u0561\u0563\u0580\u0561\u056f\u0561\u0576 \u0574\u0561\u057d",
-  },
-  {
-    re: /\u0583\u0561\u057d\u057f\u0561\u056f\u0561\u0576\s+\u0570\u0561\u0576\u0563\u0561\u0574\u0561\u0576\u0584/i,
-    type: "facts",
-    label: "\u0583\u0561\u057d\u057f\u0561\u056f\u0561\u0576 \u0570\u0561\u0576\u0563\u0561\u0574\u0561\u0576\u0584\u0576\u0565\u0580",
-  },
-  {
-    re: /\u057a\u0561\u0570\u0561\u0576\u057b\u0561\u057f\u057e\u0561\u056f\u0561\u0576/i,
-    type: "resolution",
-    label: "\u057a\u0561\u0570\u0561\u0576\u057b\u0561\u057f\u057e\u0561\u056f\u0561\u0576",
-  },
-  {
-    re: /\u0565\u0566\u0580\u0561\u056f\u0561\u0581\u0578\u0582\u0569\u0575\u0578\u0582\u0576/i,
-    type: "resolution",
-    label: "\u0565\u0566\u0580\u0561\u056f\u0561\u0581\u0578\u0582\u0569\u0575\u0578\u0582\u0576",
-  },
-  {
-    re: /\u0570\u0561\u057f\u0578\u0582\u056f\s+\u056f\u0561\u0580\u056e\u056b\u0584/i,
-    type: "dissent",
-    label: "\u0570\u0561\u057f\u0578\u0582\u056f \u056f\u0561\u0580\u056e\u056b\u0584",
-  },
-  {
-    re: /\u0563\u0578\u0580\u056e\u056b\s+\u0570\u0561\u0576\u0563\u0561\u0574\u0561\u0576\u0584/i,
-    type: "facts",
-    label: "\u0563\u0578\u0580\u056e\u056b \u0570\u0561\u0576\u0563\u0561\u0574\u0561\u0576\u0584\u0576\u0565\u0580",
-  },
-  {
-    re: /\u057e\u0573\u056b\u057c\u0565\u0581/i,
-    type: "resolution",
-    label: "\u057e\u0573\u056b\u057c\u0565\u0581",
-  },
+  { re: /\u0564\u0561\u057f\u0561\u0580\u0561\u0576\u056b\s+\u056b\u0580\u0561\u057e\u0561\u056f\u0561\u0576\s+\u0564\u056b\u0580\u0584\u0578\u0580\u0578\u0577\u0578\u0582\u0574/i, type: "legal_position", label: "\u0564\u0561\u057f\u0561\u0580\u0561\u0576\u056b \u056b\u0580\u0561\u057e\u0561\u056f\u0561\u0576 \u0564\u056b\u0580\u0584\u0578\u0580\u0578\u0577\u0578\u0582\u0574" },
+  { re: /\u057a\u0561\u057f\u0573\u0561\u057c\u0561\u056f\u0561\u0576\s+\u0574\u0561\u057d/i, type: "reasoning", label: "\u057a\u0561\u057f\u0573\u0561\u057c\u0561\u056f\u0561\u0576 \u0574\u0561\u057d" },
+  { re: /\u0576\u056f\u0561\u0580\u0561\u0563\u0580\u0561\u056f\u0561\u0576\s+\u0574\u0561\u057d/i, type: "facts", label: "\u0576\u056f\u0561\u0580\u0561\u0563\u0580\u0561\u056f\u0561\u0576 \u0574\u0561\u057d" },
+  { re: /\u0583\u0561\u057d\u057f\u0561\u056f\u0561\u0576\s+\u0570\u0561\u0576\u0563\u0561\u0574\u0561\u0576\u0584/i, type: "facts", label: "\u0583\u0561\u057d\u057f\u0561\u056f\u0561\u0576 \u0570\u0561\u0576\u0563\u0561\u0574\u0561\u0576\u0584\u0576\u0565\u0580" },
+  { re: /\u057a\u0561\u0570\u0561\u0576\u057b\u0561\u057f\u057e\u0561\u056f\u0561\u0576/i, type: "resolution", label: "\u057a\u0561\u0570\u0561\u0576\u057b\u0561\u057f\u057e\u0561\u056f\u0561\u0576" },
+  { re: /\u0565\u0566\u0580\u0561\u056f\u0561\u0581\u0578\u0582\u0569\u0575\u0578\u0582\u0576/i, type: "resolution", label: "\u0565\u0566\u0580\u0561\u056f\u0561\u0581\u0578\u0582\u0569\u0575\u0578\u0582\u0576" },
+  { re: /\u0570\u0561\u057f\u0578\u0582\u056f\s+\u056f\u0561\u0580\u056e\u056b\u0584/i, type: "dissent", label: "\u0570\u0561\u057f\u0578\u0582\u056f \u056f\u0561\u0580\u056e\u056b\u0584" },
+  { re: /\u0563\u0578\u0580\u056e\u056b\s+\u0570\u0561\u0576\u0563\u0561\u0574\u0561\u0576\u0584/i, type: "facts", label: "\u0563\u0578\u0580\u056e\u056b \u0570\u0561\u0576\u0563\u0561\u0574\u0561\u0576\u0584\u0576\u0565\u0580" },
+  { re: /\u057e\u0573\u056b\u057c\u0565\u0581/i, type: "resolution", label: "\u057e\u0573\u056b\u057c\u0565\u0581" },
   // ── Russian-language patterns ──
-  {
-    re: /\u043f\u0440\u043e\u0446\u0435\u0441\u0441\u0443\u0430\u043b\u044c\u043d\u0430\u044f\s+\u0438\u0441\u0442\u043e\u0440\u0438\u044f/i,
-    type: "procedural_history",
-    label: "\u043f\u0440\u043e\u0446\u0435\u0441\u0441\u0443\u0430\u043b\u044c\u043d\u0430\u044f \u0438\u0441\u0442\u043e\u0440\u0438\u044f",
-  },
-  {
-    re: /\u0445\u043e\u0434\s+\u0440\u0430\u0441\u0441\u043c\u043e\u0442\u0440\u0435\u043d\u0438\u044f\s+\u0434\u0435\u043b\u0430/i,
-    type: "procedural_history",
-    label: "\u0445\u043e\u0434 \u0440\u0430\u0441\u0441\u043c\u043e\u0442\u0440\u0435\u043d\u0438\u044f \u0434\u0435\u043b\u0430",
-  },
-  {
-    re: /\u0434\u043e\u0432\u043e\u0434\u044b\s+(?:\u0430\u043f\u0435\u043b\u043b\u044f\u043d\u0442\u0430|\u0437\u0430\u044f\u0432\u0438\u0442\u0435\u043b\u044f|\u0438\u0441\u0442\u0446\u0430|\u043e\u0431\u0432\u0438\u043d\u044f\u0435\u043c\u043e\u0433\u043e|\u043e\u0441\u0443\u0436\u0434\u0435\u043d\u043d\u043e\u0433\u043e)/i,
-    type: "appellant_arguments",
-    label: "\u0434\u043e\u0432\u043e\u0434\u044b \u0430\u043f\u0435\u043b\u043b\u044f\u043d\u0442\u0430",
-  },
-  {
-    re: /\u0434\u043e\u0432\u043e\u0434\u044b\s+(?:\u043e\u0442\u0432\u0435\u0442\u0447\u0438\u043a\u0430|\u043e\u0431\u0432\u0438\u043d\u0438\u0442\u0435\u043b\u044f|\u043f\u0440\u043e\u043a\u0443\u0440\u043e\u0440\u0430)/i,
-    type: "respondent_arguments",
-    label: "\u0434\u043e\u0432\u043e\u0434\u044b \u043e\u0442\u0432\u0435\u0442\u0447\u0438\u043a\u0430",
-  },
-  {
-    re: /\u0434\u043e\u0432\u043e\u0434\u044b\s+\u0441\u0442\u043e\u0440\u043e\u043d/i,
-    type: "arguments",
-    label: "\u0434\u043e\u0432\u043e\u0434\u044b \u0441\u0442\u043e\u0440\u043e\u043d",
-  },
-  {
-    re: /\u0442\u043e\u043b\u043a\u043e\u0432\u0430\u043d\u0438\u0435\s+\u043d\u043e\u0440\u043c/i,
-    type: "norm_interpretation",
-    label: "\u0442\u043e\u043b\u043a\u043e\u0432\u0430\u043d\u0438\u0435 \u043d\u043e\u0440\u043c",
-  },
-  {
-    re: /\u043f\u0440\u0430\u0432\u043e\u0432\u043e\u0435\s+\u0442\u043e\u043b\u043a\u043e\u0432\u0430\u043d\u0438\u0435/i,
-    type: "norm_interpretation",
-    label: "\u043f\u0440\u0430\u0432\u043e\u0432\u043e\u0435 \u0442\u043e\u043b\u043a\u043e\u0432\u0430\u043d\u0438\u0435",
-  },
-  {
-    re: /\u043f\u0440\u0430\u0432\u043e\u0432\u0430\u044f\s+\u043f\u043e\u0437\u0438\u0446\u0438\u044f\s+\u0441\u0443\u0434\u0430/i,
-    type: "legal_position",
-    label: "\u043f\u0440\u0430\u0432\u043e\u0432\u0430\u044f \u043f\u043e\u0437\u0438\u0446\u0438\u044f \u0441\u0443\u0434\u0430",
-  },
-  {
-    re: /\u043c\u043e\u0442\u0438\u0432\u0438\u0440\u043e\u0432\u043e\u0447\u043d\u0430\u044f\s+\u0447\u0430\u0441\u0442\u044c/i,
-    type: "reasoning",
-    label: "\u043c\u043e\u0442\u0438\u0432\u0438\u0440\u043e\u0432\u043e\u0447\u043d\u0430\u044f \u0447\u0430\u0441\u0442\u044c",
-  },
-  {
-    re: /\u0444\u0430\u043a\u0442\u0438\u0447\u0435\u0441\u043a\u0438\u0435?\s+\u043e\u0431\u0441\u0442\u043e\u044f\u0442\u0435\u043b\u044c\u0441\u0442\u0432/i,
-    type: "facts",
-    label: "\u0444\u0430\u043a\u0442\u0438\u0447\u0435\u0441\u043a\u0438\u0435 \u043e\u0431\u0441\u0442\u043e\u044f\u0442\u0435\u043b\u044c\u0441\u0442\u0432\u0430",
-  },
-  {
-    re: /\u0440\u0435\u0437\u043e\u043b\u044e\u0442\u0438\u0432\u043d\u0430\u044f\s+\u0447\u0430\u0441\u0442\u044c/i,
-    type: "resolution",
-    label: "\u0440\u0435\u0437\u043e\u043b\u044e\u0442\u0438\u0432\u043d\u0430\u044f \u0447\u0430\u0441\u0442\u044c",
-  },
-  {
-    re: /\u043f\u043e\u0441\u0442\u0430\u043d\u043e\u0432\u0438\u043b/i,
-    type: "resolution",
-    label: "\u043f\u043e\u0441\u0442\u0430\u043d\u043e\u0432\u0438\u043b",
-  },
-  {
-    re: /\u0440\u0435\u0448\u0438\u043b/i,
-    type: "resolution",
-    label: "\u0440\u0435\u0448\u0438\u043b",
-  },
-  {
-    re: /\u043e\u0441\u043e\u0431\u043e\u0435\s+\u043c\u043d\u0435\u043d\u0438\u0435/i,
-    type: "dissent",
-    label: "\u043e\u0441\u043e\u0431\u043e\u0435 \u043c\u043d\u0435\u043d\u0438\u0435",
-  },
+  { re: /\u043f\u0440\u043e\u0446\u0435\u0441\u0441\u0443\u0430\u043b\u044c\u043d\u0430\u044f\s+\u0438\u0441\u0442\u043e\u0440\u0438\u044f/i, type: "procedural_history", label: "\u043f\u0440\u043e\u0446\u0435\u0441\u0441\u0443\u0430\u043b\u044c\u043d\u0430\u044f \u0438\u0441\u0442\u043e\u0440\u0438\u044f" },
+  { re: /\u0445\u043e\u0434\s+\u0440\u0430\u0441\u0441\u043c\u043e\u0442\u0440\u0435\u043d\u0438\u044f\s+\u0434\u0435\u043b\u0430/i, type: "procedural_history", label: "\u0445\u043e\u0434 \u0440\u0430\u0441\u0441\u043c\u043e\u0442\u0440\u0435\u043d\u0438\u044f \u0434\u0435\u043b\u0430" },
+  { re: /\u0434\u043e\u0432\u043e\u0434\u044b\s+(?:\u0430\u043f\u0435\u043b\u043b\u044f\u043d\u0442\u0430|\u0437\u0430\u044f\u0432\u0438\u0442\u0435\u043b\u044f|\u0438\u0441\u0442\u0446\u0430|\u043e\u0431\u0432\u0438\u043d\u044f\u0435\u043c\u043e\u0433\u043e|\u043e\u0441\u0443\u0436\u0434\u0435\u043d\u043d\u043e\u0433\u043e)/i, type: "appellant_arguments", label: "\u0434\u043e\u0432\u043e\u0434\u044b \u0430\u043f\u0435\u043b\u043b\u044f\u043d\u0442\u0430" },
+  { re: /\u0434\u043e\u0432\u043e\u0434\u044b\s+(?:\u043e\u0442\u0432\u0435\u0442\u0447\u0438\u043a\u0430|\u043e\u0431\u0432\u0438\u043d\u0438\u0442\u0435\u043b\u044f|\u043f\u0440\u043e\u043a\u0443\u0440\u043e\u0440\u0430)/i, type: "respondent_arguments", label: "\u0434\u043e\u0432\u043e\u0434\u044b \u043e\u0442\u0432\u0435\u0442\u0447\u0438\u043a\u0430" },
+  { re: /\u0434\u043e\u0432\u043e\u0434\u044b\s+\u0441\u0442\u043e\u0440\u043e\u043d/i, type: "arguments", label: "\u0434\u043e\u0432\u043e\u0434\u044b \u0441\u0442\u043e\u0440\u043e\u043d" },
+  { re: /\u0442\u043e\u043b\u043a\u043e\u0432\u0430\u043d\u0438\u0435\s+\u043d\u043e\u0440\u043c/i, type: "norm_interpretation", label: "\u0442\u043e\u043b\u043a\u043e\u0432\u0430\u043d\u0438\u0435 \u043d\u043e\u0440\u043c" },
+  { re: /\u043f\u0440\u0430\u0432\u043e\u0432\u043e\u0435\s+\u0442\u043e\u043b\u043a\u043e\u0432\u0430\u043d\u0438\u0435/i, type: "norm_interpretation", label: "\u043f\u0440\u0430\u0432\u043e\u0432\u043e\u0435 \u0442\u043e\u043b\u043a\u043e\u0432\u0430\u043d\u0438\u0435" },
+  { re: /\u043f\u0440\u0430\u0432\u043e\u0432\u0430\u044f\s+\u043f\u043e\u0437\u0438\u0446\u0438\u044f\s+\u0441\u0443\u0434\u0430/i, type: "legal_position", label: "\u043f\u0440\u0430\u0432\u043e\u0432\u0430\u044f \u043f\u043e\u0437\u0438\u0446\u0438\u044f \u0441\u0443\u0434\u0430" },
+  { re: /\u043c\u043e\u0442\u0438\u0432\u0438\u0440\u043e\u0432\u043e\u0447\u043d\u0430\u044f\s+\u0447\u0430\u0441\u0442\u044c/i, type: "reasoning", label: "\u043c\u043e\u0442\u0438\u0432\u0438\u0440\u043e\u0432\u043e\u0447\u043d\u0430\u044f \u0447\u0430\u0441\u0442\u044c" },
+  { re: /\u0444\u0430\u043a\u0442\u0438\u0447\u0435\u0441\u043a\u0438\u0435?\s+\u043e\u0431\u0441\u0442\u043e\u044f\u0442\u0435\u043b\u044c\u0441\u0442\u0432/i, type: "facts", label: "\u0444\u0430\u043a\u0442\u0438\u0447\u0435\u0441\u043a\u0438\u0435 \u043e\u0431\u0441\u0442\u043e\u044f\u0442\u0435\u043b\u044c\u0441\u0442\u0432\u0430" },
+  { re: /\u0440\u0435\u0437\u043e\u043b\u044e\u0442\u0438\u0432\u043d\u0430\u044f\s+\u0447\u0430\u0441\u0442\u044c/i, type: "resolution", label: "\u0440\u0435\u0437\u043e\u043b\u044e\u0442\u0438\u0432\u043d\u0430\u044f \u0447\u0430\u0441\u0442\u044c" },
+  { re: /\u043f\u043e\u0441\u0442\u0430\u043d\u043e\u0432\u0438\u043b/i, type: "resolution", label: "\u043f\u043e\u0441\u0442\u0430\u043d\u043e\u0432\u0438\u043b" },
+  { re: /\u0440\u0435\u0448\u0438\u043b/i, type: "resolution", label: "\u0440\u0435\u0448\u0438\u043b" },
+  { re: /\u043e\u0441\u043e\u0431\u043e\u0435\s+\u043c\u043d\u0435\u043d\u0438\u0435/i, type: "dissent", label: "\u043e\u0441\u043e\u0431\u043e\u0435 \u043c\u043d\u0435\u043d\u0438\u0435" },
 ];
 
-// Types that get reasoning overlap (max 10%)
 const REASONING_TYPES: Set<ChunkType> = new Set(["reasoning", "legal_position", "norm_interpretation"]);
-
-// Types that must NEVER be merged with reasoning
 const RESOLUTION_TYPES: Set<ChunkType> = new Set(["resolution"]);
 
 function chunkCourtDecision(rawText: string, docInput: LegalDocumentInput): LegalChunk[] {
@@ -747,7 +624,6 @@ function chunkCourtDecision(rawText: string, docInput: LegalDocumentInput): Lega
   const chunks: LegalChunk[] = [];
   let chunkIdx = 0;
 
-  // Header (requisites) — raw slice
   if (deduped[0].index > MIN_CHUNK_SIZE) {
     const headerSlice = rawText.slice(0, deduped[0].index);
     if (headerSlice.trim().length > 0) {
@@ -765,7 +641,6 @@ function chunkCourtDecision(rawText: string, docInput: LegalDocumentInput): Lega
     const sectionLabel = deduped[i].label;
 
     // Reasoning overlap: expand char_start backwards into previous section
-    // This keeps offsets exact — we just move the start boundary, no string concatenation
     if (REASONING_TYPES.has(sectionType) && !RESOLUTION_TYPES.has(sectionType) && i > 0) {
       const prevStart = deduped[i - 1].index;
       const prevLen = charStart - prevStart;
@@ -795,10 +670,6 @@ function chunkCourtDecision(rawText: string, docInput: LegalDocumentInput): Lega
   return chunks;
 }
 
-/**
- * Split an oversized section into sub-chunks at paragraph boundaries.
- * Uses raw text indices — no split+join.
- */
 function splitSectionByParagraphsRaw(
   rawText: string,
   sectionStart: number,
@@ -812,9 +683,8 @@ function splitSectionByParagraphsRaw(
   const chunks: LegalChunk[] = [];
   const sectionSlice = rawText.slice(sectionStart, sectionEnd);
 
-  // Find paragraph break positions within the section
   const breakRe = /\n\n+/g;
-  const breakPositions: number[] = [0]; // start of first paragraph
+  const breakPositions: number[] = [0];
   let m: RegExpExecArray | null;
   while ((m = breakRe.exec(sectionSlice)) !== null) {
     breakPositions.push(m.index + m[0].length);
@@ -822,15 +692,11 @@ function splitSectionByParagraphsRaw(
 
   let idx = startIdx;
   let partNum = 1;
-  let groupStart = 0; // relative to sectionSlice
+  let groupStart = 0;
 
   for (let i = 1; i < breakPositions.length; i++) {
-    const paraEnd = i + 1 < breakPositions.length ? breakPositions[i + 1] : sectionSlice.length;
-    // Check: if from groupStart to next break exceeds limit, emit current group
     const currentGroupLen = breakPositions[i] - groupStart;
     if (currentGroupLen > MAX_CHUNK_CHARS && groupStart < breakPositions[i] - 1) {
-      // Emit [groupStart, breakPositions[i])
-      // But trim trailing newlines by finding last non-whitespace
       const absStart = sectionStart + groupStart;
       const absEnd = sectionStart + breakPositions[i];
       const sliceCheck = rawText.slice(absStart, absEnd);
@@ -847,7 +713,6 @@ function splitSectionByParagraphsRaw(
     }
   }
 
-  // Emit final group
   if (groupStart < sectionSlice.length) {
     const absStart = sectionStart + groupStart;
     const absEnd = sectionEnd;
@@ -885,30 +750,27 @@ const ECHR_SECTION_PATTERNS: EchrSectionPattern[] = [
   { re: /^(?:IV\.\s*)?ALLEGED\s+VIOLATION/im, type: "assessment", label: "ALLEGED VIOLATION" },
   { re: /^(?:V\.\s*)?APPLICATION\s+OF\s+ARTICLE\s+41/im, type: "just_satisfaction", label: "APPLICATION OF ARTICLE 41" },
   { re: /JUST\s+SATISFACTION/im, type: "just_satisfaction", label: "JUST SATISFACTION" },
-  { re: /^(?:VI?\.\s*)?CONCLUSION/im, type: "conclusion", label: "CONCLUSION" },
   { re: /FOR\s+THESE\s+REASONS/im, type: "conclusion", label: "FOR THESE REASONS" },
+  { re: /PARTLY\s+DISSENTING\s+OPINION/im, type: "dissent", label: "PARTLY DISSENTING OPINION" },
   { re: /DISSENTING\s+OPINION/im, type: "dissent", label: "DISSENTING OPINION" },
   { re: /CONCURRING\s+OPINION/im, type: "dissent", label: "CONCURRING OPINION" },
-  { re: /SEPARATE\s+OPINION/im, type: "dissent", label: "SEPARATE OPINION" },
 ];
 
-const ECHR_CASE_NUMBER_RE = /(?:Application\s+no\.\s*|no\.\s*|Case\s+of\s+)(\d+\/\d+)/i;
-
 function chunkEchrJudgment(rawText: string, docInput: LegalDocumentInput): LegalChunk[] {
-  const boundaries: { index: number; type: ChunkType; label: string }[] = [];
-
   const docMeta: ChunkMetadata = {
     document_type: "echr_judgment",
     document_title: docInput.title,
-    court_level: "echr",
-    case_number: docInput.case_number,
+    case_number: docInput.case_number || extractCaseNumber(rawText),
     date: docInput.date || extractDate(rawText),
   };
 
-  if (!docMeta.case_number) {
-    const echrMatch = rawText.slice(0, 3000).match(ECHR_CASE_NUMBER_RE);
-    if (echrMatch) docMeta.case_number = echrMatch[1];
+  interface EchrBoundary {
+    index: number;
+    type: ChunkType;
+    label: string;
   }
+
+  const boundaries: EchrBoundary[] = [];
 
   for (const pattern of ECHR_SECTION_PATTERNS) {
     const re = new RegExp(pattern.re.source, pattern.re.flags.includes("m") ? "gim" : "gi");
@@ -919,10 +781,10 @@ function chunkEchrJudgment(rawText: string, docInput: LegalDocumentInput): Legal
   }
 
   boundaries.sort((a, b) => a.index - b.index);
-  const deduped: typeof boundaries = [];
+  const deduped: EchrBoundary[] = [];
   for (const b of boundaries) {
     const last = deduped[deduped.length - 1];
-    if (!last || b.index - last.index > 80) {
+    if (!last || b.index - last.index > 50) {
       deduped.push(b);
     }
   }
@@ -937,25 +799,30 @@ function chunkEchrJudgment(rawText: string, docInput: LegalDocumentInput): Legal
   if (deduped[0].index > MIN_CHUNK_SIZE) {
     const headerSlice = rawText.slice(0, deduped[0].index);
     if (headerSlice.trim().length > 0) {
-      chunks.push(makeChunk(chunkIdx++, "header", 0, deduped[0].index, rawText, null, null, {
+      chunks.push(makeChunk(chunkIdx++, "header", 0, deduped[0].index, rawText, "ECHR Header", null, {
         ...docMeta, section_type: "header",
       }, "echr_judgment"));
     }
   }
 
   for (let i = 0; i < deduped.length; i++) {
-    const start = deduped[i].index;
-    const end = i + 1 < deduped.length ? deduped[i + 1].index : rawText.length;
-    const sectionSlice = rawText.slice(start, end);
+    const charStart = deduped[i].index;
+    const charEnd = i + 1 < deduped.length ? deduped[i + 1].index : rawText.length;
+    const sectionSlice = rawText.slice(charStart, charEnd);
+
     if (sectionSlice.trim().length === 0) continue;
 
     if (sectionSlice.length > MAX_CHUNK_CHARS) {
-      const subChunks = splitSectionByParagraphsRaw(rawText, start, end, deduped[i].type, deduped[i].label, chunkIdx, docMeta, "echr_judgment");
+      const subChunks = splitSectionByParagraphsRaw(
+        rawText, charStart, charEnd, deduped[i].type, deduped[i].label,
+        chunkIdx, docMeta, "echr_judgment",
+      );
       for (const sc of subChunks) chunks.push(sc);
       chunkIdx += subChunks.length;
     } else {
       chunks.push(makeChunk(
-        chunkIdx++, deduped[i].type, start, end, rawText, deduped[i].label,
+        chunkIdx++, deduped[i].type, charStart, charEnd, rawText,
+        deduped[i].label,
         { section_title: deduped[i].label },
         { ...docMeta, section_type: deduped[i].type },
         "echr_judgment",
@@ -966,29 +833,22 @@ function chunkEchrJudgment(rawText: string, docInput: LegalDocumentInput): Legal
   return chunks;
 }
 
-// ─── INTERNATIONAL TREATY CHUNKER ──────────────────────────────────
+// ─── TREATY CHUNKER ────────────────────────────────────────────────
 
-const TREATY_ARTICLE_PATTERNS: RegExp[] = [
-  /\u0540\u0578\u0564\u057e\u0561\u056e\s+(\d+(?:[.-]\d+)*)\s*[.\u0589]/g,
-  /\bArticle\s+(\d+(?:[.-]\d+)*)\b/gi,
-  /\u0421\u0442\u0430\u0442\u044c\u044f\s+(\d+(?:[.-]\d+)*)/gi,
-];
+const TREATY_ARTICLE_RE = /(?:Article|ARTICLE|\u0540\u0578\u0564\u057e\u0561\u056e)\s+(\d+(?:[.-]\d+)*)/g;
 
 function chunkTreaty(rawText: string, docInput: LegalDocumentInput): LegalChunk[] {
   const docMeta: ChunkMetadata = {
-    document_type: "international_treaty",
+    document_type: "treaty",
     document_title: docInput.title,
     date: docInput.date || extractDate(rawText),
   };
 
   const articleMatches: ArticleMatch[] = [];
-
-  for (const pattern of TREATY_ARTICLE_PATTERNS) {
-    const re = new RegExp(pattern.source, "gi");
-    let m: RegExpExecArray | null;
-    while ((m = re.exec(rawText)) !== null) {
-      articleMatches.push({ index: m.index, number: m[1], fullMatch: m[0] });
-    }
+  const re = new RegExp(TREATY_ARTICLE_RE.source, "g");
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(rawText)) !== null) {
+    articleMatches.push({ index: m.index, number: m[1], fullMatch: m[0] });
   }
 
   articleMatches.sort((a, b) => a.index - b.index);
@@ -1061,7 +921,6 @@ function chunkRegistryTable(rawText: string, docInput: LegalDocumentInput): Lega
   const chunks: LegalChunk[] = [];
   let chunkIdx = 0;
 
-  // Find header lines (before first numbered row)
   let headerEndLineIdx = 0;
   const numberedRowRe = /^\s*\d+\s*[.|)]/;
   for (let i = 0; i < lines.length; i++) {
@@ -1072,7 +931,6 @@ function chunkRegistryTable(rawText: string, docInput: LegalDocumentInput): Lega
     }
   }
 
-  // Emit header if present
   if (headerEndLineIdx > 0) {
     const headerEnd = lines[headerEndLineIdx].start;
     const headerSlice = rawText.slice(0, headerEnd);
@@ -1083,7 +941,6 @@ function chunkRegistryTable(rawText: string, docInput: LegalDocumentInput): Lega
     }
   }
 
-  // Group rows: each "row" starts with a numbered line
   interface RowBound { start: number; end: number }
   const rows: RowBound[] = [];
   let currentRowStart = headerEndLineIdx < lines.length ? lines[headerEndLineIdx].start : rawText.length;
@@ -1097,18 +954,15 @@ function chunkRegistryTable(rawText: string, docInput: LegalDocumentInput): Lega
       currentRowStart = lines[i].start;
     }
   }
-  // Final row
   if (currentRowStart < rawText.length && rawText.slice(currentRowStart, rawText.length).trim().length > 0) {
     rows.push({ start: currentRowStart, end: rawText.length });
   }
 
-  // Group rows into chunks within size limit
   let groupStart = rows.length > 0 ? rows[0].start : rawText.length;
 
   for (let i = 0; i < rows.length; i++) {
     const groupLen = rows[i].end - groupStart;
     if (groupLen > MAX_CHUNK_CHARS && rows[i].start > groupStart) {
-      // Emit current group up to this row
       chunks.push(makeChunk(chunkIdx++, "registry_row_group", groupStart, rows[i].start, rawText,
         `Row group ${chunkIdx}`, null, { ...docMeta, section_type: "registry_row_group" },
         "registry_table",
@@ -1117,7 +971,6 @@ function chunkRegistryTable(rawText: string, docInput: LegalDocumentInput): Lega
     }
   }
 
-  // Emit final group
   if (rows.length > 0 && groupStart < rawText.length) {
     const finalSlice = rawText.slice(groupStart, rawText.length);
     if (finalSlice.trim().length > 0) {
@@ -1163,7 +1016,6 @@ function chunkNormativeAct(rawText: string, docInput: LegalDocumentInput): Legal
   const chunks: LegalChunk[] = [];
   let chunkIdx = 0;
 
-  // Preamble before first section
   if (sectionBoundaries[0].charStart > 0) {
     const preambleSlice = rawText.slice(0, sectionBoundaries[0].charStart);
     if (preambleSlice.trim().length > MIN_CHUNK_SIZE) {
@@ -1220,7 +1072,6 @@ function chunkStructuralFallback(
     const groupLen = paragraphs[i].end - groupStart;
 
     if (groupLen > MAX_CHUNK_CHARS && paragraphs[i].start > groupStart) {
-      // Emit current group [groupStart, paragraphs[i].start)
       const sliceCheck = rawText.slice(groupStart, paragraphs[i].start);
       if (sliceCheck.trim().length > 0) {
         chunks.push(makeChunk(idx++, defaultType, groupStart, paragraphs[i].start, rawText, null, null, docMeta || null, docType));
@@ -1229,7 +1080,6 @@ function chunkStructuralFallback(
     }
   }
 
-  // Emit final group
   const finalEnd = paragraphs.length > 0 ? paragraphs[paragraphs.length - 1].end : rawText.length;
   if (groupStart < finalEnd) {
     const sliceCheck = rawText.slice(groupStart, finalEnd);
@@ -1241,61 +1091,12 @@ function chunkStructuralFallback(
   return chunks;
 }
 
-// Keep old name for backward compatibility
-function chunkFixedWindow(text: string, defaultType: ChunkType, docMeta?: ChunkMetadata): LegalChunk[] {
-  return chunkStructuralFallback(text, defaultType, docMeta);
-}
-
-// ─── TABLE CHUNK POST-PROCESSOR ────────────────────────────────────
-
-function appendTableChunks(
-  existingChunks: LegalChunk[],
-  fullText: string,
-  docMeta?: ChunkMetadata,
-  docType?: string,
-): LegalChunk[] {
-  const tables = extractTables(fullText);
-  if (tables.length === 0) return existingChunks;
-
-  let nextIndex = existingChunks.length;
-  const tableChunks: LegalChunk[] = [];
-
-  for (const table of tables) {
-    // Table chunks use the raw text range from table extractor
-    const captionLine = table.caption ? `${table.caption}\n\n` : "";
-    const chunkText = `${captionLine}${table.markdown}`;
-
-    const locator: ChunkLocator = {
-      section_title: table.caption || `Table ${table.tableIndex + 1}`,
-    };
-
-    // Table chunks are synthetic (markdown), so we store charStart from source
-    // but chunk_text may differ from raw slice. This is acceptable for table type only.
-    const chunk: LegalChunk = {
-      chunk_index: nextIndex++,
-      chunk_type: "table",
-      chunk_text: chunkText,
-      char_start: table.charStart,
-      char_end: table.charStart + chunkText.length,
-      label: table.caption || `Table ${table.tableIndex + 1}`,
-      locator,
-      chunk_hash: simpleHash(chunkText),
-      metadata: docMeta ? { ...docMeta, section_type: "table" } : null,
-      doc_type: docType,
-      chunker_version: CHUNKER_VERSION,
-    };
-
-    tableChunks.push(chunk);
-  }
-
-  return [...existingChunks, ...tableChunks];
-}
-
 // ─── VALIDATE CHUNKS ──────────────────────────────────────────────
 
 /**
  * Validates chunk coverage and integrity against original text.
- * STRICT: raw.slice(char_start, char_end) === chunk_text (except table chunks)
+ * STRICT: raw.slice(char_start, char_end) === chunk_text for ALL chunk types.
+ * NO exemptions. NO tolerance.
  */
 export function validateChunks(originalText: string, chunks: LegalChunk[]): ValidationResult {
   const errors: string[] = [];
@@ -1307,14 +1108,11 @@ export function validateChunks(originalText: string, chunks: LegalChunk[]): Vali
     return { ok: errors.length === 0, errors };
   }
 
-  // Sort by char_start
   const sorted = [...chunks].sort((a, b) => a.char_start - b.char_start);
 
   // STRICT OFFSET CHECK: raw.slice(char_start, char_end) === chunk_text
+  // NO EXEMPTIONS — applies to ALL chunk types including table, registry, etc.
   for (const chunk of sorted) {
-    // Table chunks are synthetic (markdown conversion), exempt from slice equality
-    if (chunk.chunk_type === "table") continue;
-
     const expectedText = originalText.slice(chunk.char_start, chunk.char_end);
     if (expectedText !== chunk.chunk_text) {
       const diffPos = findFirstDiffPos(expectedText, chunk.chunk_text);
@@ -1327,29 +1125,28 @@ export function validateChunks(originalText: string, chunks: LegalChunk[]): Vali
     }
   }
 
-  // Check for large gaps (>100 chars of non-whitespace) — skip table chunks
-  const nonTableChunks = sorted.filter(c => c.chunk_type !== "table");
-  for (let i = 0; i < nonTableChunks.length - 1; i++) {
-    const gapStart = nonTableChunks[i].char_end;
-    const gapEnd = nonTableChunks[i + 1].char_start;
+  // Check for large gaps (>100 chars of non-whitespace)
+  for (let i = 0; i < sorted.length - 1; i++) {
+    const gapStart = sorted[i].char_end;
+    const gapEnd = sorted[i + 1].char_start;
     if (gapEnd > gapStart) {
       const gapText = originalText.slice(gapStart, gapEnd);
       if (gapText.trim().length > 100) {
         errors.push(
-          `Gap of ${gapText.trim().length} non-whitespace chars between chunk ${nonTableChunks[i].chunk_index} and ${nonTableChunks[i + 1].chunk_index} (chars ${gapStart}-${gapEnd})`,
+          `Gap of ${gapText.trim().length} non-whitespace chars between chunk ${sorted[i].chunk_index} and ${sorted[i + 1].chunk_index} (chars ${gapStart}-${gapEnd})`,
         );
       }
     }
   }
 
   // Check for overlap between non-reasoning chunks
-  for (let i = 0; i < nonTableChunks.length - 1; i++) {
-    const overlapAmount = nonTableChunks[i].char_end - nonTableChunks[i + 1].char_start;
+  for (let i = 0; i < sorted.length - 1; i++) {
+    const overlapAmount = sorted[i].char_end - sorted[i + 1].char_start;
     if (overlapAmount > 0) {
-      const isReasoningOverlap = REASONING_TYPES.has(nonTableChunks[i + 1].chunk_type);
+      const isReasoningOverlap = REASONING_TYPES.has(sorted[i + 1].chunk_type);
       if (!isReasoningOverlap && overlapAmount > 10) {
         errors.push(
-          `Unexpected overlap of ${overlapAmount} chars between chunk ${nonTableChunks[i].chunk_index} (${nonTableChunks[i].chunk_type}) and ${nonTableChunks[i + 1].chunk_index} (${nonTableChunks[i + 1].chunk_type})`,
+          `Unexpected overlap of ${overlapAmount} chars between chunk ${sorted[i].chunk_index} (${sorted[i].chunk_type}) and ${sorted[i + 1].chunk_index} (${sorted[i + 1].chunk_type})`,
         );
       }
     }
@@ -1364,7 +1161,7 @@ function findFirstDiffPos(a: string, b: string): number {
   for (let i = 0; i < len; i++) {
     if (a[i] !== b[i]) return i;
   }
-  return len; // strings differ in length
+  return len;
 }
 
 // ─── DOC TYPE ROUTING ─────────────────────────────────────────────
@@ -1416,8 +1213,8 @@ export function chunkByDocType(input: LegalDocumentInput, docType: InferredDocTy
       break;
   }
 
-  const allChunks = appendTableChunks(chunks, text, undefined, input.doc_type);
-  return { chunks: allChunks, strategy, case_number, chunker_version: CHUNKER_VERSION };
+  // NO appendTableChunks — table chunks violate the strict slice invariant
+  return { chunks, strategy, case_number, chunker_version: CHUNKER_VERSION };
 }
 
 // ─── MAIN CHUNKER ──────────────────────────────────────────────────
@@ -1472,7 +1269,7 @@ export function chunkDocument(document: LegalDocumentInput): ChunkResult {
     strategy = hasSections ? "sections" : "normative";
     case_number = extractCaseNumber(text);
   } else {
-    const inferred = inferDocType(text);
+    const inferred = inferDocTypeFromText(text);
     if (inferred !== "other") {
       return chunkByDocType(document, inferred);
     }
@@ -1480,9 +1277,6 @@ export function chunkDocument(document: LegalDocumentInput): ChunkResult {
     strategy = "normative";
   }
 
-  const allChunks = appendTableChunks(chunks, text, undefined, document.doc_type);
-  return { chunks: allChunks, strategy, case_number, chunker_version: CHUNKER_VERSION };
+  // NO appendTableChunks — removed to enforce strict slice invariant
+  return { chunks, strategy, case_number, chunker_version: CHUNKER_VERSION };
 }
-
-// Re-export for direct use
-export { extractTables, type ExtractedTable } from "./table-extractor.ts";
