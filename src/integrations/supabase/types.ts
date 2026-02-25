@@ -2150,6 +2150,7 @@ export type Database = {
         Args: { p_data: string; p_key?: string }
         Returns: string
       }
+      get_cron_key: { Args: never; Returns: string }
       get_kb_chunk: {
         Args: { chunk_idx: number; doc_id: string }
         Returns: {
@@ -2194,6 +2195,7 @@ export type Database = {
         Returns: boolean
       }
       immutable_unaccent: { Args: { "": string }; Returns: string }
+      invoke_chunk_worker: { Args: never; Returns: undefined }
       is_team_leader: {
         Args: { _team_id: string; _user_id: string }
         Returns: boolean
