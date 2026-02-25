@@ -140,7 +140,6 @@ async function processJob(
       char_end: c.char_end,
       label: c.label,
       is_active: true,
-      embedding_status: "pending",
     }));
 
     // Insert in batches of 100 to avoid payload limits
@@ -164,7 +163,6 @@ async function processJob(
       chunk_hash: c.chunk_hash,
       chunk_type: c.chunk_type || "other",
       title: c.label,
-      embedding_status: "pending",
     }));
 
     for (let i = 0; i < rows.length; i += 100) {
