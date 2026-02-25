@@ -10,7 +10,7 @@ import { handleCors, checkInternalAuth, checkInputSize } from "../_shared/edge-s
 import { chunkDocument } from "../_shared/chunker.ts";
 
 // Re-export for tests
-export { chunkDocument } from "../_shared/chunker.ts";
+export { chunkDocument, extractCaseNumber } from "../_shared/chunker.ts";
 
 serve(async (req) => {
   const cors = handleCors(req);

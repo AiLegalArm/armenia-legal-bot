@@ -27,7 +27,7 @@
 
 // ─── VERSION ────────────────────────────────────────────────────────
 
-export const CHUNKER_VERSION = "v2.3.0";
+export const CHUNKER_VERSION = "v2.4.0";
 
 // ─── TYPES ──────────────────────────────────────────────────────────
 
@@ -135,6 +135,11 @@ const MAX_ARTICLE_CHARS = MAX_CHUNK_CHARS;
 // Overlap: 10% for reasoning sections only
 const REASONING_OVERLAP_RATIO = 0.10;
 
+// Per-type caps (guardrails)
+const CAP_LAW_CHUNKS_PER_FILE = 2500;
+const CAP_DECISION_CHUNKS_PER_FILE = 40;
+const CAP_ECHR_CHUNKS_PER_FILE = 70;
+
 // ─── REGEX PATTERNS (Unicode-escaped Armenian) ──────────────────────
 
 const ARTICLE_HEADER_RE = /\u0540\u0578\u0564\u057e\u0561\u056e\s+(\d+(?:[.-]\d+)*)\s*[.\u0589]/g;
@@ -152,6 +157,10 @@ const CASE_NUMBER_PATTERNS: RegExp[] = [
   /\u0434\u0435\u043b[\u043e\u0443]\s*(?:\u2116|N|No\.?)\s*([A-Z\u0410-\u042f\d][\d\-\/A-Z\u0410-\u042f]+)/i,
   // ECHR application number: "no. 12345/20" or "(no. 12345/20)"
   /\bno\.\s*(\d{3,6}\/\d{2,4})\b/i,
+  // ECHR: "nos. 12345/20 and 54321/21" — capture first number
+  /\bnos\.\s*(\d{3,6}\/\d{2,4})\s+and\b/i,
+  // ECHR: "Application no. 12345/20"
+  /\bApplication\s+no\.\s*(\d{3,6}\/\d{2,4})\b/i,
 ];
 
 export function extractCaseNumber(text: string): string | undefined {
@@ -1106,6 +1115,228 @@ function chunkStructuralFallback(
   return chunks;
 }
 
+// ─── SAFE-BREAK SPLITTING (hard cap enforcement) ──────────────────
+
+/**
+ * Split text that exceeds MAX_CHUNK_CHARS at the safest available break.
+ * Breakpoint priority: structural marker > double newline > sentence > whitespace.
+ */
+function splitAtSafeBreak(
+  rawText: string,
+  start: number,
+  end: number,
+  chunkType: ChunkType,
+  startIdx: number,
+  label: string | null,
+  locator: ChunkLocator | null,
+  meta: ChunkMetadata | null,
+  docType?: string,
+): LegalChunk[] {
+  const len = end - start;
+  if (len <= MAX_CHUNK_CHARS) {
+    return [makeChunk(startIdx, chunkType, start, end, rawText, label, locator, meta, docType)];
+  }
+
+  const chunks: LegalChunk[] = [];
+  let pos = start;
+  let idx = startIdx;
+
+  while (pos < end) {
+    const remaining = end - pos;
+    if (remaining <= MAX_CHUNK_CHARS) {
+      chunks.push(makeChunk(idx++, chunkType, pos, end, rawText, label, locator, meta, docType));
+      break;
+    }
+
+    const searchEnd = Math.min(pos + MAX_CHUNK_CHARS, end);
+    const slice = rawText.slice(pos, searchEnd);
+
+    // Try double newline
+    let bp = -1;
+    const dnl = slice.lastIndexOf("\n\n");
+    if (dnl > MIN_CHUNK_CHARS) bp = dnl;
+
+    // Try sentence boundary
+    if (bp === -1) {
+      const sentRe = /[.!?\u0589]\s/g;
+      let lastSent = -1;
+      let sm: RegExpExecArray | null;
+      while ((sm = sentRe.exec(slice)) !== null) {
+        if (sm.index > MIN_CHUNK_CHARS && sm.index + sm[0].length <= MAX_CHUNK_CHARS) {
+          lastSent = sm.index + sm[0].length;
+        }
+      }
+      if (lastSent > MIN_CHUNK_CHARS) bp = lastSent;
+    }
+
+    // Try whitespace
+    if (bp === -1) {
+      const wsIdx = slice.lastIndexOf(" ", MAX_CHUNK_CHARS);
+      if (wsIdx > MIN_CHUNK_CHARS) bp = wsIdx + 1;
+    }
+
+    // Absolute fallback
+    if (bp === -1) bp = MAX_CHUNK_CHARS;
+
+    chunks.push(makeChunk(idx++, chunkType, pos, pos + bp, rawText, label, locator, meta, docType));
+    pos += bp;
+  }
+
+  return chunks;
+}
+
+// ─── MIN MERGE POLICY ─────────────────────────────────────────────
+
+/**
+ * Merge undersized chunks (<MIN_CHUNK_CHARS) with neighbors within same parent.
+ * Parent identity = same chunk_type (for sections) or same article_number (for articles).
+ * Never merge across different parents. Never exceed MAX_CHUNK_CHARS.
+ */
+function mergeUndersizedChunks(chunks: LegalChunk[], rawText: string): LegalChunk[] {
+  if (chunks.length <= 1) return chunks;
+
+  const result: LegalChunk[] = [];
+
+  for (let i = 0; i < chunks.length; i++) {
+    const chunk = chunks[i];
+
+    if (chunk.chunk_text.length >= MIN_CHUNK_CHARS) {
+      result.push(chunk);
+      continue;
+    }
+
+    // Try merge with previous
+    if (result.length > 0) {
+      const prev = result[result.length - 1];
+      if (
+        sameParent(prev, chunk) &&
+        (prev.char_end - prev.char_start) + (chunk.char_end - chunk.char_start) <= MAX_CHUNK_CHARS
+      ) {
+        // Merge: extend previous chunk to cover this one
+        const mergedEnd = chunk.char_end;
+        const merged = makeChunk(
+          prev.chunk_index, prev.chunk_type, prev.char_start, mergedEnd, rawText,
+          prev.label, prev.locator, prev.metadata, prev.doc_type,
+        );
+        result[result.length - 1] = merged;
+        continue;
+      }
+    }
+
+    // Try merge with next
+    if (i + 1 < chunks.length) {
+      const next = chunks[i + 1];
+      if (
+        sameParent(chunk, next) &&
+        (chunk.char_end - chunk.char_start) + (next.char_end - next.char_start) <= MAX_CHUNK_CHARS
+      ) {
+        // Merge: create combined chunk and skip next
+        const merged = makeChunk(
+          chunk.chunk_index, next.chunk_type, chunk.char_start, next.char_end, rawText,
+          next.label, next.locator, next.metadata, next.doc_type,
+        );
+        result.push(merged);
+        i++; // skip next
+        continue;
+      }
+    }
+
+    // Keep small chunk (log warning would go here)
+    result.push(chunk);
+  }
+
+  // Re-index
+  for (let i = 0; i < result.length; i++) {
+    result[i].chunk_index = i;
+  }
+
+  return result;
+}
+
+function sameParent(a: LegalChunk, b: LegalChunk): boolean {
+  // Same article number
+  if (a.metadata?.article_number && b.metadata?.article_number) {
+    return a.metadata.article_number === b.metadata.article_number;
+  }
+  // Same section type for court decisions
+  if (a.metadata?.section_type && b.metadata?.section_type) {
+    return a.metadata.section_type === b.metadata.section_type;
+  }
+  // Same chunk_type as fallback
+  return a.chunk_type === b.chunk_type;
+}
+
+// ─── PER-TYPE CAP ENFORCEMENT ─────────────────────────────────────
+
+function enforceChunkCap(chunks: LegalChunk[], cap: number, rawText: string): LegalChunk[] {
+  if (chunks.length <= cap) return chunks;
+
+  // Coarsen by merging adjacent same-parent chunks until under cap
+  let result = [...chunks];
+  while (result.length > cap) {
+    let merged = false;
+    for (let i = result.length - 2; i >= 0; i--) {
+      const a = result[i];
+      const b = result[i + 1];
+      if (sameParent(a, b)) {
+        const mergedLen = b.char_end - a.char_start;
+        if (mergedLen <= MAX_CHUNK_CHARS) {
+          const m = makeChunk(
+            a.chunk_index, a.chunk_type, a.char_start, b.char_end, rawText,
+            a.label, a.locator, a.metadata, a.doc_type,
+          );
+          result.splice(i, 2, m);
+          merged = true;
+          break;
+        }
+      }
+    }
+    if (!merged) break; // Can't merge further without exceeding MAX
+  }
+
+  // Re-index
+  for (let i = 0; i < result.length; i++) {
+    result[i].chunk_index = i;
+  }
+  return result;
+}
+
+// ─── HARD CAP ENFORCEMENT (ensure no chunk > MAX) ─────────────────
+
+function enforceHardCap(chunks: LegalChunk[], rawText: string): LegalChunk[] {
+  const result: LegalChunk[] = [];
+  let idx = 0;
+  for (const chunk of chunks) {
+    if (chunk.chunk_text.length > MAX_CHUNK_CHARS) {
+      const split = splitAtSafeBreak(
+        rawText, chunk.char_start, chunk.char_end, chunk.chunk_type,
+        idx, chunk.label, chunk.locator, chunk.metadata, chunk.doc_type,
+      );
+      for (const s of split) {
+        s.chunk_index = idx++;
+        result.push(s);
+      }
+    } else {
+      chunk.chunk_index = idx++;
+      result.push(chunk);
+    }
+  }
+  return result;
+}
+
+// ─── POST-PROCESS PIPELINE ────────────────────────────────────────
+
+function postProcessChunks(
+  chunks: LegalChunk[],
+  rawText: string,
+  cap: number,
+): LegalChunk[] {
+  let result = enforceHardCap(chunks, rawText);
+  result = mergeUndersizedChunks(result, rawText);
+  result = enforceChunkCap(result, cap, rawText);
+  return result;
+}
+
 // ─── VALIDATE CHUNKS ──────────────────────────────────────────────
 
 /**
@@ -1195,6 +1426,7 @@ export function chunkByDocType(input: LegalDocumentInput, docType: InferredDocTy
     case "code_or_law":
       chunks = chunkLegislation(text, input);
       strategy = chunks.some(c => c.chunk_type === "article") ? "article" : "normative";
+      chunks = postProcessChunks(chunks, text, CAP_LAW_CHUNKS_PER_FILE);
       break;
 
     case "court_decision":
@@ -1205,26 +1437,31 @@ export function chunkByDocType(input: LegalDocumentInput, docType: InferredDocTy
         ].includes(c.chunk_type)
       ) ? "sections" : "normative";
       case_number = extractCaseNumber(text);
+      chunks = postProcessChunks(chunks, text, CAP_DECISION_CHUNKS_PER_FILE);
       break;
 
     case "treaty":
       chunks = chunkTreaty(text, input);
       strategy = chunks.some(c => c.chunk_type === "treaty_article") ? "treaty" : "normative";
+      chunks = postProcessChunks(chunks, text, CAP_LAW_CHUNKS_PER_FILE);
       break;
 
     case "registry_table":
       chunks = chunkRegistryTable(text, input);
       strategy = "registry";
+      chunks = postProcessChunks(chunks, text, CAP_LAW_CHUNKS_PER_FILE);
       break;
 
     case "normative_act":
       chunks = chunkNormativeAct(text, input);
       strategy = "normative";
+      chunks = postProcessChunks(chunks, text, CAP_LAW_CHUNKS_PER_FILE);
       break;
 
     default:
       chunks = chunkStructuralFallback(text, "full_text", undefined, input.doc_type);
       strategy = "fixed";
+      chunks = postProcessChunks(chunks, text, CAP_LAW_CHUNKS_PER_FILE);
       break;
   }
 
@@ -1268,12 +1505,15 @@ export function chunkDocument(document: LegalDocumentInput): ChunkResult {
     );
     strategy = hasSections ? "echr" : "normative";
     case_number = chunks[0]?.metadata?.case_number || undefined;
+    chunks = postProcessChunks(chunks, text, CAP_ECHR_CHUNKS_PER_FILE);
   } else if (TREATY_DOC_TYPES.has(document.doc_type)) {
     chunks = chunkTreaty(text, document);
     strategy = chunks.some(c => c.chunk_type === "treaty_article") ? "treaty" : "normative";
+    chunks = postProcessChunks(chunks, text, CAP_LAW_CHUNKS_PER_FILE);
   } else if (LEGISLATION_DOC_TYPES.has(document.doc_type)) {
     chunks = chunkLegislation(text, document);
     strategy = chunks.some(c => c.chunk_type === "article") ? "article" : "normative";
+    chunks = postProcessChunks(chunks, text, CAP_LAW_CHUNKS_PER_FILE);
   } else if (COURT_DOC_TYPES.has(document.doc_type)) {
     chunks = chunkCourtDecision(text, document);
     const hasSections = chunks.some(c =>
@@ -1283,6 +1523,7 @@ export function chunkDocument(document: LegalDocumentInput): ChunkResult {
     );
     strategy = hasSections ? "sections" : "normative";
     case_number = extractCaseNumber(text);
+    chunks = postProcessChunks(chunks, text, CAP_DECISION_CHUNKS_PER_FILE);
   } else {
     const inferred = inferDocTypeFromText(text);
     if (inferred !== "other") {
@@ -1290,6 +1531,7 @@ export function chunkDocument(document: LegalDocumentInput): ChunkResult {
     }
     chunks = chunkNormativeAct(text, document);
     strategy = "normative";
+    chunks = postProcessChunks(chunks, text, CAP_LAW_CHUNKS_PER_FILE);
   }
 
   // NO appendTableChunks — removed to enforce strict slice invariant

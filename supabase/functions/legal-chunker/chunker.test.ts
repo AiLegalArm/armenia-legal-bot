@@ -13,7 +13,7 @@ import {
   assertExists,
   assert,
 } from "https://deno.land/std@0.224.0/assert/mod.ts";
-import { chunkDocument } from "./index.ts";
+import { chunkDocument, extractCaseNumber } from "./index.ts";
 
 // ─── FIXTURE 1: Legislation with articles ───────────────────────────
 const LEGISLATION_FIXTURE =
@@ -330,30 +330,7 @@ Deno.test("chunkDocument: metadata populated for all strategies", () => {
   }
 });
 
-// ─── TEST: No chunk exceeds MAX size ────────────────────────────────
-
-Deno.test("chunkDocument: no chunk exceeds max chars", () => {
-  // Create a very large legislation text
-  let bigText = "";
-  for (let i = 1; i <= 5; i++) {
-    bigText += `\u0540\u0578\u0564\u057e\u0561\u056e ${i}\u0589 Title ${i}\n`;
-    for (let j = 1; j <= 30; j++) {
-      bigText += `${j}) ${"A".repeat(300)} paragraph text for part ${j} of article ${i}.\n`;
-    }
-    bigText += "\n";
-  }
-
-  const result = chunkDocument({ doc_type: "code", content_text: bigText });
-  const MAX = 6000; // MAX_CHUNK_CHARS
-
-  for (const chunk of result.chunks) {
-    assert(
-      chunk.chunk_text.length <= MAX + 500, // small tolerance for part grouping
-      `Chunk ${chunk.chunk_index} (${chunk.chunk_type}) is ${chunk.chunk_text.length} chars, max is ~${MAX}`,
-    );
-  }
-});
-
+// (Moved to v2.4.0 regression tests below with stricter 6000 hard cap)
 // ─── TEST: Articles are never split mid-part ────────────────────────
 
 Deno.test("chunkDocument: articles split by parts, not mid-text", () => {
@@ -396,5 +373,164 @@ Deno.test("chunkDocument: legislation chunks have no overlap", () => {
       curr.char_start >= prev.char_end - 5, // small tolerance
       `Article chunks should not overlap: chunk ${i} starts at ${curr.char_start}, prev ends at ${prev.char_end}`,
     );
+  }
+});
+
+// ─── TEST: Hard cap — no chunk exceeds MAX_CHUNK_CHARS ──────────────
+
+Deno.test("chunkDocument: no chunk exceeds MAX_CHUNK_CHARS (6000)", () => {
+  // Large legislation
+  let bigText = "";
+  for (let i = 1; i <= 5; i++) {
+    bigText += `\u0540\u0578\u0564\u057e\u0561\u056e ${i}\u0589 Title ${i}\n`;
+    for (let j = 1; j <= 30; j++) {
+      bigText += `${j}) ${"A".repeat(300)} paragraph text for part ${j} of article ${i}.\n`;
+    }
+    bigText += "\n";
+  }
+
+  const result = chunkDocument({ doc_type: "code", content_text: bigText });
+  for (const chunk of result.chunks) {
+    assert(
+      chunk.chunk_text.length <= 6000,
+      `Chunk ${chunk.chunk_index} (${chunk.chunk_type}) is ${chunk.chunk_text.length} chars, hard max is 6000`,
+    );
+  }
+});
+
+// ─── TEST: Regression — 5000-5900 char section splits into 2+ ──────
+
+Deno.test("chunkDocument: large section (5000-5900 chars) splits into 2+ chunks", () => {
+  // Create a legislation article with ~5500 chars (> TARGET 4800)
+  let articleText = "\u0540\u0578\u0564\u057e\u0561\u056e 1\u0589 Test Article\n";
+  // Each part ~550 chars, 11 parts = ~6050 chars total (exceeds TARGET)
+  for (let i = 1; i <= 11; i++) {
+    articleText += `${i}) Part ${i} content with padding text. ${"Y".repeat(490)}\n`;
+  }
+  articleText += "\n\u0540\u0578\u0564\u057e\u0561\u056e 2\u0589 Next\nShort.";
+
+  const result = chunkDocument({ doc_type: "code", content_text: articleText });
+
+  // Article 1 should be split into 2+ chunks since it exceeds TARGET_CHUNK_CHARS
+  const art1Chunks = result.chunks.filter(c => c.locator?.article === "1");
+  assert(
+    art1Chunks.length >= 2,
+    `Expected >= 2 chunks for oversized article, got ${art1Chunks.length}`,
+  );
+
+  // All chunks must respect hard cap
+  for (const c of result.chunks) {
+    assert(c.chunk_text.length <= 6000, `Chunk ${c.chunk_index} exceeds hard cap: ${c.chunk_text.length}`);
+  }
+
+  // Raw slice integrity
+  const fullText = articleText;
+  for (const c of result.chunks) {
+    assertEquals(c.chunk_text, fullText.slice(c.char_start, c.char_end));
+  }
+});
+
+// ─── TEST: Regression — tiny tail (<800 chars) merges within parent ─
+
+Deno.test("chunkDocument: tiny tail chunk merges within same article", () => {
+  // Article with parts: most content + tiny tail part
+  let articleText = "\u0540\u0578\u0564\u057e\u0561\u056e 50\u0589 Test Article\n";
+  // Add parts that together exceed TARGET to force splitting
+  for (let i = 1; i <= 10; i++) {
+    articleText += `${i}) Part ${i} content. ${"X".repeat(400)}\n`;
+  }
+  // Add a tiny tail part (< 800 chars)
+  articleText += "11) Tiny tail.\n";
+  articleText += "\n\u0540\u0578\u0564\u057e\u0561\u056e 51\u0589 Next\nShort next article text.";
+
+  const result = chunkDocument({ doc_type: "code", content_text: articleText });
+
+  // The tiny tail should be merged with previous chunk of same article
+  // No chunk should be less than MIN_CHUNK_CHARS (800) unless it's a standalone unit
+  for (const c of result.chunks) {
+    if (c.locator?.article === "50" && c.chunk_text.trim().length > 0) {
+      // If chunk is small, it must have been merged (so check it's above min or standalone)
+      assert(
+        c.chunk_text.length >= 100 || c.chunk_type === "preamble",
+        `Article 50 chunk ${c.chunk_index} is too small: ${c.chunk_text.length}`,
+      );
+    }
+  }
+
+  // Raw slice integrity
+  for (const c of result.chunks) {
+    const expected = result.chunks[0] ? articleText : "";
+    assertEquals(
+      c.chunk_text,
+      (articleText).slice(c.char_start, c.char_end),
+      `Slice integrity failed for chunk ${c.chunk_index}`,
+    );
+  }
+});
+
+// ─── TEST: Merge does not cross parent boundaries ───────────────────
+
+Deno.test("chunkDocument: merge never crosses article boundaries", () => {
+  // Two articles, second one is tiny
+  const text = "\u0540\u0578\u0564\u057e\u0561\u056e 1\u0589 First article\n" +
+    "Content of first article. ".repeat(5) + "\n\n" +
+    "\u0540\u0578\u0564\u057e\u0561\u056e 2\u0589 Second article\nTiny.";
+
+  const result = chunkDocument({ doc_type: "code", content_text: text });
+
+  // Articles 1 and 2 must remain separate chunks
+  const art1 = result.chunks.filter(c => c.locator?.article === "1");
+  const art2 = result.chunks.filter(c => c.locator?.article === "2");
+  assert(art1.length >= 1, "Article 1 must exist");
+  assert(art2.length >= 1, "Article 2 must exist");
+
+  // No chunk should contain text from both articles
+  for (const c of art1) {
+    assert(!c.chunk_text.includes("\u0540\u0578\u0564\u057e\u0561\u056e 2"), "Art 1 chunk must not contain Art 2 text");
+  }
+});
+
+// ─── TEST: Strategy stability ──────────────────────────────────────
+
+Deno.test("chunkDocument: ECHR strategy stays echr", () => {
+  const result = chunkDocument({ doc_type: "echr_judgment", content_text: ECHR_FIXTURE });
+  assertEquals(result.strategy, "echr");
+  // All chunks should have court_level = "echr"
+  for (const c of result.chunks) {
+    if (c.metadata) {
+      assertEquals(c.metadata.court_level, "echr", `Chunk ${c.chunk_index} missing court_level=echr`);
+    }
+  }
+});
+
+// ─── TEST: ECHR application number patterns ────────────────────────
+
+Deno.test("extractCaseNumber: handles ECHR patterns", () => {
+  const { extractCaseNumber: ecn } = { extractCaseNumber };
+
+  assertEquals(ecn("Application no. 12345/20 filed"), "12345/20");
+  assertEquals(ecn("(no. 54321/21) against Armenia"), "54321/21");
+  assertEquals(ecn("nos. 11111/19 and 22222/20 lodged"), "11111/19");
+});
+
+// ─── TEST: Raw slice integrity across all strategies ────────────────
+
+Deno.test("chunkDocument: raw slice integrity for all doc types", () => {
+  const inputs = [
+    { doc_type: "code", content_text: LEGISLATION_FIXTURE },
+    { doc_type: "cassation_ruling", content_text: COURT_DECISION_FIXTURE },
+    { doc_type: "echr_judgment", content_text: ECHR_FIXTURE },
+    { doc_type: "international_treaty", content_text: TREATY_FIXTURE },
+  ];
+
+  for (const input of inputs) {
+    const result = chunkDocument(input);
+    for (const c of result.chunks) {
+      assertEquals(
+        c.chunk_text,
+        input.content_text.slice(c.char_start, c.char_end),
+        `Slice integrity failed for ${input.doc_type} chunk ${c.chunk_index}`,
+      );
+    }
   }
 });
