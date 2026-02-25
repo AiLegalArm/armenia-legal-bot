@@ -27,7 +27,7 @@
 
 // ─── VERSION ────────────────────────────────────────────────────────
 
-export const CHUNKER_VERSION = "v2.2.0";
+export const CHUNKER_VERSION = "v2.3.0";
 
 // ─── TYPES ──────────────────────────────────────────────────────────
 
@@ -114,8 +114,20 @@ export interface ValidationResult {
 // ─── CONSTANTS ──────────────────────────────────────────────────────
 
 const CHARS_PER_TOKEN = 4;
+
+// Hard limits (absolute boundaries)
 const MAX_TOKENS = 1500;
 const MAX_CHUNK_CHARS = MAX_TOKENS * CHARS_PER_TOKEN; // 6000
+
+// Target: 900–1200 tokens → use upper bound for split threshold
+const TARGET_TOKENS = 1200;
+const TARGET_CHUNK_CHARS = TARGET_TOKENS * CHARS_PER_TOKEN; // 4800
+
+// Hard min: 200 tokens = 800 chars
+const MIN_TOKENS = 200;
+const MIN_CHUNK_CHARS = MIN_TOKENS * CHARS_PER_TOKEN; // 800
+
+// Legacy alias (kept for backward compat in edge cases)
 const MIN_CHUNK_SIZE = 100;
 
 const MAX_ARTICLE_CHARS = MAX_CHUNK_CHARS;
@@ -138,6 +150,8 @@ const CASE_NUMBER_PATTERNS: RegExp[] = [
   /\u0563\u0578\u0580\u056e\s+\u0569\u056b\u057e[.:]?\s*([A-Z\u0531-\u0556]{1,5}[\-\/]\d[\d\-\/]+)/i,
   /\b([A-Z\u0531-\u0556]{2,5}[\-\/]\d{1,6}[\-\/]\d{2,4}(?:[\-\/]\d{2,4})?)\b/,
   /\u0434\u0435\u043b[\u043e\u0443]\s*(?:\u2116|N|No\.?)\s*([A-Z\u0410-\u042f\d][\d\-\/A-Z\u0410-\u042f]+)/i,
+  // ECHR application number: "no. 12345/20" or "(no. 12345/20)"
+  /\bno\.\s*(\d{3,6}\/\d{2,4})\b/i,
 ];
 
 export function extractCaseNumber(text: string): string | undefined {
@@ -428,7 +442,7 @@ function splitArticleByParts(
     const groupLen = groupEnd - groupStartOffset;
 
     const currentGroupLen = partStart - groupStartOffset;
-    if (currentGroupLen > 0 && groupLen > MAX_CHUNK_CHARS) {
+    if (currentGroupLen > 0 && groupLen > TARGET_CHUNK_CHARS) {
       const absStart = articleStart + groupStartOffset;
       const absEnd = articleStart + partStart;
       const partLabel = currentPartStart === currentPartEnd
@@ -503,7 +517,7 @@ function chunkLegislation(rawText: string, docInput: LegalDocumentInput): LegalC
 
     if (articleSlice.trim().length === 0) continue;
 
-    if (articleSlice.length > MAX_CHUNK_CHARS) {
+    if (articleSlice.length > TARGET_CHUNK_CHARS) {
       const subChunks = splitArticleByParts(rawText, start, end, articleNum, chunkIdx, docMeta, docInput.doc_type);
       for (const sc of subChunks) chunks.push(sc);
       chunkIdx += subChunks.length;
@@ -653,7 +667,7 @@ function chunkCourtDecision(rawText: string, docInput: LegalDocumentInput): Lega
     const sectionSlice = rawText.slice(charStart, charEnd);
     if (sectionSlice.trim().length === 0) continue;
 
-    if (sectionSlice.length > MAX_CHUNK_CHARS) {
+    if (sectionSlice.length > TARGET_CHUNK_CHARS) {
       const subChunks = splitSectionByParagraphsRaw(rawText, charStart, charEnd, sectionType, sectionLabel, chunkIdx, docMeta, docInput.doc_type);
       for (const sc of subChunks) chunks.push(sc);
       chunkIdx += subChunks.length;
@@ -696,7 +710,7 @@ function splitSectionByParagraphsRaw(
 
   for (let i = 1; i < breakPositions.length; i++) {
     const currentGroupLen = breakPositions[i] - groupStart;
-    if (currentGroupLen > MAX_CHUNK_CHARS && groupStart < breakPositions[i] - 1) {
+    if (currentGroupLen > TARGET_CHUNK_CHARS && groupStart < breakPositions[i] - 1) {
       const absStart = sectionStart + groupStart;
       const absEnd = sectionStart + breakPositions[i];
       const sliceCheck = rawText.slice(absStart, absEnd);
@@ -760,6 +774,7 @@ function chunkEchrJudgment(rawText: string, docInput: LegalDocumentInput): Legal
   const docMeta: ChunkMetadata = {
     document_type: "echr_judgment",
     document_title: docInput.title,
+    court_level: "echr",
     case_number: docInput.case_number || extractCaseNumber(rawText),
     date: docInput.date || extractDate(rawText),
   };
@@ -812,7 +827,7 @@ function chunkEchrJudgment(rawText: string, docInput: LegalDocumentInput): Legal
 
     if (sectionSlice.trim().length === 0) continue;
 
-    if (sectionSlice.length > MAX_CHUNK_CHARS) {
+    if (sectionSlice.length > TARGET_CHUNK_CHARS) {
       const subChunks = splitSectionByParagraphsRaw(
         rawText, charStart, charEnd, deduped[i].type, deduped[i].label,
         chunkIdx, docMeta, "echr_judgment",
@@ -884,7 +899,7 @@ function chunkTreaty(rawText: string, docInput: LegalDocumentInput): LegalChunk[
 
     if (articleSlice.trim().length === 0) continue;
 
-    if (articleSlice.length > MAX_CHUNK_CHARS) {
+    if (articleSlice.length > TARGET_CHUNK_CHARS) {
       const subChunks = splitArticleByParts(rawText, start, end, articleNum, chunkIdx, docMeta, "treaty");
       for (const sc of subChunks) {
         sc.chunk_type = "treaty_article";
@@ -962,7 +977,7 @@ function chunkRegistryTable(rawText: string, docInput: LegalDocumentInput): Lega
 
   for (let i = 0; i < rows.length; i++) {
     const groupLen = rows[i].end - groupStart;
-    if (groupLen > MAX_CHUNK_CHARS && rows[i].start > groupStart) {
+    if (groupLen > TARGET_CHUNK_CHARS && rows[i].start > groupStart) {
       chunks.push(makeChunk(chunkIdx++, "registry_row_group", groupStart, rows[i].start, rawText,
         `Row group ${chunkIdx}`, null, { ...docMeta, section_type: "registry_row_group" },
         "registry_table",
@@ -1034,7 +1049,7 @@ function chunkNormativeAct(rawText: string, docInput: LegalDocumentInput): Legal
 
     if (sectionSlice.trim().length === 0) continue;
 
-    if (sectionSlice.length > MAX_CHUNK_CHARS) {
+    if (sectionSlice.length > TARGET_CHUNK_CHARS) {
       const subChunks = splitSectionByParagraphsRaw(
         rawText, charStart, charEnd, "normative_section", sectionBoundaries[i].label,
         chunkIdx, docMeta, docInput.doc_type,
@@ -1071,7 +1086,7 @@ function chunkStructuralFallback(
   for (let i = 0; i < paragraphs.length; i++) {
     const groupLen = paragraphs[i].end - groupStart;
 
-    if (groupLen > MAX_CHUNK_CHARS && paragraphs[i].start > groupStart) {
+    if (groupLen > TARGET_CHUNK_CHARS && paragraphs[i].start > groupStart) {
       const sliceCheck = rawText.slice(groupStart, paragraphs[i].start);
       if (sliceCheck.trim().length > 0) {
         chunks.push(makeChunk(idx++, defaultType, groupStart, paragraphs[i].start, rawText, null, null, docMeta || null, docType));
