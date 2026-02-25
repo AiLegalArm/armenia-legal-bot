@@ -12,40 +12,15 @@
 
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.91.1";
-
-const corsHeaders = {
-  "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers":
-    "authorization, x-client-info, apikey, content-type, x-internal-key, " +
-    "x-supabase-client-platform, x-supabase-client-platform-version, " +
-    "x-supabase-client-runtime, x-supabase-client-runtime-version",
-  "Access-Control-Allow-Methods": "POST, OPTIONS",
-};
+import { handleCors, validateInternalRequest, buildInternalHeaders } from "../_shared/edge-security.ts";
 
 serve(async (req) => {
-  if (req.method === "OPTIONS") {
-    return new Response(null, { headers: corsHeaders });
-  }
+  const cors = handleCors(req);
+  if (cors.errorResponse) return cors.errorResponse;
+  const corsHeaders = cors.corsHeaders!;
 
-  // Auth: accept x-internal-key (INTERNAL_INGEST_KEY or CRON_WORKER_KEY)
-  const internalKey = req.headers.get("x-internal-key");
-  const expectedKey = Deno.env.get("INTERNAL_INGEST_KEY");
-  const cronKey = Deno.env.get("CRON_WORKER_KEY");
-  const isInternalAuth = internalKey && (
-    (expectedKey && internalKey === expectedKey) ||
-    (cronKey && internalKey === cronKey)
-  );
-
-  if (!isInternalAuth) {
-    // Also accept Bearer token as fallback
-    const authHeader = req.headers.get("Authorization") ?? "";
-    const token = authHeader.replace("Bearer ", "").trim();
-    if (!token) {
-      return new Response(JSON.stringify({ error: "Unauthorized" }), {
-        status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
-    }
-  }
+  const authErr = validateInternalRequest(req, corsHeaders);
+  if (authErr) return authErr;
 
   const startTime = Date.now();
 
@@ -99,16 +74,13 @@ serve(async (req) => {
     let workerResponse: Record<string, unknown> | null = null;
 
     const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
-    const internalKey = Deno.env.get("INTERNAL_INGEST_KEY")!;
 
     const callWorker = async (functionName: string): Promise<Record<string, unknown>> => {
       const url = `${supabaseUrl}/functions/v1/${functionName}`;
+      const headers = buildInternalHeaders();
       const res = await fetch(url, {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "x-internal-key": internalKey,
-        },
+        headers,
         body: JSON.stringify({ concurrency_docs: 25 }),
       });
       const data = await res.json().catch(() => ({ status: res.status }));

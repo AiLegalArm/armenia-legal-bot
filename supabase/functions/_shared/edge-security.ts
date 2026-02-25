@@ -149,10 +149,24 @@ export function handleCors(req: Request): RequestValidation | { corsHeaders?: un
 
   // ── Mode 2: Browser call — standard CORS ──
   const origin = req.headers.get("origin");
+
+  // No Origin header = server-to-server / cron call (not a browser).
+  // Allow it through with permissive CORS headers (there's no browser to enforce CORS anyway).
+  if (!origin) {
+    if (req.method === "OPTIONS") {
+      return {
+        corsHeaders: INTERNAL_CORS_HEADERS,
+        errorResponse: new Response(null, { status: 204, headers: INTERNAL_CORS_HEADERS }),
+        mode: "browser",
+      };
+    }
+    return { corsHeaders: INTERNAL_CORS_HEADERS, mode: "browser" };
+  }
+
   const headers = getCorsHeaders(origin);
 
   if (!headers) {
-    // No valid Origin + no valid internal key → fail-closed
+    // Origin present but not in allowlist → fail-closed
     const fallback = { "Content-Type": "application/json" };
     return {
       errorResponse: new Response(
