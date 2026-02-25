@@ -2150,7 +2150,6 @@ export type Database = {
         Args: { p_data: string; p_key?: string }
         Returns: string
       }
-      get_cron_key: { Args: never; Returns: string }
       get_kb_chunk: {
         Args: { chunk_idx: number; doc_id: string }
         Returns: {
@@ -2334,6 +2333,7 @@ export type Database = {
         }[]
       }
       normalize_hy: { Args: { input: string }; Returns: string }
+      read_cron_key: { Args: never; Returns: string }
       retrieve_decrypted_pii: {
         Args: { p_field_name: string; p_user_id: string }
         Returns: string
