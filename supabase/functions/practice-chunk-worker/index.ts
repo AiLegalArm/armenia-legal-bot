@@ -209,7 +209,8 @@ serve(async (req) => {
     );
 
     // ── Atomic claim via Postgres RPC (FOR UPDATE SKIP LOCKED) ────
-    const { data: claimedRows, error: claimErr } = await supabase.rpc("claim_chunk_jobs", {
+    const { data: claimedRows, error: claimErr } = await supabase.rpc("claim_pipeline_jobs", {
+      p_job_type: "chunk",
       p_source_table: sourceFilter,
       p_limit: batchSize,
       p_lease_minutes: 10,
