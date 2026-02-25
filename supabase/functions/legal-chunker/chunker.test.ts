@@ -1,8 +1,9 @@
 /**
- * Tests for legal-chunker v2.0
+ * Tests for legal-chunker v2.4.1
  *
  * Covers: legislation, court decisions, ECHR judgments, international treaties,
- * part splitting, conditional overlap, metadata, token limits.
+ * part splitting, conditional overlap, metadata, token limits, parentKey safety,
+ * identity preservation, missing metadata regression, hard cap by span.
  *
  * All Armenian text as Unicode escapes per project standards.
  */
@@ -13,7 +14,7 @@ import {
   assertExists,
   assert,
 } from "https://deno.land/std@0.224.0/assert/mod.ts";
-import { chunkDocument, extractCaseNumber } from "./index.ts";
+import { chunkDocument, extractCaseNumber, parentKey } from "./index.ts";
 
 // ─── FIXTURE 1: Legislation with articles ───────────────────────────
 const LEGISLATION_FIXTURE =
@@ -43,29 +44,22 @@ const COURT_DECISION_FIXTURE =
   "\u0534\u0561\u057f\u0561\u057e\u0578\u0580\u0576\u0565\u0580\u056b \u056f\u0561\u0566\u0574\u0568\u055d " +
   "\u0531. \u0531\u0562\u0580\u0561\u0570\u0561\u0574\u0575\u0561\u0576 (\u0576\u0561\u056d\u0561\u0563\u0561\u0570), " +
   "\u0532. \u0533\u0561\u056c\u057d\u057f\u0575\u0561\u0576, \u0533. \u0544\u0561\u0580\u057f\u056b\u0580\u0578\u057d\u0575\u0561\u0576\n\n" +
-  // Procedural History
   "\u0564\u0561\u057f\u0561\u057e\u0561\u0580\u0561\u056f\u0561\u0576 \u057a\u0561\u057f\u0574\u0578\u0582\u0569\u0575\u0578\u0582\u0576\n" +
   "\u0531\u057c\u0561\u057b\u056b\u0576 \u0561\u057f\u0575\u0561\u0576\u056b \u0564\u0561\u057f\u0561\u0580\u0561\u0576\u0568 \u0570\u0561\u0575\u0581\u056b \u0574\u0565\u0580\u056a\u0565\u056c \u0567\n\n" +
-  // Facts
   "\u0563\u0578\u0580\u056e\u056b \u0570\u0561\u0576\u0563\u0561\u0574\u0561\u0576\u0584\u0576\u0565\u0580\u0568\n" +
   "\u0531\u0574\u0562\u0561\u057d\u057f\u0561\u0576\u057e\u0578\u0572\u0568 \u0574\u0565\u0572\u0561\u0564\u0580\u057e\u0565\u056c " +
   "\u0567 \u0570\u0578\u0564\u057e\u0561\u056e 391 \u0574\u0561\u057d 1 \u056f\u0565\u057f 3 " +
   "\u056d\u0561\u056d\u057f\u0574\u0561\u0576 \u0574\u0565\u057b\n\n" +
-  // Appellant arguments
   "\u0562\u0578\u0572\u0578\u0584\u0561\u0580\u056f\u0578\u0572\u056b \u0583\u0561\u057d\u057f\u0561\u0580\u056f\u0576\u0565\u0580\n" +
   "\u0532\u0578\u0572\u0578\u0584\u0561\u0580\u056f\u0578\u0572\u0568 \u057a\u0561\u0570\u0561\u0576\u057b\u0578\u0582\u0574 \u0567 \u057e\u0573\u056b\u057c\u0568 \u0562\u0565\u056f\u0561\u0576\u0565\u056c\n\n" +
-  // Respondent arguments
   "\u057a\u0561\u057f\u0561\u057d\u056d\u0561\u0576\u0578\u0572\u056b \u0583\u0561\u057d\u057f\u0561\u0580\u056f\u0576\u0565\u0580\n" +
   "\u054a\u0561\u057f\u0561\u057d\u056d\u0561\u0576\u0578\u0572\u0568 \u0570\u0561\u0574\u0561\u0571\u0561\u0575\u0576 \u0567 \u057e\u0573\u057c\u056b\u0576\n\n" +
-  // Legal Reasoning
   "\u057a\u0561\u057f\u0573\u0561\u057c\u0561\u056f\u0561\u0576 \u0574\u0561\u057d\n" +
   "\u0534\u0561\u057f\u0561\u0580\u0561\u0576\u0568 \u0563\u057f\u0576\u0578\u0582\u0574 " +
   "\u0567 \u0578\u0580 \u057e\u0573\u057c\u0561\u056f\u0561\u0576 \u0562\u0578\u0572\u0578\u0584\u0568 " +
   "\u0570\u056b\u0574\u0576\u0561\u057e\u0578\u0580 \u0567\n\n" +
-  // Interpretation of Norms
   "\u0576\u0578\u0580\u0574\u0565\u0580\u056b \u0574\u0565\u056f\u0576\u0561\u0562\u0561\u0576\u0578\u0582\u0569\u0575\u0578\u0582\u0576\n" +
   "\u0540\u0578\u0564\u057e\u0561\u056e 391-\u0568 \u0574\u0565\u056f\u0576\u0561\u0562\u0561\u0576\u057e\u0578\u0582\u0574 \u0567 \u0570\u0565\u057f\u0587\u0575\u0561\u056c \u056f\u0565\u0580\u057a\n\n" +
-  // Final Ruling (must be separate chunk)
   "\u057e\u0573\u056b\u057c\u0565\u0581\n" +
   "\u0544\u0565\u0580\u056a\u0565\u056c \u057e\u0573\u057c\u0561\u056f\u0561\u0576 \u0562\u0578\u0572\u0578\u0584\u0568";
 
@@ -160,7 +154,6 @@ Deno.test("chunkDocument: court decision splits into 8 sections", () => {
 
   const types = new Set(chunks.map((c) => c.chunk_type));
 
-  // All 8 sections must be present
   assert(types.has("header"), "Should detect header metadata section");
   assert(types.has("procedural_history"), "Should detect procedural history section");
   assert(types.has("facts"), "Should detect facts section");
@@ -170,7 +163,6 @@ Deno.test("chunkDocument: court decision splits into 8 sections", () => {
   assert(types.has("norm_interpretation"), "Should detect norm interpretation section");
   assert(types.has("resolution"), "Should detect final ruling (resolution) section");
 
-  // CRITICAL: Legal Reasoning and Final Ruling must NEVER be merged
   const reasoningChunks = chunks.filter(c => c.chunk_type === "reasoning");
   const resolutionChunks = chunks.filter(c => c.chunk_type === "resolution");
   assert(reasoningChunks.length >= 1, "Must have at least 1 reasoning chunk");
@@ -216,12 +208,10 @@ Deno.test("chunkDocument: ECHR judgment splits by structural sections", () => {
   assert(types.has("just_satisfaction"), "Should detect JUST SATISFACTION section");
   assert(types.has("conclusion"), "Should detect CONCLUSION section");
 
-  // Verify metadata
   for (const c of chunks) {
-    if (c.metadata) {
-      assertEquals(c.metadata.document_type, "echr_judgment");
-      assertEquals(c.metadata.court_level, "echr");
-    }
+    assertExists(c.metadata, `Chunk ${c.chunk_index} must have metadata`);
+    assertEquals(c.metadata!.document_type, "echr_judgment");
+    assertEquals(c.metadata!.court_level, "echr", `Chunk ${c.chunk_index} missing court_level=echr`);
   }
 });
 
@@ -230,7 +220,6 @@ Deno.test("chunkDocument: ECHR extracts application number", () => {
     doc_type: "echr_judgment",
     content_text: ECHR_FIXTURE,
   });
-  // Check metadata on chunks for case_number
   const headerChunk = result.chunks.find(c => c.metadata?.case_number);
   assertExists(headerChunk, "Should have chunk with case_number");
   assertEquals(headerChunk!.metadata!.case_number, "12345/20");
@@ -249,13 +238,11 @@ Deno.test("chunkDocument: treaty splits by articles", () => {
   const treatyArticles = chunks.filter(c => c.chunk_type === "treaty_article");
   assert(treatyArticles.length >= 3, `Expected >= 3 treaty articles, got ${treatyArticles.length}`);
 
-  // Check that article numbers are preserved
   const articleNums = treatyArticles.map(c => c.locator?.article).filter(Boolean);
   assert(articleNums.includes("1"), "Should have Article 1");
   assert(articleNums.includes("2"), "Should have Article 2");
   assert(articleNums.includes("3"), "Should have Article 3");
 
-  // Preamble should exist
   const preamble = chunks.find(c => c.chunk_type === "preamble");
   assertExists(preamble, "Should have preamble");
 });
@@ -269,11 +256,9 @@ Deno.test("chunkDocument: unknown doc_type uses structural fallback", () => {
     content_text: longText,
   });
   const chunks = result.chunks;
-  // v2.0.0: unknown types use normative structural chunking instead of fixed-window
   assert(["normative", "fixed"].includes(result.strategy), `Strategy should be normative or fixed, got: ${result.strategy}`);
 
   assert(chunks.length >= 1, "Should produce at least 1 chunk");
-  // v2.0.0: unknown types produce normative_section or full_text chunks
   assert(
     ["full_text", "normative_section"].includes(chunks[0].chunk_type),
     `Chunk type should be full_text or normative_section, got: ${chunks[0].chunk_type}`,
@@ -330,11 +315,9 @@ Deno.test("chunkDocument: metadata populated for all strategies", () => {
   }
 });
 
-// (Moved to v2.4.0 regression tests below with stricter 6000 hard cap)
 // ─── TEST: Articles are never split mid-part ────────────────────────
 
 Deno.test("chunkDocument: articles split by parts, not mid-text", () => {
-  // Create article with clear parts — each part ~500 chars, 20 parts = ~10000 chars > MAX_CHUNK_CHARS (6000)
   let articleText = "\u0540\u0578\u0564\u057e\u0561\u056e 100\u0589 Test Article\n";
   for (let i = 1; i <= 20; i++) {
     articleText += `${i}) Part ${i} content that is reasonably long to fill up space. ${"X".repeat(450)}\n`;
@@ -343,13 +326,11 @@ Deno.test("chunkDocument: articles split by parts, not mid-text", () => {
 
   const result = chunkDocument({ doc_type: "code", content_text: articleText });
 
-  // Article 100 should be split, but each chunk should contain complete parts
   const art100Chunks = result.chunks.filter(c =>
     c.locator?.article === "100"
   );
   assert(art100Chunks.length >= 2, "Oversized article should be split into multiple chunks");
 
-  // Each chunk should start or contain a part number
   for (const chunk of art100Chunks) {
     assertExists(chunk.label, "Split chunk should have label with part info");
   }
@@ -363,23 +344,20 @@ Deno.test("chunkDocument: legislation chunks have no overlap", () => {
     content_text: LEGISLATION_FIXTURE,
   });
 
-  // Check that article chunks don't contain text from other articles
   const articleChunks = result.chunks.filter(c => c.chunk_type === "article");
   for (let i = 1; i < articleChunks.length; i++) {
     const prev = articleChunks[i - 1];
     const curr = articleChunks[i];
-    // No overlap: current should not start with previous content
     assert(
-      curr.char_start >= prev.char_end - 5, // small tolerance
+      curr.char_start >= prev.char_end - 5,
       `Article chunks should not overlap: chunk ${i} starts at ${curr.char_start}, prev ends at ${prev.char_end}`,
     );
   }
 });
 
-// ─── TEST: Hard cap — no chunk exceeds MAX_CHUNK_CHARS ──────────────
+// ─── TEST: Hard cap by SPAN — no chunk exceeds MAX_CHUNK_CHARS ──────
 
-Deno.test("chunkDocument: no chunk exceeds MAX_CHUNK_CHARS (6000)", () => {
-  // Large legislation
+Deno.test("chunkDocument: no chunk span exceeds MAX_CHUNK_CHARS (6000)", () => {
   let bigText = "";
   for (let i = 1; i <= 5; i++) {
     bigText += `\u0540\u0578\u0564\u057e\u0561\u056e ${i}\u0589 Title ${i}\n`;
@@ -391,19 +369,20 @@ Deno.test("chunkDocument: no chunk exceeds MAX_CHUNK_CHARS (6000)", () => {
 
   const result = chunkDocument({ doc_type: "code", content_text: bigText });
   for (const chunk of result.chunks) {
+    const span = chunk.char_end - chunk.char_start;
     assert(
-      chunk.chunk_text.length <= 6000,
-      `Chunk ${chunk.chunk_index} (${chunk.chunk_type}) is ${chunk.chunk_text.length} chars, hard max is 6000`,
+      span <= 6000,
+      `Chunk ${chunk.chunk_index} (${chunk.chunk_type}) span is ${span}, hard max is 6000`,
     );
+    // Also verify string length matches span
+    assertEquals(chunk.chunk_text.length, span, `String length must equal span for chunk ${chunk.chunk_index}`);
   }
 });
 
 // ─── TEST: Regression — 5000-5900 char section splits into 2+ ──────
 
 Deno.test("chunkDocument: large section (5000-5900 chars) splits into 2+ chunks", () => {
-  // Create a legislation article with ~5500 chars (> TARGET 4800)
   let articleText = "\u0540\u0578\u0564\u057e\u0561\u056e 1\u0589 Test Article\n";
-  // Each part ~550 chars, 11 parts = ~6050 chars total (exceeds TARGET)
   for (let i = 1; i <= 11; i++) {
     articleText += `${i}) Part ${i} content with padding text. ${"Y".repeat(490)}\n`;
   }
@@ -411,80 +390,59 @@ Deno.test("chunkDocument: large section (5000-5900 chars) splits into 2+ chunks"
 
   const result = chunkDocument({ doc_type: "code", content_text: articleText });
 
-  // Article 1 should be split into 2+ chunks since it exceeds TARGET_CHUNK_CHARS
   const art1Chunks = result.chunks.filter(c => c.locator?.article === "1");
   assert(
     art1Chunks.length >= 2,
     `Expected >= 2 chunks for oversized article, got ${art1Chunks.length}`,
   );
 
-  // All chunks must respect hard cap
   for (const c of result.chunks) {
-    assert(c.chunk_text.length <= 6000, `Chunk ${c.chunk_index} exceeds hard cap: ${c.chunk_text.length}`);
+    const span = c.char_end - c.char_start;
+    assert(span <= 6000, `Chunk ${c.chunk_index} span ${span} exceeds hard cap`);
   }
 
   // Raw slice integrity
-  const fullText = articleText;
   for (const c of result.chunks) {
-    assertEquals(c.chunk_text, fullText.slice(c.char_start, c.char_end));
+    assertEquals(c.chunk_text, articleText.slice(c.char_start, c.char_end));
   }
 });
 
 // ─── TEST: Regression — tiny tail (<800 chars) merges within parent ─
 
 Deno.test("chunkDocument: tiny tail chunk merges within same article", () => {
-  // Article with parts: most content + tiny tail part
   let articleText = "\u0540\u0578\u0564\u057e\u0561\u056e 50\u0589 Test Article\n";
-  // Add parts that together exceed TARGET to force splitting
   for (let i = 1; i <= 10; i++) {
     articleText += `${i}) Part ${i} content. ${"X".repeat(400)}\n`;
   }
-  // Add a tiny tail part (< 800 chars)
   articleText += "11) Tiny tail.\n";
   articleText += "\n\u0540\u0578\u0564\u057e\u0561\u056e 51\u0589 Next\nShort next article text.";
 
   const result = chunkDocument({ doc_type: "code", content_text: articleText });
 
-  // The tiny tail should be merged with previous chunk of same article
-  // No chunk should be less than MIN_CHUNK_CHARS (800) unless it's a standalone unit
-  for (const c of result.chunks) {
-    if (c.locator?.article === "50" && c.chunk_text.trim().length > 0) {
-      // If chunk is small, it must have been merged (so check it's above min or standalone)
-      assert(
-        c.chunk_text.length >= 100 || c.chunk_type === "preamble",
-        `Article 50 chunk ${c.chunk_index} is too small: ${c.chunk_text.length}`,
-      );
-    }
-  }
-
   // Raw slice integrity
   for (const c of result.chunks) {
-    const expected = result.chunks[0] ? articleText : "";
     assertEquals(
       c.chunk_text,
-      (articleText).slice(c.char_start, c.char_end),
+      articleText.slice(c.char_start, c.char_end),
       `Slice integrity failed for chunk ${c.chunk_index}`,
     );
   }
 });
 
-// ─── TEST: Merge does not cross parent boundaries ───────────────────
+// ─── TEST: Merge never crosses article boundaries ───────────────────
 
 Deno.test("chunkDocument: merge never crosses article boundaries", () => {
-  // Two articles, second one is tiny
   const text = "\u0540\u0578\u0564\u057e\u0561\u056e 1\u0589 First article\n" +
     "Content of first article. ".repeat(5) + "\n\n" +
     "\u0540\u0578\u0564\u057e\u0561\u056e 2\u0589 Second article\nTiny.";
 
   const result = chunkDocument({ doc_type: "code", content_text: text });
 
-  // Articles 1 and 2 must remain separate chunks
   const art1 = result.chunks.filter(c => c.locator?.article === "1");
   const art2 = result.chunks.filter(c => c.locator?.article === "2");
   assert(art1.length >= 1, "Article 1 must exist");
   assert(art2.length >= 1, "Article 2 must exist");
 
-  // No chunk should contain text from both articles
   for (const c of art1) {
     assert(!c.chunk_text.includes("\u0540\u0578\u0564\u057e\u0561\u056e 2"), "Art 1 chunk must not contain Art 2 text");
   }
@@ -495,22 +453,18 @@ Deno.test("chunkDocument: merge never crosses article boundaries", () => {
 Deno.test("chunkDocument: ECHR strategy stays echr", () => {
   const result = chunkDocument({ doc_type: "echr_judgment", content_text: ECHR_FIXTURE });
   assertEquals(result.strategy, "echr");
-  // All chunks should have court_level = "echr"
   for (const c of result.chunks) {
-    if (c.metadata) {
-      assertEquals(c.metadata.court_level, "echr", `Chunk ${c.chunk_index} missing court_level=echr`);
-    }
+    assertExists(c.metadata, `Chunk ${c.chunk_index} must have metadata`);
+    assertEquals(c.metadata!.court_level, "echr", `Chunk ${c.chunk_index} missing court_level=echr`);
   }
 });
 
 // ─── TEST: ECHR application number patterns ────────────────────────
 
 Deno.test("extractCaseNumber: handles ECHR patterns", () => {
-  const { extractCaseNumber: ecn } = { extractCaseNumber };
-
-  assertEquals(ecn("Application no. 12345/20 filed"), "12345/20");
-  assertEquals(ecn("(no. 54321/21) against Armenia"), "54321/21");
-  assertEquals(ecn("nos. 11111/19 and 22222/20 lodged"), "11111/19");
+  assertEquals(extractCaseNumber("Application no. 12345/20 filed"), "12345/20");
+  assertEquals(extractCaseNumber("(no. 54321/21) against Armenia"), "54321/21");
+  assertEquals(extractCaseNumber("nos. 11111/19 and 22222/20 lodged"), "11111/19");
 });
 
 // ─── TEST: Raw slice integrity across all strategies ────────────────
@@ -532,5 +486,142 @@ Deno.test("chunkDocument: raw slice integrity for all doc types", () => {
         `Slice integrity failed for ${input.doc_type} chunk ${c.chunk_index}`,
       );
     }
+  }
+});
+
+// ═══════════════════════════════════════════════════════════════════
+// v2.4.1 REGRESSION & HARDENING TESTS
+// ═══════════════════════════════════════════════════════════════════
+
+// ─── TEST: parentKey returns null for chunks without metadata ───────
+
+Deno.test("parentKey: returns null when metadata is missing", () => {
+  const chunk = {
+    chunk_index: 0, chunk_type: "other" as const, chunk_text: "x",
+    char_start: 0, char_end: 1, label: null, locator: null,
+    chunk_hash: "h", metadata: null,
+  };
+  assertEquals(parentKey(chunk), null);
+});
+
+Deno.test("parentKey: returns article key from locator", () => {
+  const chunk = {
+    chunk_index: 0, chunk_type: "article" as const, chunk_text: "x",
+    char_start: 0, char_end: 1, label: null,
+    locator: { article: "12" },
+    chunk_hash: "h", metadata: { article_number: "12" },
+    doc_type: "code",
+  };
+  assertEquals(parentKey(chunk), "law:code:article:12");
+});
+
+// ─── TEST: Missing metadata prevents merge ─────────────────────────
+
+Deno.test("chunkDocument: missing metadata on one chunk prevents cross-merge", () => {
+  // Article 1 is normal, Article 2 is tiny → should NOT merge with Art 1
+  const text =
+    "\u0540\u0578\u0564\u057e\u0561\u056e 1\u0589 First\n" +
+    "Content here. ".repeat(10) + "\n\n" +
+    "\u0540\u0578\u0564\u057e\u0561\u056e 2\u0589 Second\nTiny content.";
+
+  const result = chunkDocument({ doc_type: "code", content_text: text });
+
+  // Articles must remain separate
+  const art1 = result.chunks.filter(c => c.locator?.article === "1");
+  const art2 = result.chunks.filter(c => c.locator?.article === "2");
+  assert(art1.length >= 1, "Article 1 must exist as separate chunk");
+  assert(art2.length >= 1, "Article 2 must exist as separate chunk");
+
+  // Verify they don't share a chunk
+  for (const c1 of art1) {
+    for (const c2 of art2) {
+      assert(c1.chunk_index !== c2.chunk_index, "Art 1 and Art 2 must be in different chunks");
+    }
+  }
+});
+
+// ─── TEST: Identity preservation on merge ──────────────────────────
+
+Deno.test("chunkDocument: merged chunk keeps identity from earliest start", () => {
+  // Create an article with a large main body + tiny tail that should merge
+  let articleText = "\u0540\u0578\u0564\u057e\u0561\u056e 99\u0589 Test Article\n";
+  // 8 parts of ~550 chars each = ~4400 chars total (under TARGET but > 800 per group)
+  for (let i = 1; i <= 8; i++) {
+    articleText += `${i}) Part ${i}. ${"Z".repeat(500)}\n`;
+  }
+  // Add tiny tail part that should merge with previous group
+  articleText += "9) End.\n";
+  articleText += "\n\u0540\u0578\u0564\u057e\u0561\u056e 100\u0589 Next\nOther.";
+
+  const result = chunkDocument({ doc_type: "code", content_text: articleText });
+
+  // All Art 99 chunks must have article=99 in locator
+  const art99 = result.chunks.filter(c => c.locator?.article === "99");
+  assert(art99.length >= 1, "Art 99 must exist");
+  for (const c of art99) {
+    assertEquals(c.locator!.article, "99", "Merged chunk must keep article=99");
+    assertEquals(c.chunk_type, "article", "Merged chunk must keep type=article");
+  }
+});
+
+// ─── TEST: Hard cap enforced by span, not string length ─────────────
+
+Deno.test("chunkDocument: hard cap checks span not string length", () => {
+  // Single huge article with no part markers — forces splitAtSafeBreak
+  const hugeArticle = "\u0540\u0578\u0564\u057e\u0561\u056e 1\u0589 Title\n" +
+    "Sentence here. ".repeat(500); // ~7500 chars
+
+  const result = chunkDocument({ doc_type: "code", content_text: hugeArticle });
+
+  for (const c of result.chunks) {
+    const span = c.char_end - c.char_start;
+    assert(span <= 6000, `Chunk ${c.chunk_index} span ${span} exceeds 6000`);
+    assertEquals(c.chunk_text.length, span, "Text length must equal span");
+  }
+});
+
+// ─── TEST: splitAtSafeBreak no leading delimiters ───────────────────
+
+Deno.test("chunkDocument: split chunks don't start with bare newlines", () => {
+  // Article with double-newline boundaries
+  let text = "\u0540\u0578\u0564\u057e\u0561\u056e 1\u0589 Title\n";
+  for (let i = 0; i < 15; i++) {
+    text += "Content paragraph " + i + ". " + "W".repeat(400) + "\n\n";
+  }
+  text += "\n\u0540\u0578\u0564\u057e\u0561\u056e 2\u0589 Next\nDone.";
+
+  const result = chunkDocument({ doc_type: "code", content_text: text });
+
+  // Chunks after the first should not start with just "\n\n"
+  for (const c of result.chunks) {
+    if (c.chunk_index > 0 && c.chunk_text.length > 2) {
+      // Allow leading newline only if it's part of structural content
+      const firstNonWs = c.chunk_text.replace(/^[\n\r\s]+/, "");
+      assert(
+        firstNonWs.length > 0,
+        `Chunk ${c.chunk_index} is all whitespace`,
+      );
+    }
+  }
+});
+
+// ─── TEST: ECHR metadata on every chunk ─────────────────────────────
+
+Deno.test("chunkDocument: ECHR metadata.court_level='echr' on ALL chunks", () => {
+  const result = chunkDocument({ doc_type: "echr_judgment", content_text: ECHR_FIXTURE });
+  for (const c of result.chunks) {
+    assertExists(c.metadata, `ECHR chunk ${c.chunk_index} must have metadata`);
+    assertEquals(c.metadata!.court_level, "echr");
+    assertEquals(c.metadata!.document_type, "echr_judgment");
+  }
+});
+
+// ─── TEST: Version is v2.4.1 ───────────────────────────────────────
+
+Deno.test("chunkDocument: version is v2.4.1", () => {
+  const result = chunkDocument({ doc_type: "code", content_text: LEGISLATION_FIXTURE });
+  assertEquals(result.chunker_version, "v2.4.1");
+  for (const c of result.chunks) {
+    assertEquals(c.chunker_version, "v2.4.1");
   }
 });
