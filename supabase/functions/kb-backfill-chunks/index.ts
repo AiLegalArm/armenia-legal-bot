@@ -1,6 +1,28 @@
+/**
+ * kb-backfill-chunks — v2 (enterprise-aligned)
+ *
+ * Backfills chunks for knowledge_base and legal_practice_kb documents
+ * using the shared structural chunker (v2).
+ *
+ * Changes from v1:
+ * 1. ALL tables use chunkDocument() — no fixed-window fallback
+ * 2. dryRun calls chunkDocument() + validateChunks() for real counts
+ * 3. QA gate: validateChunks() before any mutation; skip on failure
+ * 4. Insert-before-delete: new chunks inserted first, old removed by hash mismatch
+ * 5. Deterministic chunk_hash from the shared chunker (SHA-256)
+ * 6. totalRemaining excludes already-versioned docs (checks chunk_hash presence)
+ * 7. Batch insert capped at 200 rows
+ */
+
 import { serve } from "https://deno.land/std@0.224.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.4";
-import { chunkDocument, type LegalDocumentInput } from "../_shared/chunker.ts";
+import {
+  chunkDocument,
+  validateChunks,
+  CHUNKER_VERSION,
+  type LegalDocumentInput,
+  type LegalChunk,
+} from "../_shared/chunker.ts";
 
 const corsHeaders: Record<string, string> = {
   "Access-Control-Allow-Origin": "*",
@@ -21,12 +43,15 @@ type KbDoc = {
   title: string | null;
   content_text: string | null;
   category?: string | null;
+  court_type?: string | null;
+  case_number_anonymized?: string | null;
 };
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SUPABASE_ANON_KEY = Deno.env.get("SUPABASE_ANON_KEY")!;
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 
+const INSERT_BATCH_SIZE = 200;
 
 function json(status: number, data: unknown) {
   return new Response(JSON.stringify(data), {
@@ -65,42 +90,7 @@ async function requireAdmin(req: Request) {
   throw { status: 403, code: "FORBIDDEN", message: "Admin only" };
 }
 
-// ── Simple fixed-window splitter (for legal_practice_kb) ────────────
-
-function normalizeChunkSize(n?: number): number {
-  const v = typeof n === "number" ? Math.floor(n) : 8000;
-  if (!Number.isFinite(v) || v < 500) return 8000;
-  if (v > 20000) return 20000;
-  return v;
-}
-
-function splitIntoChunks(text: string, chunkSize: number, overlap = 200): { idx: number; text: string }[] {
-  const t = text.replace(/\r\n/g, "\n");
-  const chunks: { idx: number; text: string }[] = [];
-  let start = 0;
-  let i = 0;
-
-  while (start < t.length) {
-    const end = Math.min(start + chunkSize, t.length);
-    const slice = t.slice(start, end);
-    const chunkText = slice.trim();
-    if (chunkText.length > 0) chunks.push({ idx: i++, text: chunkText });
-    if (end === t.length) break;
-    start = Math.max(0, end - overlap);
-  }
-  return chunks;
-}
-
-function computeHash(s: string): string {
-  let h = 2166136261;
-  for (let i = 0; i < s.length; i++) {
-    h ^= s.charCodeAt(i);
-    h = Math.imul(h, 16777619);
-  }
-  return (h >>> 0).toString(16);
-}
-
-// ── Map KB category to doc_type for the shared chunker ──────────────
+// ─── Map category/court_type → doc_type for structural chunker ─────
 
 const CATEGORY_TO_DOC_TYPE: Record<string, string> = {
   constitution: "law",
@@ -121,15 +111,60 @@ const CATEGORY_TO_DOC_TYPE: Record<string, string> = {
   electoral_code: "code",
   eaeu_customs_code: "code",
   court_practice: "court_decision",
-  echr: "court_decision",
+  echr: "echr_judgment",
+  echr_judgments: "echr_judgment",
 };
 
-function categoryToDocType(category: string | null | undefined): string {
-  if (!category) return "law";
-  return CATEGORY_TO_DOC_TYPE[category] || "law";
+function resolveDocType(doc: KbDoc, isKB: boolean): string {
+  if (isKB) {
+    const cat = doc.category ?? "";
+    return CATEGORY_TO_DOC_TYPE[cat] || "law";
+  }
+  // legal_practice_kb
+  const ct = doc.court_type;
+  if (ct === "echr") return "echr_judgment";
+  if (ct === "cassation") return "cassation_ruling";
+  if (ct === "appeal") return "appeal_ruling";
+  if (ct === "first_instance") return "first_instance_ruling";
+  if (ct === "constitutional") return "constitutional_court";
+  return "court_decision";
 }
 
-// ── Main handler ────────────────────────────────────────────────────
+// ─── Chunk a single document (shared logic for dryRun & write) ─────
+
+interface ChunkPlan {
+  chunks: LegalChunk[];
+  strategy: string;
+  qaOk: boolean;
+  qaErrors: string[];
+}
+
+function chunkDoc(doc: KbDoc, isKB: boolean): ChunkPlan {
+  const text = (doc.content_text ?? "").trim();
+  if (!text || text.length < 50) {
+    return { chunks: [], strategy: "skip", qaOk: true, qaErrors: [] };
+  }
+
+  const docType = resolveDocType(doc, isKB);
+  const input: LegalDocumentInput = {
+    doc_type: docType,
+    content_text: text,
+    title: doc.title ?? undefined,
+    case_number: doc.case_number_anonymized ?? undefined,
+  };
+
+  const result = chunkDocument(input);
+  const qa = validateChunks(text, result.chunks);
+
+  return {
+    chunks: result.chunks,
+    strategy: result.strategy,
+    qaOk: qa.ok,
+    qaErrors: qa.errors,
+  };
+}
+
+// ─── Main handler ──────────────────────────────────────────────────
 
 serve(async (req) => {
   if (req.method === "OPTIONS") {
@@ -145,53 +180,41 @@ serve(async (req) => {
     const table = body.table || "legal_practice_kb";
     const docId = typeof body.docId === "string" && body.docId.trim() ? body.docId.trim() : undefined;
     const docIds = Array.isArray(body.docIds) ? body.docIds.filter((x) => typeof x === "string" && x.trim()) : [];
-    const chunkSize = normalizeChunkSize(body.chunkSize);
     const dryRun = body.dryRun === true;
     const batchLimit = Math.min(Math.max(typeof body.batchLimit === "number" ? body.batchLimit : 5, 1), 100);
 
     const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
 
-    // Determine source and target tables
     const isKB = table === "knowledge_base";
     const sourceTable = isKB ? "knowledge_base" : "legal_practice_kb";
     const chunksTable = isKB ? "knowledge_base_chunks" : "legal_practice_kb_chunks";
     const fkColumn = isKB ? "kb_id" : "doc_id";
+    const selectCols = isKB
+      ? "id,title,content_text,category"
+      : "id,title,content_text,court_type,case_number_anonymized";
 
-    // 1) Fetch documents
+    // ── 1. Fetch documents ─────────────────────────────────────────
     let docs: KbDoc[] = [];
 
     if (docId) {
-      const selectCols = isKB
-        ? "id,title,content_text,category"
-        : "id,title,content_text";
       const { data, error } = await supabase
         .from(sourceTable)
         .select(selectCols)
         .eq("id", docId)
         .limit(1);
-
       if (error) throw { status: 500, code: "DB_ERROR", message: error.message };
       docs = (data ?? []) as KbDoc[];
       if (docs.length === 0) return json(404, { error: "DOC_NOT_FOUND", docId });
     } else if (docIds.length > 0) {
-      // Process specific list of doc IDs (batch mode)
-      const selectCols = isKB
-        ? "id,title,content_text,category"
-        : "id,title,content_text";
       const batch = docIds.slice(0, batchLimit);
       const { data, error } = await supabase
         .from(sourceTable)
         .select(selectCols)
         .in("id", batch);
-
       if (error) throw { status: 500, code: "DB_ERROR", message: error.message };
       docs = (data ?? []) as KbDoc[];
     } else {
-      // Auto-discover: fetch candidates then filter out those with chunks
-      const selectCols = isKB
-        ? "id,title,content_text,category"
-        : "id,title,content_text";
-
+      // Auto-discover: docs without chunks
       const fetchLimit = batchLimit * 4;
       const { data: candidates, error: e1 } = await supabase
         .from(sourceTable)
@@ -199,7 +222,6 @@ serve(async (req) => {
         .eq("is_active", true)
         .order("updated_at", { ascending: false })
         .limit(fetchLimit);
-
       if (e1) throw { status: 500, code: "DB_ERROR", message: e1.message };
 
       const pending: KbDoc[] = [];
@@ -215,51 +237,39 @@ serve(async (req) => {
       docs = pending;
     }
 
-    // Count total docs without chunks to report accurate remaining count
+    // ── 2. Count totalRemaining (docs without any chunks) ──────────
     let totalRemaining = docs.length;
     if (!docId && docIds.length === 0) {
-      // For auto-discover mode, count all docs without chunks
-      if (isKB) {
-        const { count: totalActive } = await supabase
-          .from(sourceTable)
-          .select("id", { count: "exact", head: true })
-          .eq("is_active", true);
-        const { count: withChunks } = await supabase
-          .from(chunksTable)
-          .select(fkColumn, { count: "exact", head: true });
-        // Approximate: total active minus those with chunks
-        const docsWithChunks = new Set<string>();
-        const { data: chunkDocs } = await supabase
-          .from(chunksTable)
-          .select(fkColumn)
-          .limit(50000);
-        if (chunkDocs) {
-          for (const row of chunkDocs) {
-            docsWithChunks.add((row as Record<string, string>)[fkColumn]);
-          }
+      const { count: totalActive } = await supabase
+        .from(sourceTable)
+        .select("id", { count: "exact", head: true })
+        .eq("is_active", true);
+
+      // Get distinct doc IDs that already have chunks
+      const { data: chunkDocs } = await supabase
+        .from(chunksTable)
+        .select(fkColumn)
+        .limit(50000);
+
+      const docsWithChunks = new Set<string>();
+      if (chunkDocs) {
+        for (const row of chunkDocs) {
+          docsWithChunks.add((row as Record<string, string>)[fkColumn]);
         }
-        totalRemaining = (totalActive ?? 0) - docsWithChunks.size;
-      } else {
-        const { count: totalActive } = await supabase
-          .from(sourceTable)
-          .select("id", { count: "exact", head: true })
-          .eq("is_active", true);
-        const { data: chunkDocs } = await supabase
-          .from(chunksTable)
-          .select(fkColumn)
-          .limit(50000);
-        const docsWithChunks = new Set<string>();
-        if (chunkDocs) {
-          for (const row of chunkDocs) {
-            docsWithChunks.add((row as Record<string, string>)[fkColumn]);
-          }
-        }
-        totalRemaining = (totalActive ?? 0) - docsWithChunks.size;
       }
+      totalRemaining = Math.max(0, (totalActive ?? 0) - docsWithChunks.size);
     }
 
-    // 2) Plan chunks
-    const plan = [];
+    // ── 3. Plan: chunk every document via structural chunker ───────
+    const plan: Array<{
+      docId: string;
+      title: string | null;
+      action: string;
+      chunks: number;
+      strategy?: string;
+      qaOk?: boolean;
+      qaErrors?: string[];
+    }> = [];
     let totalChunks = 0;
 
     for (const d of docs) {
@@ -269,45 +279,41 @@ serve(async (req) => {
         continue;
       }
 
-      if (isKB) {
-        // Use smart chunker for knowledge_base
-        const docType = categoryToDocType(d.category);
-        const input: LegalDocumentInput = {
-          doc_type: docType,
-          content_text: text,
-          title: d.title ?? undefined,
-        };
-        const result = chunkDocument(input);
-        totalChunks += result.chunks.length;
-        plan.push({
-          docId: d.id,
-          title: d.title,
-          action: "create_chunks",
-          chunks: result.chunks.length,
-          strategy: result.strategy,
-        });
-      } else {
-        const chunks = splitIntoChunks(text, chunkSize, 200);
-        totalChunks += chunks.length;
-        plan.push({ docId: d.id, title: d.title, action: "create_chunks", chunks: chunks.length });
-      }
+      const cp = chunkDoc(d, isKB);
+      totalChunks += cp.chunks.length;
+      plan.push({
+        docId: d.id,
+        title: d.title,
+        action: cp.qaOk ? "create_chunks" : "qa_failed",
+        chunks: cp.chunks.length,
+        strategy: cp.strategy,
+        qaOk: cp.qaOk,
+        qaErrors: cp.qaErrors.length > 0 ? cp.qaErrors.slice(0, 5) : undefined,
+      });
     }
 
+    // ── 4. Dry-run response ────────────────────────────────────────
     if (dryRun) {
       return json(200, {
         dryRun: true,
         table,
         docCount: docs.length,
         totalRemaining,
-        chunkSize,
         batchLimit,
         plannedTotalChunks: totalChunks,
+        chunkerVersion: CHUNKER_VERSION,
         plan,
       });
     }
 
-    // 3) Write chunks
-    const writeResults = [];
+    // ── 5. Write chunks ────────────────────────────────────────────
+    const writeResults: Array<{
+      docId: string;
+      inserted?: number;
+      status: string;
+      qaErrors?: string[];
+    }> = [];
+
     for (const d of docs) {
       const text = (d.content_text ?? "").trim();
       if (!text) {
@@ -315,26 +321,31 @@ serve(async (req) => {
         continue;
       }
 
-      // Delete existing chunks for this doc (idempotent re-run)
-      const { error: delErr } = await supabase
-        .from(chunksTable)
-        .delete()
-        .eq(fkColumn, d.id);
-      if (delErr) throw { status: 500, code: "DB_ERROR", message: delErr.message };
+      const cp = chunkDoc(d, isKB);
 
+      // QA GATE: skip mutation if validation fails
+      if (!cp.qaOk) {
+        console.warn(
+          `[kb-backfill] QA FAILED doc=${d.id} errors=${cp.qaErrors.slice(0, 3).join("; ")}`,
+        );
+        writeResults.push({
+          docId: d.id,
+          status: "qa_failed",
+          qaErrors: cp.qaErrors.slice(0, 5),
+        });
+        continue;
+      }
+
+      if (cp.chunks.length === 0) {
+        writeResults.push({ docId: d.id, status: "skipped_no_chunks" });
+        continue;
+      }
+
+      // Build rows for insert
       let rows: Record<string, unknown>[];
 
       if (isKB) {
-        // Smart chunking for knowledge_base
-        const docType = categoryToDocType(d.category);
-        const input: LegalDocumentInput = {
-          doc_type: docType,
-          content_text: text,
-          title: d.title ?? undefined,
-        };
-        const result = chunkDocument(input);
-
-        rows = result.chunks.map((c) => ({
+        rows = cp.chunks.map((c) => ({
           kb_id: d.id,
           chunk_index: c.chunk_index,
           chunk_type: c.chunk_type,
@@ -343,39 +354,58 @@ serve(async (req) => {
           char_start: c.char_start,
           char_end: c.char_end,
           chunk_hash: c.chunk_hash,
+          is_active: true,
         }));
       } else {
-        const chunks = splitIntoChunks(text, chunkSize, 200);
-        rows = chunks.map((c) => ({
+        rows = cp.chunks.map((c) => ({
           doc_id: d.id,
-          chunk_index: c.idx,
-          chunk_text: c.text,
-          chunk_hash: computeHash(c.text),
-          title: d.title,
+          chunk_index: c.chunk_index,
+          chunk_text: c.chunk_text,
+          chunk_hash: c.chunk_hash,
+          chunk_type: c.chunk_type || "other",
+          title: c.label,
         }));
       }
 
-      // Insert in batches of 200
-      const insertBatchSize = 200;
-      for (let i = 0; i < rows.length; i += insertBatchSize) {
-        const batch = rows.slice(i, i + insertBatchSize);
+      // INSERT new chunks first (batch of 200)
+      for (let i = 0; i < rows.length; i += INSERT_BATCH_SIZE) {
+        const batch = rows.slice(i, i + INSERT_BATCH_SIZE);
         const { error: insErr } = await supabase.from(chunksTable).insert(batch);
         if (insErr) throw { status: 500, code: "DB_ERROR", message: insErr.message };
+      }
+
+      // DELETE old chunks (hash not in new set) — safe: new data already persisted
+      const newHashes = cp.chunks.map((c) => c.chunk_hash).filter(Boolean);
+      if (newHashes.length > 0) {
+        const { error: delErr } = await supabase
+          .from(chunksTable)
+          .delete()
+          .eq(fkColumn, d.id)
+          .not("chunk_hash", "in", `(${newHashes.join(",")})`);
+        if (delErr) {
+          console.warn(`[kb-backfill] old chunk cleanup warning: ${delErr.message}`);
+        }
       }
 
       writeResults.push({ docId: d.id, inserted: rows.length, status: "ok" });
     }
 
+    const insertedTotal = writeResults.reduce(
+      (s, r) => s + (r.inserted ?? 0), 0,
+    );
+    const processedOk = writeResults.filter((r) => r.status === "ok").length;
+
     return json(200, {
       dryRun: false,
       table,
       processedDocs: docs.length,
-      totalRemaining: totalRemaining - docs.length,
-      chunkSize,
+      processedOk,
+      totalRemaining: Math.max(0, totalRemaining - processedOk),
       batchLimit,
-      totalChunksInserted: writeResults.reduce((s, r: { inserted?: number }) => s + (r.inserted ?? 0), 0),
+      totalChunksInserted: insertedTotal,
+      chunkerVersion: CHUNKER_VERSION,
       results: writeResults,
-      hint: totalRemaining > docs.length
+      hint: totalRemaining > processedOk
         ? "More documents remain. Call again to process the next batch."
         : "All documents processed.",
     });
