@@ -172,6 +172,11 @@ function simpleHash(text: string): string {
   return Math.abs(hash).toString(16).padStart(8, "0");
 }
 
+/**
+ * Create a chunk. char_start and char_end refer to positions in the
+ * ORIGINAL document text. chunk_text may be trimmed (leading/trailing
+ * whitespace removed) but offsets always reference the raw source.
+ */
 function makeChunk(
   index: number,
   type: ChunkType,
@@ -181,13 +186,14 @@ function makeChunk(
   locator: ChunkLocator | null,
   metadata: ChunkMetadata | null = null,
   docType?: string,
+  charEnd?: number,
 ): LegalChunk {
   return {
     chunk_index: index,
     chunk_type: type,
     chunk_text: text,
     char_start: charStart,
-    char_end: charStart + text.length,
+    char_end: charEnd ?? (charStart + text.length),
     label,
     locator,
     chunk_hash: simpleHash(text),

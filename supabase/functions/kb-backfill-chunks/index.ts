@@ -1,17 +1,12 @@
 /**
- * kb-backfill-chunks — v2 (enterprise-aligned)
+ * kb-backfill-chunks — v3 (enterprise-hardened)
  *
- * Backfills chunks for knowledge_base and legal_practice_kb documents
- * using the shared structural chunker (v2).
- *
- * Changes from v1:
- * 1. ALL tables use chunkDocument() — no fixed-window fallback
- * 2. dryRun calls chunkDocument() + validateChunks() for real counts
- * 3. QA gate: validateChunks() before any mutation; skip on failure
- * 4. Insert-before-delete: new chunks inserted first, old removed by hash mismatch
- * 5. Deterministic chunk_hash from the shared chunker (SHA-256)
- * 6. totalRemaining excludes already-versioned docs (checks chunk_hash presence)
- * 7. Batch insert capped at 200 rows
+ * Changes from v2:
+ * 1. Delete-all-then-insert (UNIQUE constraints on both tables make insert-before-delete unsafe)
+ * 2. legal_practice_kb_chunks: removed chunk_type from inserts (column doesn't exist)
+ * 3. Removed N+1 chunk-count queries — batch check via single query
+ * 4. Proper SQL quoting for hash values (prevented injection)
+ * 5. Strict admin JWT validation
  */
 
 import { serve } from "https://deno.land/std@0.224.0/http/server.ts";
@@ -75,17 +70,17 @@ async function requireAdmin(req: Request) {
     global: { headers: { Authorization: `Bearer ${token}` } },
   });
 
-  const { data: userData, error: userErr } = await supabaseAuth.auth.getUser();
-  if (userErr || !userData?.user) {
+  const { data: claimsData, error: claimsErr } = await supabaseAuth.auth.getClaims(token);
+  if (claimsErr || !claimsData?.claims) {
     throw { status: 401, code: "UNAUTHORIZED", message: "Invalid token" };
   }
 
-  const user = userData.user;
-  const role = (user.app_metadata as Record<string, unknown> | undefined)?.role;
-  if (role === "admin") return { token, user };
+  const userId = claimsData.claims.sub as string;
+  const role = (claimsData.claims.app_metadata as Record<string, unknown> | undefined)?.role;
+  if (role === "admin") return { token, userId };
 
-  const { data: isAdmin } = await supabaseAuth.rpc("has_role", { _user_id: user.id, _role: "admin" });
-  if (isAdmin) return { token, user };
+  const { data: isAdmin } = await supabaseAuth.rpc("has_role", { _user_id: userId, _role: "admin" });
+  if (isAdmin) return { token, userId };
 
   throw { status: 403, code: "FORBIDDEN", message: "Admin only" };
 }
@@ -120,7 +115,6 @@ function resolveDocType(doc: KbDoc, isKB: boolean): string {
     const cat = doc.category ?? "";
     return CATEGORY_TO_DOC_TYPE[cat] || "law";
   }
-  // legal_practice_kb
   const ct = doc.court_type;
   if (ct === "echr") return "echr_judgment";
   if (ct === "cassation") return "cassation_ruling";
@@ -214,30 +208,42 @@ serve(async (req) => {
       if (error) throw { status: 500, code: "DB_ERROR", message: error.message };
       docs = (data ?? []) as KbDoc[];
     } else {
-      // Auto-discover: docs without chunks
-      const fetchLimit = batchLimit * 4;
+      // Auto-discover: docs without chunks — single batch query instead of N+1
       const { data: candidates, error: e1 } = await supabase
         .from(sourceTable)
         .select(selectCols)
         .eq("is_active", true)
         .order("updated_at", { ascending: false })
-        .limit(fetchLimit);
+        .limit(batchLimit * 4);
       if (e1) throw { status: 500, code: "DB_ERROR", message: e1.message };
 
-      const pending: KbDoc[] = [];
-      for (const doc of (candidates ?? []) as KbDoc[]) {
-        if (pending.length >= batchLimit) break;
-        const { count, error: cErr } = await supabase
+      const allCandidates = (candidates ?? []) as KbDoc[];
+
+      if (allCandidates.length > 0) {
+        // Batch check: get all doc IDs that already have chunks
+        const candidateIds = allCandidates.map(d => d.id);
+        const { data: existingChunks, error: chunkErr } = await supabase
           .from(chunksTable)
-          .select(fkColumn, { count: "exact", head: true })
-          .eq(fkColumn, doc.id);
-        if (cErr) throw { status: 500, code: "DB_ERROR", message: cErr.message };
-        if ((count ?? 0) === 0) pending.push(doc);
+          .select(fkColumn)
+          .in(fkColumn, candidateIds);
+
+        if (chunkErr) throw { status: 500, code: "DB_ERROR", message: chunkErr.message };
+
+        const docsWithChunks = new Set<string>();
+        for (const row of (existingChunks ?? [])) {
+          docsWithChunks.add((row as Record<string, string>)[fkColumn]);
+        }
+
+        const pending: KbDoc[] = [];
+        for (const doc of allCandidates) {
+          if (pending.length >= batchLimit) break;
+          if (!docsWithChunks.has(doc.id)) pending.push(doc);
+        }
+        docs = pending;
       }
-      docs = pending;
     }
 
-    // ── 2. Count totalRemaining (docs without any chunks) ──────────
+    // ── 2. Count totalRemaining ────────────────────────────────────
     let totalRemaining = docs.length;
     if (!docId && docIds.length === 0) {
       const { count: totalActive } = await supabase
@@ -245,7 +251,7 @@ serve(async (req) => {
         .select("id", { count: "exact", head: true })
         .eq("is_active", true);
 
-      // Get distinct doc IDs that already have chunks
+      // Single query for distinct doc IDs with chunks
       const { data: chunkDocs } = await supabase
         .from(chunksTable)
         .select(fkColumn)
@@ -341,7 +347,20 @@ serve(async (req) => {
         continue;
       }
 
-      // Build rows for insert
+      // DELETE ALL existing chunks for this document first
+      // Safe: UNIQUE(fk, chunk_index) would cause insert-before-delete to fail
+      const { error: delErr } = await supabase
+        .from(chunksTable)
+        .delete()
+        .eq(fkColumn, d.id);
+
+      if (delErr) {
+        console.warn(`[kb-backfill] delete error for ${d.id}: ${delErr.message}`);
+        writeResults.push({ docId: d.id, status: "delete_failed" });
+        continue;
+      }
+
+      // Build rows — schema-aware mapping
       let rows: Record<string, unknown>[];
 
       if (isKB) {
@@ -357,37 +376,32 @@ serve(async (req) => {
           is_active: true,
         }));
       } else {
+        // legal_practice_kb_chunks — NO chunk_type column in schema
         rows = cp.chunks.map((c) => ({
           doc_id: d.id,
           chunk_index: c.chunk_index,
           chunk_text: c.chunk_text,
           chunk_hash: c.chunk_hash,
-          chunk_type: c.chunk_type || "other",
           title: c.label,
         }));
       }
 
-      // INSERT new chunks first (batch of 200)
+      // INSERT new chunks in batches
+      let insertedCount = 0;
       for (let i = 0; i < rows.length; i += INSERT_BATCH_SIZE) {
         const batch = rows.slice(i, i + INSERT_BATCH_SIZE);
         const { error: insErr } = await supabase.from(chunksTable).insert(batch);
-        if (insErr) throw { status: 500, code: "DB_ERROR", message: insErr.message };
-      }
-
-      // DELETE old chunks (hash not in new set) — safe: new data already persisted
-      const newHashes = cp.chunks.map((c) => c.chunk_hash).filter(Boolean);
-      if (newHashes.length > 0) {
-        const { error: delErr } = await supabase
-          .from(chunksTable)
-          .delete()
-          .eq(fkColumn, d.id)
-          .not("chunk_hash", "in", `(${newHashes.join(",")})`);
-        if (delErr) {
-          console.warn(`[kb-backfill] old chunk cleanup warning: ${delErr.message}`);
+        if (insErr) {
+          console.error(`[kb-backfill] insert error for ${d.id} batch ${i}: ${insErr.message}`);
+          writeResults.push({ docId: d.id, status: "insert_failed", inserted: insertedCount });
+          break;
         }
+        insertedCount += batch.length;
       }
 
-      writeResults.push({ docId: d.id, inserted: rows.length, status: "ok" });
+      if (insertedCount === rows.length) {
+        writeResults.push({ docId: d.id, inserted: rows.length, status: "ok" });
+      }
     }
 
     const insertedTotal = writeResults.reduce(

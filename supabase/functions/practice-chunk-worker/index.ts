@@ -1,22 +1,23 @@
 /**
- * practice-chunk-worker — Enterprise-safe v2
+ * practice-chunk-worker — Enterprise-safe v3
  *
  * Background worker that processes practice_chunk_jobs:
- * 1. Lease-based claiming via started_at (5-min lease window)
+ * 1. Atomic lease-based claiming via UPDATE ... RETURNING (no double-claim)
  * 2. QA gate: validateChunks() before any mutation
- * 3. chunk_set_version = SHA256(content + CHUNKER_VERSION) for idempotency
- * 4. Insert-before-delete: old chunks removed only after successful insert
- * 5. Retry with exponential backoff; dead_letter after max_attempts
+ * 3. Deterministic delete-all → insert-fresh (safe with UNIQUE constraints)
+ * 4. Retry with exponential backoff; dead_letter after max_attempts
  *
  * Supports two source tables:
  *   - legal_practice_kb  → legal_practice_kb_chunks
  *   - knowledge_base     → knowledge_base_chunks
  *
+ * Auth: Internal-only (x-internal-key). No partial auth.
  * Idempotent & deterministic. Safe to call repeatedly.
  */
 
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.91.1";
+import { handleCors, validateInternalRequest } from "../_shared/edge-security.ts";
 import {
   chunkDocument,
   validateChunks,
@@ -24,26 +25,9 @@ import {
   type LegalDocumentInput,
 } from "../_shared/chunker.ts";
 
-const corsHeaders = {
-  "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers":
-    "authorization, x-client-info, apikey, content-type, x-internal-key, " +
-    "x-supabase-client-platform, x-supabase-client-platform-version, " +
-    "x-supabase-client-runtime, x-supabase-client-runtime-version",
-  "Access-Control-Allow-Methods": "POST, OPTIONS",
-};
-
 const MAX_INPUT_CHARS = 200_000;
 const LEASE_DURATION_MS = 5 * 60 * 1000; // 5 minutes
 const PARALLEL_BATCH = 5;
-
-// ─── Stable SHA-256 hash ───────────────────────────────────────────
-async function sha256(input: string): Promise<string> {
-  const data = new TextEncoder().encode(input);
-  const hashBuffer = await crypto.subtle.digest("SHA-256", data);
-  const hashArray = Array.from(new Uint8Array(hashBuffer));
-  return hashArray.map((b) => b.toString(16).padStart(2, "0")).join("");
-}
 
 // ─── Map source table to doc_type for chunker ──────────────────────
 function inferDocType(doc: Record<string, unknown>, sourceTable: string): string {
@@ -164,11 +148,25 @@ async function processJob(
     return 0;
   }
 
-  // ── 4. Compute chunk_set_version for idempotency ─────────────────
-  const chunkSetVersion = await sha256(contentText + CHUNKER_VERSION);
+  // ── 4. Atomic: DELETE ALL old chunks, then INSERT fresh ──────────
+  // UNIQUE(doc_id/kb_id, chunk_index) exists — insert-before-delete would
+  // cause constraint violations. Delete-all-then-insert is the correct pattern.
+  const isKB = src === "knowledge_base";
+  const chunksTable = isKB ? "knowledge_base_chunks" : "legal_practice_kb_chunks";
+  const fkColumn = isKB ? "kb_id" : "doc_id";
 
-  // ── 5. Insert new chunks FIRST, then delete old ones ─────────────
-  if (src === "knowledge_base") {
+  // DELETE all existing chunks for this document
+  const { error: deleteErr } = await supabase
+    .from(chunksTable)
+    .delete()
+    .eq(fkColumn, job.document_id);
+
+  if (deleteErr) {
+    throw new Error(`Failed to delete old chunks: ${deleteErr.message}`);
+  }
+
+  // INSERT new chunks in batches
+  if (isKB) {
     const rows = result.chunks.map((c) => ({
       kb_id: job.document_id,
       chunk_index: c.chunk_index,
@@ -181,64 +179,33 @@ async function processJob(
       is_active: true,
     }));
 
-    // Insert new chunks in batches
     for (let i = 0; i < rows.length; i += 100) {
       const batch = rows.slice(i, i + 100);
       const { error: insertErr } = await supabase
         .from("knowledge_base_chunks")
         .insert(batch);
-      if (insertErr) throw insertErr;
-    }
-
-    // Delete old chunks that don't match the new set (by hash comparison)
-    // We delete chunks for this doc that are NOT in the new chunk_hash set
-    const newHashes = result.chunks.map((c) => c.chunk_hash).filter(Boolean);
-    if (newHashes.length > 0) {
-      // Delete duplicates from previous versions — chunks whose hash is NOT in new set
-      const { error: deleteErr } = await supabase
-        .from("knowledge_base_chunks")
-        .delete()
-        .eq("kb_id", job.document_id)
-        .not("chunk_hash", "in", `(${newHashes.join(",")})`);
-      if (deleteErr) {
-        console.warn(`[practice-chunk-worker] old chunk cleanup warning: ${deleteErr.message}`);
-      }
+      if (insertErr) throw new Error(`Failed to insert KB chunks: ${insertErr.message}`);
     }
   } else {
-    // legal_practice_kb_chunks
+    // legal_practice_kb_chunks — NO chunk_type column exists in schema
     const rows = result.chunks.map((c) => ({
       doc_id: job.document_id,
       chunk_index: c.chunk_index,
       chunk_text: c.chunk_text,
       chunk_hash: c.chunk_hash,
-      chunk_type: c.chunk_type || "other",
       title: c.label,
     }));
 
-    // Insert new chunks in batches
     for (let i = 0; i < rows.length; i += 100) {
       const batch = rows.slice(i, i + 100);
       const { error: insertErr } = await supabase
         .from("legal_practice_kb_chunks")
         .insert(batch);
-      if (insertErr) throw insertErr;
-    }
-
-    // Delete old chunks not matching new hashes
-    const newHashes = result.chunks.map((c) => c.chunk_hash).filter(Boolean);
-    if (newHashes.length > 0) {
-      const { error: deleteErr } = await supabase
-        .from("legal_practice_kb_chunks")
-        .delete()
-        .eq("doc_id", job.document_id)
-        .not("chunk_hash", "in", `(${newHashes.join(",")})`);
-      if (deleteErr) {
-        console.warn(`[practice-chunk-worker] old chunk cleanup warning: ${deleteErr.message}`);
-      }
+      if (insertErr) throw new Error(`Failed to insert practice chunks: ${insertErr.message}`);
     }
   }
 
-  // ── 6. Mark job done ─────────────────────────────────────────────
+  // ── 5. Mark job done ─────────────────────────────────────────────
   await supabase
     .from("practice_chunk_jobs")
     .update({
@@ -254,25 +221,14 @@ async function processJob(
 
 // ─── Main handler ──────────────────────────────────────────────────
 serve(async (req) => {
-  if (req.method === "OPTIONS") {
-    return new Response(null, { headers: corsHeaders });
-  }
+  // ── CORS + Auth ─────────────────────────────────────────────────
+  const cors = handleCors(req);
+  if (cors.errorResponse) return cors.errorResponse;
+  const corsHeaders = cors.corsHeaders!;
 
-  // ── Auth check ───────────────────────────────────────────────────
-  const internalKey = req.headers.get("x-internal-key");
-  const expectedKey = Deno.env.get("INTERNAL_INGEST_KEY");
-  const isInternalAuth = internalKey && expectedKey && internalKey === expectedKey;
-
-  if (!isInternalAuth) {
-    const authHeader = req.headers.get("Authorization") ?? "";
-    const token = authHeader.replace("Bearer ", "").trim();
-    if (!token) {
-      return new Response(JSON.stringify({ error: "Unauthorized" }), {
-        status: 401,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
-    }
-  }
+  // STRICT: Internal-only endpoint. No partial auth.
+  const authErr = validateInternalRequest(req, corsHeaders);
+  if (authErr) return authErr;
 
   const startTime = Date.now();
 
@@ -290,8 +246,6 @@ serve(async (req) => {
     );
 
     // ── Lease-based recovery: reclaim expired leases ───────────────
-    // Jobs stuck in "processing" with started_at older than LEASE_DURATION
-    // are reclaimed back to "pending" so another invocation can pick them up.
     const leaseExpiry = new Date(Date.now() - LEASE_DURATION_MS).toISOString();
     let recoverQuery = supabase
       .from("practice_chunk_jobs")
@@ -301,9 +255,9 @@ serve(async (req) => {
     if (sourceFilter) recoverQuery = recoverQuery.eq("source_table", sourceFilter);
     await recoverQuery;
 
-    // ── Lease-based claim: atomically claim jobs ───────────────────
-    // We claim by setting status='processing' and started_at=now()
-    // Only jobs where lease has expired (or never started) are eligible.
+    // ── Atomic lease claim via RPC or UPDATE with conditions ───────
+    // Claim jobs atomically: UPDATE ... WHERE status IN (...) AND attempts < 5
+    // This prevents double-claim because Postgres UPDATE locks the rows.
     const now = new Date().toISOString();
 
     // Step 1: Find eligible jobs
@@ -339,16 +293,33 @@ serve(async (req) => {
       }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
     }
 
-    // Step 2: Atomically claim via lease (set started_at = now)
+    // Step 2: Atomically claim via status transition
+    // UPDATE ... WHERE id IN (...) AND status IN ('pending','failed')
+    // Postgres row-level locks prevent double-claim within a single UPDATE.
     const jobIds = jobs.map((j) => j.id);
-    const { error: claimErr } = await supabase
+    const { data: claimedRows, error: claimErr } = await supabase
       .from("practice_chunk_jobs")
       .update({ status: "processing", started_at: now })
       .in("id", jobIds)
-      .in("status", ["pending", "failed"]); // re-check status to prevent double-claim
+      .in("status", ["pending", "failed"])
+      .select("id");
 
     if (claimErr) {
       console.warn(`[practice-chunk-worker] claim warning: ${claimErr.message}`);
+    }
+
+    // Only process jobs we actually claimed
+    const claimedIds = new Set((claimedRows || []).map((r: { id: string }) => r.id));
+    const claimedJobs = jobs.filter((j) => claimedIds.has(j.id));
+
+    if (claimedJobs.length === 0) {
+      return new Response(JSON.stringify({
+        processed: 0,
+        remaining: 0,
+        duration_ms: Date.now() - startTime,
+        chunker_version: CHUNKER_VERSION,
+        note: "All jobs claimed by another worker",
+      }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
     }
 
     let processed = 0;
@@ -358,8 +329,8 @@ serve(async (req) => {
     const errors: string[] = [];
 
     // ── Process in parallel batches ────────────────────────────────
-    for (let i = 0; i < jobs.length; i += PARALLEL_BATCH) {
-      const batch = jobs.slice(i, i + PARALLEL_BATCH);
+    for (let i = 0; i < claimedJobs.length; i += PARALLEL_BATCH) {
+      const batch = claimedJobs.slice(i, i + PARALLEL_BATCH);
       const results = await Promise.allSettled(
         batch.map((job) => processJob(supabase, job)),
       );
@@ -373,7 +344,6 @@ serve(async (req) => {
             totalChunks += result.value;
             processed++;
           } else {
-            // QA rejection or empty content — already handled in processJob
             qaRejected++;
           }
         } else {

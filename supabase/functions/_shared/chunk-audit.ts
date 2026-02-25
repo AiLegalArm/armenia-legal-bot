@@ -120,7 +120,7 @@ export function computeMetrics(
       total_chunk_chars: 0,
       document_chars: docChars,
       coverage_ratio: 0,
-      coverage_ok: docChars < 100, // empty docs are "ok"
+      coverage_ok: false,
       boundary_violations: [],
       gap_violations: [],
       overlap_violations: [],
