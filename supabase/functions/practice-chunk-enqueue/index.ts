@@ -219,6 +219,20 @@ serve(async (req) => {
 
       console.log(`[practice-chunk-enqueue] enqueued ${enqueued} chunk jobs for ${source}`);
 
+      // Best-effort kick: trigger worker immediately (don't await result)
+      const workerUrl = `${Deno.env.get("SUPABASE_URL")}/functions/v1/practice-chunk-worker`;
+      const internalKeyVal = Deno.env.get("INTERNAL_INGEST_KEY");
+      if (internalKeyVal) {
+        fetch(workerUrl, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "x-internal-key": internalKeyVal,
+          },
+          body: JSON.stringify({ source_table: source, concurrency_docs: 10 }),
+        }).catch((e) => console.warn("[practice-chunk-enqueue] best-effort kick failed:", e.message));
+      }
+
       return new Response(JSON.stringify({ enqueued, total_missing: docIds.length }), {
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });

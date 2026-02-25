@@ -1,13 +1,12 @@
-import { useState, useRef, useCallback, useEffect } from "react";
+import { useState, useRef, useEffect } from "react";
 import { useTranslation } from "react-i18next";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Progress } from "@/components/ui/progress";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { toast } from "sonner";
 import {
-  Loader2, Layers, Play, Square, RotateCcw, BarChart3, AlertTriangle, Database,
+  Loader2, Layers, RotateCcw, BarChart3, AlertTriangle, Database,
 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 
@@ -33,9 +32,6 @@ function PipelineSection({ source }: { source: SourceTable }) {
   const { t } = useTranslation("admin");
   const [diag, setDiag] = useState<Diagnostics | null>(null);
   const [loading, setLoading] = useState(false);
-  const [running, setRunning] = useState(false);
-  const [progress, setProgress] = useState({ processed: 0, remaining: 0, chunks: 0 });
-  const abortRef = useRef<AbortController | null>(null);
   const mountedRef = useRef(true);
 
   useEffect(() => {
@@ -65,6 +61,7 @@ function PipelineSection({ source }: { source: SourceTable }) {
       });
       if (error) throw error;
       toast.success(`${t("enqueue_missing_chunks")}: ${data.enqueued}`);
+      // Worker is kicked automatically by enqueue + cron runs every 2 min
       loadDiagnostics();
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Enqueue failed");
@@ -95,62 +92,6 @@ function PipelineSection({ source }: { source: SourceTable }) {
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Reset failed");
     }
-  };
-
-  const runFullPipeline = useCallback(async () => {
-    setRunning(true);
-    setProgress({ processed: 0, remaining: 0, chunks: 0 });
-    abortRef.current = new AbortController();
-
-    let totalProcessed = 0;
-    let totalChunks = 0;
-    let remaining = Infinity;
-    let consecutiveEmpty = 0;
-
-    try {
-      // Step 1: Auto-enqueue all missing chunks first
-      const { data: enqData, error: enqErr } = await supabase.functions.invoke("practice-chunk-enqueue", {
-        body: { action: "enqueue_missing_chunks", source_table: source },
-      });
-      if (!enqErr && enqData?.enqueued > 0) {
-        toast.info(`${t("enqueue_missing_chunks")}: ${enqData.enqueued}`);
-      }
-
-      // Step 2: Process all jobs with high concurrency
-      while (remaining > 0 && !abortRef.current.signal.aborted && consecutiveEmpty < 3) {
-        const { data, error } = await supabase.functions.invoke("practice-chunk-worker", {
-          body: { concurrency_docs: 10, source_table: source },
-        });
-        if (error) throw error;
-
-        const batchProcessed = data.processed || 0;
-        totalProcessed += batchProcessed;
-        totalChunks += data.total_chunks_inserted || 0;
-        remaining = data.remaining || 0;
-
-        if (mountedRef.current) {
-          setProgress({ processed: totalProcessed, remaining, chunks: totalChunks });
-        }
-
-        if (batchProcessed === 0) {
-          consecutiveEmpty++;
-        } else {
-          consecutiveEmpty = 0;
-        }
-      }
-
-      toast.success(`${t("progress_processed", { processed: totalProcessed })} | ${t("progress_chunks", { chunks: totalChunks })}`);
-      loadDiagnostics();
-    } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Worker error");
-    } finally {
-      if (mountedRef.current) setRunning(false);
-    }
-  }, [source]);
-
-  const stop = () => {
-    abortRef.current?.abort();
-    setRunning(false);
   };
 
   const coveragePct = diag
@@ -206,10 +147,10 @@ function PipelineSection({ source }: { source: SourceTable }) {
         <Button size="sm" variant="outline" onClick={loadDiagnostics} disabled={loading}>
           <BarChart3 className="mr-1 h-4 w-4" /> {t("refresh")}
         </Button>
-        <Button size="sm" onClick={enqueueChunks} disabled={running}>
+        <Button size="sm" onClick={enqueueChunks}>
           {t("enqueue_missing_chunks")}
         </Button>
-        <Button size="sm" onClick={enqueueEmbeddings} disabled={running}>
+        <Button size="sm" onClick={enqueueEmbeddings}>
           {t("enqueue_missing_embeddings")}
         </Button>
         {(diag?.jobs.dead_letter ?? 0) > 0 && (
@@ -219,32 +160,9 @@ function PipelineSection({ source }: { source: SourceTable }) {
         )}
       </div>
 
-      <div className="flex items-center gap-2">
-        <Button size="sm" onClick={runFullPipeline} disabled={running}>
-          {running ? <Loader2 className="mr-1 h-4 w-4 animate-spin" /> : <Play className="mr-1 h-4 w-4" />}
-          {running ? t("processing_worker") : t("run_worker")}
-        </Button>
-        {running && (
-          <Button size="sm" variant="destructive" onClick={stop}>
-            <Square className="mr-1 h-4 w-4" /> {t("stop")}
-          </Button>
-        )}
-      </div>
-
-      {running && (
-        <div className="space-y-1">
-          <Progress
-            value={
-              progress.remaining + progress.processed > 0
-                ? (progress.processed / (progress.processed + progress.remaining)) * 100
-                : 0
-            }
-          />
-          <p className="text-xs text-muted-foreground">
-            {t("progress_processed", { processed: progress.processed })} | {t("progress_chunks", { chunks: progress.chunks })} | {t("progress_remaining", { remaining: progress.remaining })}
-          </p>
-        </div>
-      )}
+      <p className="text-xs text-muted-foreground">
+        ⚡ Worker runs automatically every 2 minutes via cron. After enqueue, processing starts immediately.
+      </p>
     </div>
   );
 }
