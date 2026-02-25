@@ -146,13 +146,24 @@ serve(async (req) => {
 
 // ─── Keyword search helpers ──────────────────────────────────────────────────
 
+interface KBResult {
+  id: string;
+  doc_id: string;
+  title: string;
+  content_text: string;
+  similarity: number;
+  effective_from: string | null;
+  effective_to: string | null;
+  source_type: "kb";
+}
+
 async function keywordSearchKB(
   supabase: ReturnType<typeof createClient>,
   query: string,
   limit: number,
   referenceDate: string | null = null
-): Promise<Array<{ id: string; title: string; content_text: string; similarity?: number }>> {
-  const results = new Map<string, { id: string; title: string; content_text: string; similarity: number }>();
+): Promise<KBResult[]> {
+  const results = new Map<string, KBResult>();
 
   const rpcParams: Record<string, unknown> = { search_query: query, result_limit: limit };
   if (referenceDate) rpcParams.reference_date = referenceDate;
@@ -164,9 +175,12 @@ async function keywordSearchKB(
   }
   for (const r of rpcData || []) {
     results.set(r.id, {
-      id: r.id, title: r.title,
+      id: r.id, doc_id: r.id, title: r.title,
       content_text: (r.content_text || "").substring(0, 2000),
       similarity: r.rank || 0,
+      effective_from: r.effective_from || null,
+      effective_to: r.effective_to || null,
+      source_type: "kb",
     });
   }
 
@@ -180,9 +194,12 @@ async function keywordSearchKB(
     for (const r of wordData || []) {
       if (!results.has(r.id)) {
         results.set(r.id, {
-          id: r.id, title: r.title,
+          id: r.id, doc_id: r.id, title: r.title,
           content_text: (r.content_text || "").substring(0, 2000),
           similarity: (r.rank || 0) * 0.8,
+          effective_from: r.effective_from || null,
+          effective_to: r.effective_to || null,
+          source_type: "kb",
         });
       }
     }
@@ -195,7 +212,7 @@ async function keywordSearchKB(
       if (searchTerm.length < 2) continue;
       const { data } = await supabase
         .from("knowledge_base")
-        .select("id, title, content_text")
+        .select("id, title, content_text, effective_from, effective_to")
         .eq("is_active", true)
         .ilike("title", `%${searchTerm}%`)
         .limit(Math.min(10, limit));
@@ -203,9 +220,12 @@ async function keywordSearchKB(
       for (const r of data || []) {
         if (!results.has(r.id)) {
           results.set(r.id, {
-            id: r.id, title: r.title,
+            id: r.id, doc_id: r.id, title: r.title,
             content_text: (r.content_text || "").substring(0, 2000),
             similarity: 0.3,
+            effective_from: r.effective_from || null,
+            effective_to: r.effective_to || null,
+            source_type: "kb",
           });
         }
       }
@@ -219,9 +239,11 @@ async function keywordSearchKB(
 
 interface PracticeCandidate {
   id: string;
+  doc_id: string;
   title: string;
   content_text: string;
   similarity: number;
+  source_type: "practice";
   practice_category?: string;
   court_type?: string;
   decision_date?: string;
@@ -252,9 +274,11 @@ async function keywordSearchPractice(
       for (const r of data || []) {
         results.set(r.id, {
           id: r.id,
+          doc_id: r.id,
           title: r.title,
           content_text: (r.content_text || "").substring(0, 2000),
           similarity: 0.7,
+          source_type: "practice",
           practice_category: r.practice_category || undefined,
           court_type: r.court_type || undefined,
           decision_date: r.decision_date || undefined,
@@ -282,9 +306,11 @@ async function keywordSearchPractice(
       if (!results.has(r.id)) {
         results.set(r.id, {
           id: r.id,
+          doc_id: r.id,
           title: r.title,
           content_text: (r.content_text || "").substring(0, 2000),
           similarity: 0.5,
+          source_type: "practice",
           practice_category: r.practice_category || undefined,
           court_type: r.court_type || undefined,
           decision_date: r.decision_date || undefined,
