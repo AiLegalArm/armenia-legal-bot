@@ -990,40 +990,65 @@ Please provide your professional legal analysis from your designated role perspe
       _metadata: { role, caseId: caseId || null },
     });
 
-    // === FIX 2 (P0/P1): Runtime Citation Guard ===
-    const uuidPattern = /\b([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\b/gi;
-    const allCitedIds = [...new Set(
-      [...(analysisText.matchAll(uuidPattern))].map(m => m[1])
-    )];
-    
+    // === FIX 2 v1.1 (P0/P1): Contract-based Citation Guard ===
+    // Extract IDs only after citation markers (ID: / ID： / ID՝), not all UUIDs in text
+    const MAX_CITED_IDS = 50;
+    const citationMarkerPattern = /ID(?::|：|՝)\s*([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-5][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12})(?:\s*[,;]\s*([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-5][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}))*/gi;
+    const extractedIds: string[] = [];
+    for (const match of analysisText.matchAll(citationMarkerPattern)) {
+      const fullMatch = match[0];
+      const uuidsInMatch = fullMatch.matchAll(/([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-5][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12})/gi);
+      for (const u of uuidsInMatch) extractedIds.push(u[1].toLowerCase());
+    }
+    const allCitedIds = [...new Set(extractedIds)];
+
     let citationsVerified = true;
     let missingIds: string[] = [];
-    
-    if (allCitedIds.length > 0) {
-      const { data: kbMatches } = await supabase
+    let citationReason: string = "ok";
+
+    if (allCitedIds.length > MAX_CITED_IDS) {
+      citationsVerified = false;
+      citationReason = "too_many_citations";
+      console.warn(JSON.stringify({
+        ts: new Date().toISOString(), lvl: "warn", fn: "ai-analyze",
+        msg: "CITATION_GUARD: too many cited IDs, skipping verification",
+        cited_ids_count: allCitedIds.length, max: MAX_CITED_IDS, role,
+      }));
+    } else if (allCitedIds.length > 0) {
+      // Verify against KB (knowledge_base) and Practice (legal_documents) tables
+      const { data: kbMatches, error: kbErr } = await supabase
         .from("knowledge_base")
         .select("id")
         .in("id", allCitedIds);
-      const { data: practiceMatches } = await supabase
-        .from("legal_practice_kb")
+      const { data: practiceMatches, error: practiceErr } = await supabase
+        .from("legal_documents")
         .select("id")
         .in("id", allCitedIds);
-      
-      const foundIds = new Set([
-        ...(kbMatches || []).map((r: { id: string }) => r.id),
-        ...(practiceMatches || []).map((r: { id: string }) => r.id),
-      ]);
-      
-      const knownNonCitationIds = new Set([caseId, user.id].filter(Boolean));
-      missingIds = allCitedIds.filter(id => !foundIds.has(id) && !knownNonCitationIds.has(id));
-      citationsVerified = missingIds.length === 0;
-      
-      if (!citationsVerified) {
-        console.warn(JSON.stringify({
-          ts: new Date().toISOString(), lvl: "warn", fn: "ai-analyze",
-          msg: "CITATION_GUARD: unverified IDs in output",
-          missing_ids: missingIds, role,
+
+      if (kbErr || practiceErr) {
+        citationsVerified = false;
+        citationReason = "verification_query_failed";
+        console.error(JSON.stringify({
+          ts: new Date().toISOString(), lvl: "error", fn: "ai-analyze",
+          msg: "CITATION_GUARD: DB verification query failed",
+          kb_error: kbErr?.message?.substring(0, 200),
+          practice_error: practiceErr?.message?.substring(0, 200),
         }));
+      } else {
+        const foundIds = new Set([
+          ...(kbMatches || []).map((r: { id: string }) => r.id),
+          ...(practiceMatches || []).map((r: { id: string }) => r.id),
+        ]);
+        missingIds = allCitedIds.filter(id => !foundIds.has(id));
+        citationsVerified = missingIds.length === 0;
+        if (!citationsVerified) {
+          citationReason = "unverified_ids";
+          console.warn(JSON.stringify({
+            ts: new Date().toISOString(), lvl: "warn", fn: "ai-analyze",
+            msg: "CITATION_GUARD: unverified IDs in output",
+            missing_ids: missingIds, role,
+          }));
+        }
       }
     }
 
@@ -1038,6 +1063,7 @@ Please provide your professional legal analysis from your designated role perspe
           citations_verified: citationsVerified,
           ...(missingIds.length > 0 ? { missing_ids: missingIds } : {}),
           cited_ids_count: allCitedIds.length,
+          reason: citationReason,
         },
       }),
       {

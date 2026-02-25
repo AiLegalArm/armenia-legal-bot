@@ -885,44 +885,63 @@ serve(async (req) => {
       _metadata: { agentType, caseId, runId }
     });
 
-    // === FIX 2 (P0/P1): Runtime Citation Guard ===
-    // Extract cited UUIDs from the AI output and verify they exist in KB/practice tables
-    const uuidPattern = /\b([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\b/gi;
-    const allCitedIds = [...new Set(
-      [...(content.matchAll(uuidPattern))].map(m => m[1])
-    )];
-    
+    // === FIX 2 v1.1 (P0/P1): Contract-based Citation Guard ===
+    const MAX_CITED_IDS = 50;
+    const citationMarkerPattern = /ID(?::|：|՝)\s*([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-5][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12})(?:\s*[,;]\s*([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-5][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}))*/gi;
+    const extractedIds: string[] = [];
+    for (const match of content.matchAll(citationMarkerPattern)) {
+      const fullMatch = match[0];
+      const uuidsInMatch = fullMatch.matchAll(/([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-5][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12})/gi);
+      for (const u of uuidsInMatch) extractedIds.push(u[1].toLowerCase());
+    }
+    const allCitedIds = [...new Set(extractedIds)];
+
     let citationsVerified = true;
     let missingIds: string[] = [];
-    
-    if (allCitedIds.length > 0) {
-      // Check KB
-      const { data: kbMatches } = await supabase
+    let citationReason: string = "ok";
+
+    if (allCitedIds.length > MAX_CITED_IDS) {
+      citationsVerified = false;
+      citationReason = "too_many_citations";
+      console.warn(JSON.stringify({
+        ts: new Date().toISOString(), lvl: "warn", fn: "multi-agent",
+        msg: "CITATION_GUARD: too many cited IDs, skipping verification",
+        cited_ids_count: allCitedIds.length, max: MAX_CITED_IDS,
+      }));
+    } else if (allCitedIds.length > 0) {
+      const { data: kbMatches, error: kbErr } = await supabase
         .from("knowledge_base")
         .select("id")
         .in("id", allCitedIds);
-      // Check practice
-      const { data: practiceMatches } = await supabase
-        .from("legal_practice_kb")
+      const { data: practiceMatches, error: practiceErr } = await supabase
+        .from("legal_documents")
         .select("id")
         .in("id", allCitedIds);
-      
-      const foundIds = new Set([
-        ...(kbMatches || []).map((r: { id: string }) => r.id),
-        ...(practiceMatches || []).map((r: { id: string }) => r.id),
-      ]);
-      
-      // Filter: only flag IDs that look like they're citations (not caseId, runId, etc.)
-      const knownNonCitationIds = new Set([caseId, runId, user.id].filter(Boolean));
-      missingIds = allCitedIds.filter(id => !foundIds.has(id) && !knownNonCitationIds.has(id));
-      citationsVerified = missingIds.length === 0;
-      
-      if (!citationsVerified) {
-        console.warn(JSON.stringify({
-          ts: new Date().toISOString(), lvl: "warn", fn: "multi-agent",
-          msg: "CITATION_GUARD: unverified IDs found in output",
-          missing_ids: missingIds, total_cited: allCitedIds.length,
+
+      if (kbErr || practiceErr) {
+        citationsVerified = false;
+        citationReason = "verification_query_failed";
+        console.error(JSON.stringify({
+          ts: new Date().toISOString(), lvl: "error", fn: "multi-agent",
+          msg: "CITATION_GUARD: DB verification query failed",
+          kb_error: kbErr?.message?.substring(0, 200),
+          practice_error: practiceErr?.message?.substring(0, 200),
         }));
+      } else {
+        const foundIds = new Set([
+          ...(kbMatches || []).map((r: { id: string }) => r.id),
+          ...(practiceMatches || []).map((r: { id: string }) => r.id),
+        ]);
+        missingIds = allCitedIds.filter(id => !foundIds.has(id));
+        citationsVerified = missingIds.length === 0;
+        if (!citationsVerified) {
+          citationReason = "unverified_ids";
+          console.warn(JSON.stringify({
+            ts: new Date().toISOString(), lvl: "warn", fn: "multi-agent",
+            msg: "CITATION_GUARD: unverified IDs in output",
+            missing_ids: missingIds, total_cited: allCitedIds.length,
+          }));
+        }
       }
     }
 
@@ -934,6 +953,7 @@ serve(async (req) => {
         citations_verified: citationsVerified,
         ...(missingIds.length > 0 ? { missing_ids: missingIds } : {}),
         cited_ids_count: allCitedIds.length,
+        reason: citationReason,
       },
     }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
