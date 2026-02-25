@@ -27,7 +27,7 @@
 
 // ─── VERSION ────────────────────────────────────────────────────────
 
-export const CHUNKER_VERSION = "v2.4.1";
+export const CHUNKER_VERSION = "v2.4.2";
 
 // ─── TYPES ──────────────────────────────────────────────────────────
 
@@ -260,25 +260,22 @@ function makeChunk(
  * merge MUST NOT happen.
  */
 export function parentKey(chunk: LegalChunk): string | null {
-  const strategy = chunk.doc_type || "_";
-  const ct = chunk.chunk_type;
+  const docTypeKey = chunk.doc_type || chunk.metadata?.document_type || "_";
 
   // 1. Locator article takes highest priority
   if (chunk.locator?.article) {
-    return `law:${strategy}:article:${chunk.locator.article}`;
+    return `law:${docTypeKey}:article:${chunk.locator.article}`;
   }
   // 2. Metadata article_number
   if (chunk.metadata?.article_number) {
-    return `law:${strategy}:article:${chunk.metadata.article_number}`;
+    return `law:${docTypeKey}:article:${chunk.metadata.article_number}`;
   }
   // 3. Metadata section_type (for court decisions / ECHR)
   if (chunk.metadata?.section_type && chunk.metadata.section_type !== "header") {
-    return `section:${strategy}:${chunk.metadata.section_type}`;
+    return `decision:${docTypeKey}:section:${chunk.metadata.section_type}`;
   }
-  // 4. Hierarchy from locator.section_title
-  if (chunk.locator?.section_title) {
-    return `path:${strategy}:${chunk.locator.section_title}`;
-  }
+  // 4. locator.section_title is intentionally NOT used as parentKey
+  //    (too high risk of false merges across unrelated sections)
   // 5. Cannot determine — return null (no merge allowed)
   return null;
 }

@@ -1,5 +1,5 @@
 /**
- * Tests for legal-chunker v2.4.1
+ * Tests for legal-chunker v2.4.2
  *
  * Covers: legislation, court decisions, ECHR judgments, international treaties,
  * part splitting, conditional overlap, metadata, token limits, parentKey safety,
@@ -504,7 +504,7 @@ Deno.test("parentKey: returns null when metadata is missing", () => {
   assertEquals(parentKey(chunk), null);
 });
 
-Deno.test("parentKey: returns article key from locator", () => {
+Deno.test("parentKey: returns article key from locator with docTypeKey", () => {
   const chunk = {
     chunk_index: 0, chunk_type: "article" as const, chunk_text: "x",
     char_start: 0, char_end: 1, label: null,
@@ -513,6 +513,62 @@ Deno.test("parentKey: returns article key from locator", () => {
     doc_type: "code",
   };
   assertEquals(parentKey(chunk), "law:code:article:12");
+});
+
+Deno.test("parentKey: uses metadata.document_type as fallback for docTypeKey", () => {
+  const chunk = {
+    chunk_index: 0, chunk_type: "article" as const, chunk_text: "x",
+    char_start: 0, char_end: 1, label: null,
+    locator: { article: "5" },
+    chunk_hash: "h", metadata: { article_number: "5", document_type: "bylaw" },
+  };
+  assertEquals(parentKey(chunk), "law:bylaw:article:5");
+});
+
+Deno.test("parentKey: section_title does NOT produce a parentKey", () => {
+  const chunkA = {
+    chunk_index: 0, chunk_type: "assessment" as const, chunk_text: "x",
+    char_start: 0, char_end: 1, label: null,
+    locator: { section_title: "THE COURT'S ASSESSMENT" },
+    chunk_hash: "h", metadata: { document_type: "echr_judgment", court_level: "echr" },
+  };
+  const chunkB = {
+    chunk_index: 1, chunk_type: "assessment" as const, chunk_text: "y",
+    char_start: 1, char_end: 2, label: null,
+    locator: { section_title: "THE COURT'S ASSESSMENT" },
+    chunk_hash: "h2", metadata: { document_type: "echr_judgment", court_level: "echr" },
+  };
+  // section_title alone must NOT produce a parentKey
+  assertEquals(parentKey(chunkA), null);
+  assertEquals(parentKey(chunkB), null);
+});
+
+Deno.test("parentKey: section_type produces decision: prefix key", () => {
+  const chunk = {
+    chunk_index: 0, chunk_type: "reasoning" as const, chunk_text: "x",
+    char_start: 0, char_end: 1, label: null, locator: null,
+    chunk_hash: "h", metadata: { section_type: "reasoning", document_type: "cassation_ruling" },
+    doc_type: "cassation_ruling",
+  };
+  assertEquals(parentKey(chunk), "decision:cassation_ruling:section:reasoning");
+});
+
+Deno.test("parentKey: null parentKey prevents merge even if chunk < 800", () => {
+  // Chunks with only section_title (no article, no section_type) must NOT merge
+  const chunkA = {
+    chunk_index: 0, chunk_type: "other" as const, chunk_text: "short",
+    char_start: 0, char_end: 5, label: null,
+    locator: { section_title: "Some Section" },
+    chunk_hash: "h1", metadata: { document_type: "echr_judgment" },
+  };
+  const chunkB = {
+    chunk_index: 1, chunk_type: "other" as const, chunk_text: "also short",
+    char_start: 5, char_end: 15, label: null,
+    locator: { section_title: "Some Section" },
+    chunk_hash: "h2", metadata: { document_type: "echr_judgment" },
+  };
+  assertEquals(parentKey(chunkA), null);
+  assertEquals(parentKey(chunkB), null);
 });
 
 // ─── TEST: Missing metadata prevents merge ─────────────────────────
@@ -618,10 +674,10 @@ Deno.test("chunkDocument: ECHR metadata.court_level='echr' on ALL chunks", () =>
 
 // ─── TEST: Version is v2.4.1 ───────────────────────────────────────
 
-Deno.test("chunkDocument: version is v2.4.1", () => {
+Deno.test("chunkDocument: version is v2.4.2", () => {
   const result = chunkDocument({ doc_type: "code", content_text: LEGISLATION_FIXTURE });
-  assertEquals(result.chunker_version, "v2.4.1");
+  assertEquals(result.chunker_version, "v2.4.2");
   for (const c of result.chunks) {
-    assertEquals(c.chunker_version, "v2.4.1");
+    assertEquals(c.chunker_version, "v2.4.2");
   }
 });
