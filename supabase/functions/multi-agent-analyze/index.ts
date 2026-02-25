@@ -5,11 +5,8 @@ import { redactForLog } from "../_shared/pii-redactor.ts";
 import { searchKB, searchPractice, formatKBContext, formatPracticeContext as formatPracticeCtx } from "../_shared/rag-search.ts";
 import { parseReferencesText, buildUserSourcesBlock } from "../_shared/reference-sources.ts";
 
-const corsHeaders = {
-  'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version',
-  'Access-Control-Allow-Methods': 'POST, OPTIONS',
-};
+import { handleCors } from "../_shared/edge-security.ts";
+
 
 // ==============================
 // AI LEGAL ARMENIA \u2014 AGENT PROMPTS (PRODUCTION)
@@ -659,9 +656,10 @@ const AGENT_PROMPTS: Record<string, string> = {
 };
 
 serve(async (req) => {
-  if (req.method === 'OPTIONS') {
-    return new Response(null, { headers: corsHeaders });
-  }
+  // === CORS via centralized handler ===
+  const corsResult = handleCors(req);
+  if (corsResult.errorResponse) return corsResult.errorResponse;
+  const corsHeaders = corsResult.corsHeaders!;
 
   try {
     // === AUTH GUARD (Prevent Anonymous Access) ===
@@ -799,7 +797,7 @@ serve(async (req) => {
         }),
         searchPractice({
           supabase, supabaseUrl, supabaseKey: supabaseServiceKey,
-          query: searchQuery, limit: 3,
+          query: searchQuery, referenceDate, limit: 3,
         }),
       ]);
 
@@ -887,10 +885,56 @@ serve(async (req) => {
       _metadata: { agentType, caseId, runId }
     });
 
+    // === FIX 2 (P0/P1): Runtime Citation Guard ===
+    // Extract cited UUIDs from the AI output and verify they exist in KB/practice tables
+    const uuidPattern = /\b([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\b/gi;
+    const allCitedIds = [...new Set(
+      [...(content.matchAll(uuidPattern))].map(m => m[1])
+    )];
+    
+    let citationsVerified = true;
+    let missingIds: string[] = [];
+    
+    if (allCitedIds.length > 0) {
+      // Check KB
+      const { data: kbMatches } = await supabase
+        .from("knowledge_base")
+        .select("id")
+        .in("id", allCitedIds);
+      // Check practice
+      const { data: practiceMatches } = await supabase
+        .from("legal_practice_kb")
+        .select("id")
+        .in("id", allCitedIds);
+      
+      const foundIds = new Set([
+        ...(kbMatches || []).map((r: { id: string }) => r.id),
+        ...(practiceMatches || []).map((r: { id: string }) => r.id),
+      ]);
+      
+      // Filter: only flag IDs that look like they're citations (not caseId, runId, etc.)
+      const knownNonCitationIds = new Set([caseId, runId, user.id].filter(Boolean));
+      missingIds = allCitedIds.filter(id => !foundIds.has(id) && !knownNonCitationIds.has(id));
+      citationsVerified = missingIds.length === 0;
+      
+      if (!citationsVerified) {
+        console.warn(JSON.stringify({
+          ts: new Date().toISOString(), lvl: "warn", fn: "multi-agent",
+          msg: "CITATION_GUARD: unverified IDs found in output",
+          missing_ids: missingIds, total_cited: allCitedIds.length,
+        }));
+      }
+    }
+
     return new Response(JSON.stringify({
       ...parsedResult,
       tokensUsed,
-      agentType
+      agentType,
+      validation: {
+        citations_verified: citationsVerified,
+        ...(missingIds.length > 0 ? { missing_ids: missingIds } : {}),
+        cited_ids_count: allCitedIds.length,
+      },
     }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });

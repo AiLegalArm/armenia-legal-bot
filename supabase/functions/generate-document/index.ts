@@ -26,16 +26,13 @@ import { parseReferencesText, buildUserSourcesBlock } from "../_shared/reference
 // =============================================================================
 // CORS HEADERS (wildcard for browser compatibility)
 // =============================================================================
-const corsHeaders = {
-  "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-internal-key",
-  "Access-Control-Allow-Methods": "POST, OPTIONS",
-};
+import { handleCors } from "../_shared/edge-security.ts";
 
 serve(async (req) => {
-  if (req.method === "OPTIONS") {
-    return new Response(null, { status: 204, headers: corsHeaders });
-  }
+  // === CORS via centralized handler ===
+  const corsResult = handleCors(req);
+  if (corsResult.errorResponse) return corsResult.errorResponse;
+  const corsHeaders = corsResult.corsHeaders!;
 
   try {
     // === AUTH GUARD (Audit Fix: Stage 2/5 — Critical) ===
@@ -63,6 +60,38 @@ serve(async (req) => {
     const body = await req.json();
     const request = validateRequest(body);
     const referencesText: string = typeof body.referencesText === "string" ? body.referencesText : "";
+
+    // === FIX 1 (P0): Resolve referenceDate for temporal RAG ===
+    let referenceDate: string | null = null;
+    const rawCaseDate = typeof body.caseDate === "string" ? body.caseDate.trim() : "";
+    if (rawCaseDate && /^\d{4}-\d{2}-\d{2}/.test(rawCaseDate)) {
+      referenceDate = rawCaseDate.substring(0, 10); // normalize to YYYY-MM-DD
+    } else if (request.caseData?.court) {
+      // Attempt to fetch court_date from case if caseData has a case reference
+      // (caseData itself doesn't carry court_date, so we skip DB lookup here)
+    }
+    // body.caseId fallback: fetch court_date from cases table
+    const bodyCaseId = typeof body.caseId === "string" ? body.caseId : null;
+    if (!referenceDate && bodyCaseId) {
+      const { data: dateRow } = await authClient
+        .from("cases")
+        .select("court_date")
+        .eq("id", bodyCaseId)
+        .maybeSingle();
+      if (dateRow?.court_date) {
+        referenceDate = String(dateRow.court_date).substring(0, 10);
+      }
+    }
+    if (!referenceDate) {
+      return new Response(
+        JSON.stringify({
+          error: "referenceDate_required",
+          message: "caseDate or caseId (with cases.court_date) is required for temporal legal retrieval",
+        }),
+        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+    log("generate-document", "Resolved referenceDate", { referenceDate });
 
     // Parse user-selected sources (optional)
     let userSourcesBlock = "";
@@ -105,6 +134,7 @@ serve(async (req) => {
         supabaseKey: SUPABASE_SERVICE_KEY,
         query: searchTerms.join(' '),
         category: practiceCategory,
+        referenceDate,
         kbLimit: 8,
         practiceLimit: 5,
         fullPracticeText: false,

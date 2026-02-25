@@ -41,11 +41,8 @@ function tryParseJson(text: string): unknown | null {
   }
 }
 
-const corsHeaders = {
-  'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version',
-  'Access-Control-Allow-Methods': 'POST, OPTIONS',
-};
+import { handleCors } from "../_shared/edge-security.ts";
+
 
 // Legal AI System Prompts \u2014 STRICTLY for Republic of Armenia (RA) law
 // CRITICAL: No hallucinations. RAG-FIRST. KB is reference-only.
@@ -146,9 +143,10 @@ interface AnalysisRequest {
 
 
 serve(async (req) => {
-  if (req.method === 'OPTIONS') {
-    return new Response(null, { headers: corsHeaders });
-  }
+  // === CORS via centralized handler ===
+  const corsResult = handleCors(req);
+  if (corsResult.errorResponse) return corsResult.errorResponse;
+  const corsHeaders = corsResult.corsHeaders!;
 
   try {
     // === AUTH GUARD (Audit Fix: Stage 5 — Critical) ===
@@ -811,6 +809,22 @@ Please provide your professional legal analysis from your designated role perspe
       }
 
       const responseKey = role === "precedent_citation" ? "precedent_data" : role === "deadline_rules" ? "deadline_data" : role === "hallucination_audit" ? "audit_data" : role === "strategy_builder" ? "strategy_data" : role === "evidence_weakness" ? "evidence_weakness_data" : role === "risk_factors" ? "risk_factors_data" : role === "law_update_summary" ? "law_update_data" : role === "cross_exam" ? "cross_exam_data" : "comparator_data";
+
+      // Citation Guard for structured outputs
+      const structuredText = JSON.stringify(structuredJson);
+      const structUuidPattern = /\b([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\b/gi;
+      const structCitedIds = [...new Set([...(structuredText.matchAll(structUuidPattern))].map(m => m[1]))];
+      let structCitationsVerified = true;
+      let structMissingIds: string[] = [];
+      if (structCitedIds.length > 0) {
+        const { data: kbM } = await supabase.from("knowledge_base").select("id").in("id", structCitedIds);
+        const { data: prM } = await supabase.from("legal_practice_kb").select("id").in("id", structCitedIds);
+        const foundSet = new Set([...(kbM || []).map((r: { id: string }) => r.id), ...(prM || []).map((r: { id: string }) => r.id)]);
+        const skipIds = new Set([caseId, user.id].filter(Boolean));
+        structMissingIds = structCitedIds.filter(id => !foundSet.has(id) && !skipIds.has(id));
+        structCitationsVerified = structMissingIds.length === 0;
+      }
+
       return new Response(
         JSON.stringify({
           role,
@@ -818,6 +832,11 @@ Please provide your professional legal analysis from your designated role perspe
           [responseKey]: structuredJson,
           sources: sourcesUsed,
           model_used: modelUsed,
+          validation: {
+            citations_verified: structCitationsVerified,
+            ...(structMissingIds.length > 0 ? { missing_ids: structMissingIds } : {}),
+            cited_ids_count: structCitedIds.length,
+          },
         }),
         { headers: { ...corsHeaders, "Content-Type": "application/json" } },
       );
@@ -971,6 +990,43 @@ Please provide your professional legal analysis from your designated role perspe
       _metadata: { role, caseId: caseId || null },
     });
 
+    // === FIX 2 (P0/P1): Runtime Citation Guard ===
+    const uuidPattern = /\b([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\b/gi;
+    const allCitedIds = [...new Set(
+      [...(analysisText.matchAll(uuidPattern))].map(m => m[1])
+    )];
+    
+    let citationsVerified = true;
+    let missingIds: string[] = [];
+    
+    if (allCitedIds.length > 0) {
+      const { data: kbMatches } = await supabase
+        .from("knowledge_base")
+        .select("id")
+        .in("id", allCitedIds);
+      const { data: practiceMatches } = await supabase
+        .from("legal_practice_kb")
+        .select("id")
+        .in("id", allCitedIds);
+      
+      const foundIds = new Set([
+        ...(kbMatches || []).map((r: { id: string }) => r.id),
+        ...(practiceMatches || []).map((r: { id: string }) => r.id),
+      ]);
+      
+      const knownNonCitationIds = new Set([caseId, user.id].filter(Boolean));
+      missingIds = allCitedIds.filter(id => !foundIds.has(id) && !knownNonCitationIds.has(id));
+      citationsVerified = missingIds.length === 0;
+      
+      if (!citationsVerified) {
+        console.warn(JSON.stringify({
+          ts: new Date().toISOString(), lvl: "warn", fn: "ai-analyze",
+          msg: "CITATION_GUARD: unverified IDs in output",
+          missing_ids: missingIds, role,
+        }));
+      }
+    }
+
     return new Response(
       JSON.stringify({
         role,
@@ -978,6 +1034,11 @@ Please provide your professional legal analysis from your designated role perspe
         analysis: analysisText,
         sources: sourcesUsed,
         model_used: modelUsed,
+        validation: {
+          citations_verified: citationsVerified,
+          ...(missingIds.length > 0 ? { missing_ids: missingIds } : {}),
+          cited_ids_count: allCitedIds.length,
+        },
       }),
       {
         headers: { ...corsHeaders, "Content-Type": "application/json" },
