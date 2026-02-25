@@ -1,15 +1,18 @@
 /**
- * ingest-document
+ * ingest-document — v2 (enterprise-aligned)
  *
  * Orchestrator edge function that:
  * 1) Parses & normalizes raw text via shared ingestion service
- * 2) Inserts canonical record into public.legal_documents (dedup by source_hash)
- * 3) Chunks via shared ingestion service
- * 4) Inserts chunks into public.legal_chunks with doc_id FK
+ * 2) Chunks via shared structural chunker (chunkDocument)
+ * 3) Validates chunks via validateChunks() — QA gate; abort on failure
+ * 4) Inserts canonical record into public.legal_documents (dedup by source_hash)
+ *    with chunker_version and chunk_set_version metadata
+ * 5) Inserts chunks into public.legal_chunks with chunk_hash
+ * 6) Triggers table screenshot processing if applicable
  *
  * Auth: requires x-internal-key header (fail-closed)
  * Input: { fileName, mimeType, rawText, sourceUrl? }
- * Output: { document_id, chunks_inserted, deduplicated }
+ * Output: { document_id, chunks_inserted, deduplicated, chunker_version }
  */
 
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
@@ -20,6 +23,14 @@ import {
   chunkDoc,
   type LegalDocument,
 } from "../_shared/ingestion-service.ts";
+import { validateChunks, CHUNKER_VERSION } from "../_shared/chunker.ts";
+
+// ── Stable SHA-256 ──────────────────────────────────────────────────
+async function sha256(input: string): Promise<string> {
+  const data = new TextEncoder().encode(input);
+  const buf = await crypto.subtle.digest("SHA-256", data);
+  return Array.from(new Uint8Array(buf)).map(b => b.toString(16).padStart(2, "0")).join("");
+}
 
 serve(async (req) => {
   const cors = handleCors(req);
@@ -42,7 +53,6 @@ serve(async (req) => {
 
     const body = await req.json();
     const { fileName, mimeType, rawText, sourceUrl, dedupMode } = body;
-    // dedupMode: "skip" (default) | "upsert"
     const dedup: "skip" | "upsert" = dedupMode === "upsert" ? "upsert" : "skip";
 
     // ── Validate input ──────────────────────────────────────────
@@ -67,14 +77,53 @@ serve(async (req) => {
       return json({ error: "Validation failed", details: validationErrors }, 422);
     }
 
-    // ── Step 2: Insert into legal_documents (dedup by hash) ─────
+    // ── Step 2: Chunk via structural chunker ────────────────────
+    const chunks = chunkDoc(document);
+
+    // ── Step 3: QA gate — validateChunks ────────────────────────
+    if (chunks.length > 0) {
+      const qa = validateChunks(document.content_text, chunks);
+      if (!qa.ok) {
+        const errDetail = qa.errors.slice(0, 5).join("; ");
+        console.error(JSON.stringify({
+          ts: new Date().toISOString(),
+          lvl: "error",
+          fn: "ingest-document",
+          msg: "QA validation failed",
+          errors: qa.errors.slice(0, 10),
+          fileName,
+        }));
+
+        // Best-effort log to error_logs
+        try {
+          const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
+          const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+          const sb = createClient(supabaseUrl, serviceKey);
+          await sb.rpc("log_error", {
+            _error_type: "ingest_qa",
+            _error_message: `QA validation failed for ${fileName}: ${errDetail}`,
+            _error_details: JSON.stringify({ fileName, errors: qa.errors.slice(0, 10) }),
+          });
+        } catch (_) { /* ignore */ }
+
+        return json({
+          error: "Chunk validation failed (QA gate)",
+          details: qa.errors.slice(0, 10),
+          chunker_version: CHUNKER_VERSION,
+        }, 422);
+      }
+    }
+
+    // ── Step 4: Compute chunk_set_version for idempotency ───────
+    const chunkSetVersion = await sha256(document.content_text + CHUNKER_VERSION);
+
+    // ── Step 5: Insert into legal_documents (dedup by hash) ─────
     const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
     const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
     const supabase = createClient(supabaseUrl, serviceKey);
 
     const sourceHash = document.ingestion.source_hash;
 
-    // Check dedup by source_hash
     if (sourceHash) {
       const { data: existing } = await supabase
         .from("legal_documents")
@@ -88,6 +137,7 @@ serve(async (req) => {
             document_id: existing.id,
             chunks_inserted: 0,
             deduplicated: true,
+            chunker_version: CHUNKER_VERSION,
           }, 200);
         }
         // upsert: delete old doc+chunks (CASCADE), then re-insert below
@@ -95,9 +145,10 @@ serve(async (req) => {
       }
     }
 
-    const { data: docRow, error: docErr } = await supabase
+    const docRow = buildDocRow(document, sourceHash, chunkSetVersion);
+    const { data: docData, error: docErr } = await supabase
       .from("legal_documents")
-      .insert(buildDocRow(document, sourceHash))
+      .insert(docRow)
       .select("id")
       .single();
 
@@ -111,16 +162,18 @@ serve(async (req) => {
       return json({ error: "Failed to insert document", details: docErr.message }, 500);
     }
 
-    const docId = docRow.id;
-
-    // ── Step 3: Chunk via ingestion service ──────────────────────
-    const chunks = chunkDoc(document);
+    const docId = docData.id;
 
     if (chunks.length === 0) {
-      return json({ document_id: docId, chunks_inserted: 0, deduplicated: false }, 200);
+      return json({
+        document_id: docId,
+        chunks_inserted: 0,
+        deduplicated: false,
+        chunker_version: CHUNKER_VERSION,
+      }, 200);
     }
 
-    // ── Step 4: Insert chunks ───────────────────────────────────
+    // ── Step 6: Insert chunks ───────────────────────────────────
     const chunkRows = chunks.map((c) => ({
       doc_id: docId,
       doc_type: document.doc_type,
@@ -136,7 +189,6 @@ serve(async (req) => {
       is_active: true,
     }));
 
-    // Insert in batches of 200
     const BATCH_SIZE = 200;
     let totalInserted = 0;
 
@@ -163,7 +215,7 @@ serve(async (req) => {
       totalInserted += batch.length;
     }
 
-    // ── Step 5: Trigger table screenshot processing (async, non-blocking) ──
+    // ── Step 7: Trigger table screenshot processing (async) ─────
     const hasTableChunks = chunkRows.some(c => c.chunk_type === "table");
     if (hasTableChunks) {
       callInternalFunction(
@@ -179,11 +231,12 @@ serve(async (req) => {
       chunks_inserted: totalInserted,
       deduplicated: false,
       table_processing: hasTableChunks ? "triggered" : "none",
+      chunker_version: CHUNKER_VERSION,
+      chunk_set_version: chunkSetVersion,
     }, 200);
   } catch (error) {
     const msg = error instanceof Error ? error.message : "Unknown";
     console.error(JSON.stringify({ ts: new Date().toISOString(), lvl: "error", fn: "ingest-document", msg }));
-    // Best-effort log to error_logs table
     try {
       const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
       const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
@@ -193,15 +246,13 @@ serve(async (req) => {
         _error_message: `ingest-document exception: ${msg}`,
       });
     } catch (_) { /* ignore */ }
-    return json({
-      error: msg,
-    }, 500);
+    return json({ error: msg }, 500);
   }
 });
 
 // ── Helper: build DB row from LegalDocument ─────────────────────────
 
-function buildDocRow(document: LegalDocument, sourceHash: string | null) {
+function buildDocRow(document: LegalDocument, sourceHash: string | null, chunkSetVersion: string) {
   return {
     doc_type: document.doc_type,
     jurisdiction: document.jurisdiction,
@@ -220,7 +271,11 @@ function buildDocRow(document: LegalDocument, sourceHash: string | null) {
     key_violations: document.key_violations,
     legal_reasoning_summary: document.legal_reasoning_summary,
     decision_map: document.decision_map ?? {},
-    ingestion_meta: document.ingestion,
+    ingestion_meta: {
+      ...document.ingestion,
+      chunker_version: CHUNKER_VERSION,
+      chunk_set_version: chunkSetVersion,
+    },
     is_active: document.is_active,
   };
 }
