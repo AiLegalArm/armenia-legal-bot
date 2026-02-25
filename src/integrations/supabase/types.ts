@@ -977,6 +977,7 @@ export type Database = {
           raw_response: Json | null
           run_id: string
           status: string
+          temporal_metadata_source: string | null
           temporal_violations: Json | null
         }
         Insert: {
@@ -989,6 +990,7 @@ export type Database = {
           raw_response?: Json | null
           run_id: string
           status?: string
+          temporal_metadata_source?: string | null
           temporal_violations?: Json | null
         }
         Update: {
@@ -1001,6 +1003,7 @@ export type Database = {
           raw_response?: Json | null
           run_id?: string
           status?: string
+          temporal_metadata_source?: string | null
           temporal_violations?: Json | null
         }
         Relationships: [
