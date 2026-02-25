@@ -31,6 +31,10 @@ interface InvariantResult {
   details?: unknown;
 }
 
+type TemporalMetadataSource = "inline" | "db_fallback" | "hybrid" | "none";
+
+const VALID_SOURCE_TYPES = new Set(["kb", "practice"]);
+
 interface CitedItem {
   id: string;
   doc_id: string;
@@ -38,6 +42,15 @@ interface CitedItem {
   source_type: "kb" | "practice";
   effective_from?: string | null;
   effective_to?: string | null;
+}
+
+/** Normalize a date-only or ISO string to midnight UTC */
+function normalizeReferenceDate(raw: string): Date {
+  // If date-only (YYYY-MM-DD), append T00:00:00Z
+  if (/^\d{4}-\d{2}-\d{2}$/.test(raw)) {
+    return new Date(raw + "T00:00:00Z");
+  }
+  return new Date(raw);
 }
 
 // ── Temporal helper ──────────────────────────────────────────────────────────
@@ -138,20 +151,26 @@ function checkCitationsPresent(
 ): InvariantResult {
   const mode = (params?.mode as string) || "hybrid";
   const citations = extractCitations(response, targetFunction);
-  const hasStructural = citations.length > 0;
 
   if (mode === "structured_only") {
+    // Strict: require non-empty doc_id, non-empty title, valid source_type
+    const valid = citations.filter(
+      c => c.doc_id && c.title && VALID_SOURCE_TYPES.has(c.source_type),
+    );
+    const invalid = citations.length - valid.length;
+    const passed = valid.length > 0;
     return {
       type: "citations_present",
-      passed: hasStructural,
-      message: hasStructural
-        ? `${citations.length} structural citation(s) found (structured_only mode)`
-        : "No structural citations found (structured_only mode)",
-      details: { structural_count: citations.length, mode },
+      passed,
+      message: passed
+        ? `${valid.length} valid structural citation(s) (structured_only)${invalid > 0 ? `, ${invalid} malformed skipped` : ""}`
+        : "No valid structural citations (structured_only): require doc_id, title, valid source_type",
+      details: { valid_count: valid.length, malformed_count: invalid, mode },
     };
   }
 
-  // hybrid mode: also check text patterns
+  // hybrid mode
+  const hasStructural = citations.length > 0;
   const text = extractText(response);
   const hasArmenianFormat = /Տե՛ս՝/.test(text);
   const refPatterns = [
@@ -306,9 +325,20 @@ async function checkTemporalInRange(
   referenceDate: string,
   supabase: SupabaseClient,
   targetFunction?: string,
-): Promise<InvariantResult & { temporal_metadata_source: "inline" | "db_fallback" | "none" }> {
+  citedIdsFailed?: boolean,
+): Promise<InvariantResult & { temporal_metadata_source: TemporalMetadataSource }> {
   if (!referenceDate) {
     return { type: "temporal_in_range", passed: true, message: "No reference_date, skipped", temporal_metadata_source: "none" };
+  }
+
+  // Gating: if cited_ids_exist already failed, skip temporal check
+  if (citedIdsFailed) {
+    return {
+      type: "temporal_in_range",
+      passed: false,
+      message: "Skipped: cited_ids_exist failed — temporal validation unreliable on phantom IDs",
+      temporal_metadata_source: "none",
+    };
   }
 
   const citations = extractCitations(response, targetFunction);
@@ -323,66 +353,88 @@ async function checkTemporalInRange(
     };
   }
 
+  // Normalize reference_date to midnight UTC
+  const refDate = normalizeReferenceDate(referenceDate);
+
   // Split: citations with inline metadata vs those without
   const withMeta = kbCitations.filter(c => c.effective_from != null || c.effective_to != null);
   const withoutMeta = kbCitations.filter(c => c.effective_from == null && c.effective_to == null);
 
-  let metadataSource: "inline" | "db_fallback";
-  let citationsToCheck: Array<{
+  let metadataSource: TemporalMetadataSource;
+  // Deduplicate by doc_id: inline wins over DB
+  const citationsMap = new Map<string, {
     doc_id: string;
     title: string;
     effective_from: string | null;
     effective_to: string | null;
-  }>;
+  }>();
 
-  if (withoutMeta.length === 0) {
-    // All have inline metadata — pure inline
-    metadataSource = "inline";
-    citationsToCheck = withMeta.map(c => ({
-      doc_id: c.doc_id,
-      title: c.title,
-      effective_from: c.effective_from ?? null,
-      effective_to: c.effective_to ?? null,
-    }));
-  } else {
-    // Some or all missing — fetch from DB for the missing ones, use inline for the rest
-    metadataSource = withMeta.length > 0 ? "inline" : "db_fallback";
-    const inlinePart = withMeta.map(c => ({
-      doc_id: c.doc_id,
-      title: c.title,
-      effective_from: c.effective_from ?? null,
-      effective_to: c.effective_to ?? null,
-    }));
-
-    const missingDocIds = [...new Set(withoutMeta.map(c => c.doc_id))];
-    const { data: docs, error } = await supabase
-      .from("knowledge_base")
-      .select("id, title, effective_from, effective_to")
-      .in("id", missingDocIds);
-
-    if (error) {
-      return {
-        type: "temporal_in_range",
-        passed: false,
-        message: `DB error checking temporal range: ${error.message}`,
-        temporal_metadata_source: "db_fallback",
-      };
-    }
-
-    const dbPart = (docs || []).map(d => ({
-      doc_id: d.id,
-      title: d.title,
-      effective_from: d.effective_from,
-      effective_to: d.effective_to,
-    }));
-
-    citationsToCheck = [...inlinePart, ...dbPart];
-    if (inlinePart.length > 0 && dbPart.length > 0) {
-      metadataSource = "inline"; // hybrid, but predominantly inline
+  // Add inline first (they take priority)
+  for (const c of withMeta) {
+    if (!citationsMap.has(c.doc_id)) {
+      citationsMap.set(c.doc_id, {
+        doc_id: c.doc_id,
+        title: c.title,
+        effective_from: c.effective_from ?? null,
+        effective_to: c.effective_to ?? null,
+      });
     }
   }
 
-  const refDate = new Date(referenceDate);
+  if (withoutMeta.length === 0) {
+    metadataSource = "inline";
+  } else {
+    // Fetch from DB only for doc_ids not already covered by inline
+    const missingDocIds = [...new Set(
+      withoutMeta.map(c => c.doc_id).filter(id => !citationsMap.has(id))
+    )];
+
+    if (missingDocIds.length === 0) {
+      metadataSource = "inline";
+    } else {
+      const { data: docs, error } = await supabase
+        .from("knowledge_base")
+        .select("id, title, effective_from, effective_to")
+        .in("id", missingDocIds);
+
+      if (error) {
+        return {
+          type: "temporal_in_range",
+          passed: false,
+          message: `DB error checking temporal range: ${error.message}`,
+          temporal_metadata_source: "db_fallback",
+        };
+      }
+
+      // Check if DB returned all requested IDs
+      const foundIds = new Set((docs || []).map(d => d.id));
+      const notFound = missingDocIds.filter(id => !foundIds.has(id));
+      if (notFound.length > 0) {
+        return {
+          type: "temporal_in_range",
+          passed: false,
+          message: `${notFound.length} cited KB doc(s) not found in DB for temporal check`,
+          details: { missing_doc_ids: notFound },
+          temporal_metadata_source: "db_fallback",
+        };
+      }
+
+      for (const d of docs || []) {
+        if (!citationsMap.has(d.id)) {
+          citationsMap.set(d.id, {
+            doc_id: d.id,
+            title: d.title,
+            effective_from: d.effective_from,
+            effective_to: d.effective_to,
+          });
+        }
+      }
+
+      metadataSource = withMeta.length > 0 ? "hybrid" : "db_fallback";
+    }
+  }
+
+  const citationsToCheck = [...citationsMap.values()];
   const violations: Array<{
     doc_id: string;
     title: string;
@@ -563,15 +615,19 @@ serve(async (req) => {
         const invariants: InvariantResult[] = [];
         const invariantDefs = (evalCase.invariants || []) as InvariantDef[];
         let temporalMetadataSource: string | undefined;
+        let citedIdsFailed = false;
 
         for (const inv of invariantDefs) {
           switch (inv.type) {
             case "citations_present":
               invariants.push(checkCitationsPresent(responseBody, evalCase.target_function, inv.params));
               break;
-            case "cited_ids_exist":
-              invariants.push(await checkCitedIdsExist(responseBody, supabase, evalCase.target_function));
+            case "cited_ids_exist": {
+              const citedResult = await checkCitedIdsExist(responseBody, supabase, evalCase.target_function);
+              if (!citedResult.passed) citedIdsFailed = true;
+              invariants.push(citedResult);
               break;
+            }
             case "no_fabricated_sources":
               invariants.push(checkNoFabricatedSources(responseBody));
               break;
@@ -584,6 +640,7 @@ serve(async (req) => {
                 evalCase.reference_date || "",
                 supabase,
                 evalCase.target_function,
+                citedIdsFailed,
               );
               temporalMetadataSource = temporalResult.temporal_metadata_source;
               invariants.push(temporalResult);
