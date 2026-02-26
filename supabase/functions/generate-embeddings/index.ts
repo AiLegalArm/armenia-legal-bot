@@ -119,16 +119,23 @@ serve(async (req) => {
 
     const validTables = [
       "knowledge_base", "legal_practice_kb",
-      "knowledge_base_chunks", "legal_practice_kb_chunks",
     ];
     if (!table || !validTables.includes(table)) {
       return new Response(
-        JSON.stringify({ error: `Invalid table. Use one of: ${validTables.join(", ")}` }),
+        JSON.stringify({ error: `Invalid table. Use one of: ${validTables.join(", ")}. Chunk tables do not store embeddings.` }),
         { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } },
       );
     }
 
-    const isChunkTable = table.endsWith("_chunks");
+    // Guard: chunk tables must never receive embeddings
+    if (table.endsWith("_chunks")) {
+      return new Response(
+        JSON.stringify({ error: `Embedding into chunk tables is forbidden. Target parent table instead.` }),
+        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+      );
+    }
+
+    const isChunkTable = false; // chunk tables are no longer supported
 
     const supabase = createClient(
       Deno.env.get("SUPABASE_URL")!,
