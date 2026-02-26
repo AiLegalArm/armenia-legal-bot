@@ -1354,6 +1354,7 @@ export type Database = {
           source_url: string | null
           supersedes_doc_id: string | null
           title: string
+          tsv: unknown
           updated_at: string
           uploaded_by: string | null
           version_date: string | null
@@ -1378,6 +1379,7 @@ export type Database = {
           source_url?: string | null
           supersedes_doc_id?: string | null
           title: string
+          tsv?: unknown
           updated_at?: string
           uploaded_by?: string | null
           version_date?: string | null
@@ -1402,6 +1404,7 @@ export type Database = {
           source_url?: string | null
           supersedes_doc_id?: string | null
           title?: string
+          tsv?: unknown
           updated_at?: string
           uploaded_by?: string | null
           version_date?: string | null
@@ -1658,6 +1661,7 @@ export type Database = {
           translation_provider: string | null
           translation_status: string | null
           translation_ts: string | null
+          tsv: unknown
           updated_at: string
           uploaded_by: string | null
           violation_type: string | null
@@ -1714,6 +1718,7 @@ export type Database = {
           translation_provider?: string | null
           translation_status?: string | null
           translation_ts?: string | null
+          tsv?: unknown
           updated_at?: string
           uploaded_by?: string | null
           violation_type?: string | null
@@ -1770,6 +1775,7 @@ export type Database = {
           translation_provider?: string | null
           translation_status?: string | null
           translation_ts?: string | null
+          tsv?: unknown
           updated_at?: string
           uploaded_by?: string | null
           violation_type?: string | null
@@ -2488,6 +2494,7 @@ export type Database = {
           translation_provider: string | null
           translation_status: string | null
           translation_ts: string | null
+          tsv: unknown
           updated_at: string
           uploaded_by: string | null
           violation_type: string | null
