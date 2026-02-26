@@ -17,7 +17,7 @@ type TableStats = {
   processed: number;
 };
 
-type EmbeddingTable = "knowledge_base" | "legal_practice_kb" | "knowledge_base_chunks" | "legal_practice_kb_chunks";
+type EmbeddingTable = "knowledge_base" | "legal_practice_kb";
 
 const emptyStats = (): TableStats => ({
   success: 0, pending: 0, failed: 0, deadLetter: 0, running: false, processed: 0,
@@ -26,8 +26,6 @@ const emptyStats = (): TableStats => ({
 export function EmbeddingManager() {
   const [kbStats, setKbStats] = useState<TableStats>(emptyStats());
   const [practiceStats, setPracticeStats] = useState<TableStats>(emptyStats());
-  const [kbChunkStats, setKbChunkStats] = useState<TableStats>(emptyStats());
-  const [practiceChunkStats, setPracticeChunkStats] = useState<TableStats>(emptyStats());
   const [errors, setErrors] = useState<string[]>([]);
   const abortRef = useRef<AbortController | null>(null);
   const mountedRef = useRef(true);
@@ -47,15 +45,13 @@ export function EmbeddingManager() {
     const map: Record<EmbeddingTable, React.Dispatch<React.SetStateAction<TableStats>>> = {
       knowledge_base: setKbStats,
       legal_practice_kb: setPracticeStats,
-      knowledge_base_chunks: setKbChunkStats,
-      legal_practice_kb_chunks: setPracticeChunkStats,
     };
     return map[table];
   };
 
   const loadStats = async () => {
-    const tables: EmbeddingTable[] = ["knowledge_base", "legal_practice_kb", "knowledge_base_chunks", "legal_practice_kb_chunks"];
-    const setters = [setKbStats, setPracticeStats, setKbChunkStats, setPracticeChunkStats];
+    const tables: EmbeddingTable[] = ["knowledge_base", "legal_practice_kb"];
+    const setters = [setKbStats, setPracticeStats];
 
     for (let i = 0; i < tables.length; i++) {
       // Cast to known table type for Supabase client compatibility
@@ -132,10 +128,10 @@ export function EmbeddingManager() {
 
   const stop = () => {
     abortRef.current?.abort();
-    [setKbStats, setPracticeStats, setKbChunkStats, setPracticeChunkStats].forEach(s => s(p => ({ ...p, running: false })));
+    [setKbStats, setPracticeStats].forEach(s => s(p => ({ ...p, running: false })));
   };
 
-  const isRunning = kbStats.running || practiceStats.running || kbChunkStats.running || practiceChunkStats.running;
+  const isRunning = kbStats.running || practiceStats.running;
 
   const renderSection = (label: string, icon: React.ReactNode, stats: TableStats, table: EmbeddingTable) => (
     <div className="space-y-2 rounded-lg border p-4">
@@ -182,14 +178,10 @@ export function EmbeddingManager() {
       </CardHeader>
       <CardContent className="space-y-4">
         <p className="text-sm text-muted-foreground">
-          Generate embeddings for semantic search. Supports document-level and chunk-level embeddings for improved RAG retrieval.
+          Generate embeddings for semantic search. Embeddings are stored in parent tables only (not in chunks).
         </p>
-        <h4 className="text-sm font-semibold text-muted-foreground">Document-level</h4>
         {renderSection("Knowledge Base", <Database className="h-4 w-4" />, kbStats, "knowledge_base")}
         {renderSection("Legal Practice", <BookOpen className="h-4 w-4" />, practiceStats, "legal_practice_kb")}
-        <h4 className="text-sm font-semibold text-muted-foreground">Chunk-level (sections)</h4>
-        {renderSection("KB Chunks", <Database className="h-4 w-4" />, kbChunkStats, "knowledge_base_chunks")}
-        {renderSection("Practice Chunks", <BookOpen className="h-4 w-4" />, practiceChunkStats, "legal_practice_kb_chunks")}
         {isRunning && <Button variant="destructive" size="sm" onClick={stop}>Stop</Button>}
         {errors.length > 0 && (
           <div className="max-h-32 overflow-auto rounded border border-destructive/30 bg-destructive/5 p-2 text-xs">

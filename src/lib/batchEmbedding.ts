@@ -12,7 +12,7 @@ type EmbeddingProgress = {
  * Each call processes up to `batchLimit` docs (default 5).
  */
 export async function runBatchEmbedding(opts: {
-  table: "knowledge_base" | "legal_practice_kb" | "knowledge_base_chunks" | "legal_practice_kb_chunks";
+  table: "knowledge_base" | "legal_practice_kb";
   batchLimit?: number;
   onProgress?: (p: EmbeddingProgress) => void;
   signal?: AbortSignal;

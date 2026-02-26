@@ -133,7 +133,13 @@ serve(async (req) => {
     for (const job of jobs) {
       const attempt = (job.attempts || 0) + 1;
       try {
-        const src = job.source_table || "knowledge_base";
+      const src = job.source_table || "knowledge_base";
+
+        // Guard: chunk tables must never receive embeddings
+        if (src.endsWith("_chunks")) {
+          throw new Error(`Embedding into chunk table "${src}" is forbidden. Target parent table instead.`);
+        }
+
         const isKB = src === "knowledge_base";
         const selectFields = isKB ? KB_SELECT_FIELDS : DOC_SELECT_FIELDS;
 
