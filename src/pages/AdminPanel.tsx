@@ -28,6 +28,7 @@ import { PracticeChunkManager } from "@/components/admin/PracticeChunkManager";
 import { ErrorLogs } from "@/components/admin/ErrorLogs";
 import { DictionaryImport } from "@/components/admin/DictionaryImport";
 import { AIProviderSwitch } from "@/components/admin/AIProviderSwitch";
+import { AdminAIChatBot } from "@/components/admin/AdminAIChatBot";
 
 const AdminPanel = () => {
   const navigate = useNavigate();
@@ -154,6 +155,8 @@ const AdminPanel = () => {
             <DictionaryImport />
           </TabsContent>
         </Tabs>
+
+        <AdminAIChatBot />
       </main>
     </div>
   );
